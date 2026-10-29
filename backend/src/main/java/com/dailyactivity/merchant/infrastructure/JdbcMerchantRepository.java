@@ -16,7 +16,7 @@ public class JdbcMerchantRepository implements MerchantRepository {
     private final NamedParameterJdbcTemplate jdbc;
     public JdbcMerchantRepository(NamedParameterJdbcTemplate jdbc) { this.jdbc = jdbc; }
     private Merchant row(java.sql.ResultSet r) throws java.sql.SQLException {
-        return new Merchant(r.getLong("id"), r.getString("code"), r.getString("name"), r.getBoolean("active"), r.getBigDecimal("shipping_fee"), r.getTimestamp("updated_at").toInstant(), r.getString("domain"), r.getString("logo_url"), r.getString("theme"));
+        return new Merchant(r.getLong("id"), r.getString("code"), r.getString("name"), r.getBoolean("active"), r.getBigDecimal("shipping_fee"), r.getTimestamp("updated_at").toInstant(), r.getString("domain"), r.getString("logo_url"), r.getString("theme"), r.getBoolean("customer_registration_enabled"));
     }
     public Optional<Merchant> find(long id) {
         return jdbc.query("SELECT * FROM merchant WHERE id=:id", new MapSqlParameterSource("id", id), r -> r.next() ? Optional.of(row(r)) : Optional.empty());
@@ -39,10 +39,10 @@ public class JdbcMerchantRepository implements MerchantRepository {
         return jdbc.query("SELECT * FROM merchant ORDER BY id LIMIT 10 OFFSET :offset", new MapSqlParameterSource("offset", (page-1)*10), (r,n) -> row(r));
     }
     public long count() { return jdbc.queryForObject("SELECT COUNT(*) FROM merchant", new MapSqlParameterSource(), Long.class); }
-    public long create(String code, String name, BigDecimal fee, String domain, String logoUrl, String theme, long actor) {
+    public long create(String code, String name, BigDecimal fee, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled) {
         try {
             var key = new GeneratedKeyHolder();
-            jdbc.update("INSERT INTO merchant(code,name,shipping_fee,domain,logo_url,theme,created_by_user_id,updated_by_user_id) VALUES(:code,:name,:fee,:domain,:logo,:theme,:actor,:actor)", new MapSqlParameterSource("code",code).addValue("name",name).addValue("fee",fee).addValue("domain",domain).addValue("logo",logoUrl).addValue("theme",theme).addValue("actor",actor),key,new String[]{"id"});
+            jdbc.update("INSERT INTO merchant(code,name,shipping_fee,domain,logo_url,theme,customer_registration_enabled,created_by_user_id,updated_by_user_id) VALUES(:code,:name,:fee,:domain,:logo,:theme,:registrationEnabled,:actor,:actor)", new MapSqlParameterSource("code",code).addValue("name",name).addValue("fee",fee).addValue("domain",domain).addValue("logo",logoUrl).addValue("theme",theme).addValue("registrationEnabled",registrationEnabled).addValue("actor",actor),key,new String[]{"id"});
             return key.getKey().longValue();
         } catch (DuplicateKeyException e) { throw ApiException.conflict("MERCHANT_IDENTIFIER_EXISTS", "Merchant code or domain is already in use."); }
     }
@@ -52,6 +52,9 @@ public class JdbcMerchantRepository implements MerchantRepository {
             jdbc.update("UPDATE seller SET auth_version=auth_version+1 WHERE merchant_id=:id",new MapSqlParameterSource("id",id));
         }
         jdbc.update("UPDATE merchant SET name=:name,shipping_fee=:fee,active=:active,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE id=:id", new MapSqlParameterSource("id",id).addValue("name",name).addValue("fee",fee).addValue("active",active).addValue("actor",actor));
+    }
+    public void updateRegistrationEnabled(long id, boolean enabled, long actor) {
+        jdbc.update("UPDATE merchant SET customer_registration_enabled=:enabled,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE id=:id",new MapSqlParameterSource("id",id).addValue("enabled",enabled).addValue("actor",actor));
     }
     public Set<String> permissions(long id) {
         return new HashSet<>(jdbc.query("SELECT menu_code FROM merchant_permission WHERE merchant_id=:id AND deleted=0",new MapSqlParameterSource("id",id),(r,n)->r.getString(1)));

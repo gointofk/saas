@@ -69,4 +69,12 @@
 .seller-auth-shell .auth-copy p { display: none; }
 .seller-auth-shell .seller-login-brand { margin-bottom: 22px; }
 .seller-auth-shell .auth-footer { bottom: 20px; }
-.auth-page-footer { align-self: stretch; width: 100%; box-sizing: border-box; } }
+.auth-page-footer { align-self: stretch; width: 100%; box-sizing: border-box; }
+.auth-header-actions .auth-header-action { padding: 0; border: 0; background: transparent; cursor: pointer; }
+.registration-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.registration-code-button { min-height: 48px; white-space: nowrap; }
+.registration-info { margin: -8px 0 0; color: var(--color-muted); font-size: 13px; line-height: 1.45; }
+.auth-back-button { justify-self: center; padding: 6px 10px; border: 0; background: transparent; color: var(--color-muted); cursor: pointer; }
+.form-success { color: #237a45; font-size: 14px; line-height: 1.45; }
+@media (max-width: 520px) { .registration-code-row { grid-template-columns: 1fr; } .registration-code-button { width: 100%; } }
+}

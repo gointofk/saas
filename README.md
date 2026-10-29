@@ -26,8 +26,10 @@ mysql --protocol=tcp -h127.0.0.1 -P3306 -uroot -p123456 huanhuan < doc/init_mysq
 
 The default profile is `dev`, and its JDBC connection is the local test database from `dev.txt`
 (`huanhuan`, `root`, `123456`). Before starting the API, replace the RSA PEM and secret placeholders
-in `backend/src/main/resources/application-dev.yml`. Do not execute the initialization script against
-a database containing existing business data.
+in `backend/src/main/resources/application-dev.yml`. To configure merchant email registration, inject
+a stable `REGISTRATION_SECRET` of at least 32 bytes into the backend environment; the same value must
+be shared by all backend instances. Do not execute the initialization script against a database
+containing existing business data.
 
 ```bash
 cd backend
@@ -36,8 +38,8 @@ mvn spring-boot:run
 
 Use `--spring.profiles.active=test` or `--spring.profiles.active=live` to select another environment.
 Those profiles intentionally contain separate database, key and filesystem placeholders and must be
-filled by deployment configuration before use. The application does not read database or business
-secrets from environment-variable fallbacks.
+filled by deployment configuration before use. Apart from `REGISTRATION_SECRET`, the application does
+not read database or business secrets from environment-variable fallbacks.
 
 ```bash
 cd backend

@@ -10,6 +10,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -62,9 +63,29 @@ public class JdbcCustomerRepository implements CustomerRepository {
     }
 
     @Override
+    public long createSelfRegistered(long merchantId, String email, String name, String passwordHash, String code, Instant verifiedAt) {
+        try {
+            KeyHolder h = new GeneratedKeyHolder();
+            jdbc.update("INSERT INTO `user`(merchant_id,email,name,password_hash,code,customer_type,price_tier,active,referrer_id,commission_rate,email_verified_at,created_by_user_id,created_by_type,updated_by_user_id,updated_by_type) "
+                            + "VALUES(:merchantId,:email,:name,:passwordHash,:code,'regular','V1',1,NULL,NULL,:verifiedAt,NULL,'registration',NULL,'registration')",
+                    new MapSqlParameterSource("merchantId", merchantId).addValue("email", email).addValue("name", name)
+                            .addValue("passwordHash", passwordHash).addValue("code", code).addValue("verifiedAt", Timestamp.from(verifiedAt)), h, new String[]{"id"});
+            return h.getKey().longValue();
+        } catch (DuplicateKeyException e) {
+            throw ApiException.conflict("CUSTOMER_IDENTIFIER_EXISTS", "Email or customer code is already in use.");
+        }
+    }
+
+    @Override
+    public boolean emailExists(long merchantId, String email) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM `user` WHERE merchant_id=:merchantId AND email=:email)",
+                new MapSqlParameterSource("merchantId", merchantId).addValue("email", email), Boolean.class));
+    }
+
+    @Override
     public void update(long merchantId, long id, CustomerInput i, long actor) {
         try {
-            int n = jdbc.update("UPDATE `user` SET email=:email,name=:name,customer_type=:customerType,price_tier=:priceTier,referrer_id=:referrerId,commission_rate=:commissionRate,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type='seller' WHERE merchant_id=:merchantId AND id=:id AND deleted=0", params(i, null, actor).addValue("merchantId", merchantId).addValue("id", id));
+            int n = jdbc.update("UPDATE `user` SET email_verified_at=IF(email<>LOWER(TRIM(:email)),NULL,email_verified_at),email=LOWER(TRIM(:email)),name=:name,customer_type=:customerType,price_tier=:priceTier,referrer_id=:referrerId,commission_rate=:commissionRate,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type='seller' WHERE merchant_id=:merchantId AND id=:id AND deleted=0", params(i, null, actor).addValue("merchantId", merchantId).addValue("id", id));
             if (n != 1) throw ApiException.notFound("Customer not found.");
         } catch (DuplicateKeyException e) {
             throw ApiException.conflict("CUSTOMER_EMAIL_EXISTS", "Email is already in use.");

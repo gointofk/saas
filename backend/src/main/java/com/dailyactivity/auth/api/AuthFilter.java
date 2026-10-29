@@ -30,7 +30,12 @@ public class AuthFilter extends OncePerRequestFilter {
 
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.equals("/api/v1/customer/storefront") || "OPTIONS".equalsIgnoreCase(request.getMethod()) || path.matches("/api/v1/(customer|admin|platform)/auth/login") || path.matches("/api/v1/files/[^/]+/content") || path.equals("/actuator/health");
+        return path.equals("/api/v1/customer/storefront")
+                || path.equals("/api/v1/customer/auth/registration-code")
+                || path.equals("/api/v1/customer/auth/register")
+                || "OPTIONS".equalsIgnoreCase(request.getMethod())
+                || path.matches("/api/v1/(customer|admin|platform)/auth/login")
+                || path.matches("/api/v1/files/[^/]+/content") || path.equals("/actuator/health");
     }
 
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {

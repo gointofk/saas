@@ -23,4 +23,8 @@ public class MerchantController {
     public MerchantService.MerchantView update(@PathVariable long id,@RequestBody MerchantService.Update body,HttpServletRequest r) {
         return service.update(AuthSupport.principal(r,"platform"),id,body);
     }
+    @PostMapping("/merchants/{id}/email-settings/test")
+    public void testEmail(@PathVariable long id,@RequestBody MerchantService.TestEmailRequest body,HttpServletRequest r) {
+        service.testEmail(AuthSupport.principal(r,"platform"),id,body.recipient());
+    }
 }

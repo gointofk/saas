@@ -57,4 +57,8 @@ public final class ApiException extends RuntimeException {
     public static ApiException tooManyRequests(int retryAfterSeconds) {
         return new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS", "Too many login attempts. Please try again later.", Math.max(1, retryAfterSeconds));
     }
+
+    public static ApiException tooManyRequests(int retryAfterSeconds, String message) {
+        return new ApiException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS", message, Math.max(1, retryAfterSeconds));
+    }
 }

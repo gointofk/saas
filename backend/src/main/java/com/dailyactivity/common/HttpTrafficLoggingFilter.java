@@ -35,7 +35,7 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
     public static final String REQUEST_ID_MDC_KEY = "requestId";
     private static final int MAX_REQUEST_BODY_BYTES = 64 * 1024;
     private static final int MAX_LOG_BODY_BYTES = 1024;
-    private static final Set<String> SENSITIVE_PARTS = Set.of("password", "secret", "token", "authorization", "cookie", "signature", "sign", "key", "url", "email", "phone", "address", "recipient", "name", "note", "remark", "transaction", "account");
+    private static final Set<String> SENSITIVE_PARTS = Set.of("password", "secret", "token", "authorization", "cookie", "signature", "sign", "key", "url", "email", "phone", "address", "recipient", "name", "note", "remark", "transaction", "account", "verificationcode", "registrationcode");
     private final ObjectMapper objectMapper;
 
     public HttpTrafficLoggingFilter(ObjectMapper objectMapper) {

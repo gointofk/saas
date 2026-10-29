@@ -15,14 +15,21 @@ public interface MerchantRepository {
     Merchant lock(long id);
     List<Merchant> page(int page);
     long count();
-    long create(String code, String name, BigDecimal shippingFee, String domain, String logoUrl, String theme, long actor);
+    long create(String code, String name, BigDecimal shippingFee, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled);
+    default long create(String code, String name, BigDecimal shippingFee, String domain, String logoUrl, String theme, long actor) {
+        return create(code, name, shippingFee, domain, logoUrl, theme, actor, false);
+    }
     void update(long id, String name, BigDecimal shippingFee, boolean active, long actor);
+    void updateRegistrationEnabled(long id, boolean enabled, long actor);
     void replacePermissions(long id, Set<String> permissions, long actor);
     Set<String> permissions(long id);
     void audit(long merchantId, Actor actor, String action, String detail);
-    record Merchant(long id, String code, String name, boolean active, BigDecimal shippingFee, Instant updatedAt, String domain, String logoUrl, String theme) {
+    record Merchant(long id, String code, String name, boolean active, BigDecimal shippingFee, Instant updatedAt, String domain, String logoUrl, String theme, boolean registrationEnabled) {
+        public Merchant(long id,String code,String name,boolean active,BigDecimal fee,Instant time,String domain,String logoUrl,String theme) {
+            this(id,code,name,active,fee,time,domain,logoUrl,theme,false);
+        }
         public Merchant(long id,String code,String name,boolean active,BigDecimal fee,Instant time) {
-            this(id,code,name,active,fee,time,null,"/ytpeps-logo.svg","classic");
+            this(id,code,name,active,fee,time,null,"/ytpeps-logo.svg","classic",false);
         }
     }
 }

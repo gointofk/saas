@@ -119,6 +119,7 @@ frontend/
 | 服务 | 主要职责 | 原子写入范围 |
 | --- | --- | --- |
 | AccountService | 建号、资料、启停、密码、权限 | 账号、权限、认证版本 |
+| CustomerRegistrationService / CustomerRegistrationTransaction | 按商城域名发送验证码并完成自助建号 | 单次验证码、已验证邮箱、买家账号和客户码 |
 | AddressService | 地址与默认地址维护 | 客户锁、地址集合 |
 | OrderService | 创建、编辑、取消 | 订单/行、订单号、库存/流水、佣金、事件、购物车 |
 | PaymentService | 申报、确认收款 | 付款事实、订单支付状态、事件 |
@@ -127,7 +128,7 @@ frontend/
 | CommissionService | 单笔/批量登记线下结算 | 计提状态、结算批次/明细 |
 | BillingService | 应收应付统一列表与统计 | 只读 SQL，不创建数据库视图、不刷新写入财务事实 |
 | ExportService | 后台筛选、权限校验、同步 CSV | 导出行数上限和文件生成 |
-| 配置属性类 | 读取与校验 YAML 应用配置 | 认证、报价、文件和导出配置读取；业务运费由 merchant 表维护 |
+| 配置属性类 | 读取与校验 YAML 应用配置及注册安全密钥 | 认证、报价、文件、注册和导出配置读取；商户 SMTP 与运费保存在商户配置表 |
 
 ## 3. 身份、JWT 与权限
 
@@ -152,7 +153,7 @@ frontend/
 
 认证链路自行实现，不引入 Spring Security：
 
-1. 使用 Spring Web 的 `OncePerRequestFilter`（不是 Security 组件）覆盖 `/api/v1/**`；明确放行客户、商家、平台三个登录接口、客户商城品牌配置接口、短时签名文件内容接口、预检 OPTIONS 及健康探活路径（若部署提供）；未知 API 默认认证。
+1. 使用 Spring Web 的 `OncePerRequestFilter`（不是 Security 组件）覆盖 `/api/v1/**`；明确放行客户、商家、平台三个登录接口、客户商城品牌配置及买家注册验证码/注册接口、短时签名文件内容接口、预检 OPTIONS 及健康探活路径（若部署提供）；未知 API 默认认证。公开注册接口仍须按请求 Host 解析唯一商户并检查其注册开关。
 2. 通过独立 JWT 库校验固定算法、签名、iss/aud/sub、iat/exp、30 天时长；查询账号状态、auth_version。
 3. 不可变 RequestPrincipal 放 request attribute，自定义参数解析器提供给 Controller；不调用 request.getSession，不产生 JSESSIONID，不在跨请求共享对象保存身份。
 4. HandlerInterceptor 解析 `@RequireMenu`，读取当前权限；服务层再校验敏感写操作和资源归属。当前未标注 `@RequireMenu` 的 Handler 默认放行，因此敏感业务必须由 Application Service 显式调用 `requireMenu`；未引入“启动时检查所有 Handler”的机制。
@@ -160,6 +161,8 @@ frontend/
 6. 独立 Argon2id 库处理密码，不引入 security-crypto；dependency:tree 验证 org.springframework.security:* 依赖为零。
 
 登录接口在应用内按客户/后台账号标识和客户端 IP 记录失败次数，默认 5 分钟最多 10 次，超限返回 `429 TOO_MANY_REQUESTS` 和 `Retry-After`；成功登录清除账号标识的失败窗口。后端仅当 TCP 对端是回环 Nginx 时才读取其覆盖写入的 `X-Forwarded-For` 首地址，其他对端一律使用 `request.getRemoteAddr()`，不能信任公网请求自带的 forwarded header。限流窗口最多保留 10000 个账号/IP 键，容量满时先清理过期窗口且不再为新键分配内存，并每分钟清理全部过期窗口。当前限流状态保存在单实例内存；多实例部署前需要改为共享限流存储。
+
+买家注册验证码以 HMAC 摘要存储，不存明文；邮件码有效 10 分钟，60 秒内不能重发，每码最多尝试 5 次。单实例应用限流默认每商户邮箱每小时最多发送 5 次、每 IP 每小时最多发送 20 次；验证阶段每邮箱 15 分钟最多 10 次、每 IP 15 分钟最多 30 次。并由 `resend_after` 和数据库行锁约束重复发送/消费。注册账号和验证码消费在同一事务提交；验证码挑战写入后，由有界后台邮件执行器检查邮箱并发送邮件。已注册邮箱不发邮件，但验证码请求仍走相同的持久化和响应路径；重发窗口到期前重复请求均返回通用成功响应。邮件发送失败或后台队列已满不会改变 HTTP 响应，也不会提前清除重发窗口，避免通过发送结果或重试状态判断邮箱是否已注册。临时挑战每小时清理过期记录。注册限流与登录限流均驻留单实例内存，多实例部署需要共享限流存储。
 
 ### 3.2 无会话存储下的即时失效
 
@@ -325,6 +328,10 @@ Java 全部使用 `BigDecimal`，数据库金额 `DECIMAL(18,2)`、百分比 `DE
 
 买家 user 表仅保存商户、邮箱、姓名、密码、客户码、类型、等级、推荐关系、费率、状态和认证属性；seller 表保存商户、登录账号、姓名、密码、状态和认证属性；admin 表保存平台登录账号、姓名、密码、状态和认证属性。买家邮箱按 (merchant_id,email) 唯一，客户码在 user 表全局唯一；seller.account 和 admin.account 分别在各自表内唯一，可使用相同账号名。三表无共用身份主表、无 user_type 列。客户业务 customer_id/referrer_id 指向 user.id；seller_permission.seller_id 只指向 seller.id。
 
+商家后台建号仍使用原客户服务并按商家提供的资料创建；自助注册使用相同的 `user` 表与唯一约束，固定 `regular/V1`、无推荐人、立即启用，并记录 `email_verified_at`。邮箱由商家后台修改时清空该验证时间；现有商家创建账号不要求补验。每商户 SMTP 参数保存在 `merchant_email_settings`；密码以 AES-GCM 密文保存，公开商城配置及平台商户列表只返回是否已配置，不回传密文。
+
+`customer_registration_challenge` 是短期认证数据，不是业务数据或会话表。每个商户/邮箱最多保留一条当前验证码摘要、有效期、重发时间、失败次数和消费时间；MySQL 行锁使并发验证码校验与账号创建串行。过期挑战由定时清理删除。
+
 ### 5.2 实体关系
 
 ```mermaid
@@ -441,7 +448,7 @@ COA 替换先写新文件，再更新 current_file_uuid，不覆盖原文件；�
 
 ### 5.8 MySQL 5.6 兼容约束与初始化入口
 
-数量阶梯价细节见 [quantity_pricing_design.md](quantity_pricing_design.md)。当前为全新系统，无历史数据迁移或旧客户端兼容要求。完整结构直接维护于 [init_mysql56.sql](init_mysql56.sql)，包含商户、域名、三类账号、阶梯价、订单优惠、审核、多包履约、分阶段付款及全部业务表、主键、索引和菜单字典。部署人员仅在确认的空库执行此脚本，再按 [bootstrap_platform.sql](bootstrap_platform.sql) 引导首个平台账号；具体步骤见 11.4。应用和测试不自动执行建表、迁移或初始化。
+数量阶梯价细节见 [quantity_pricing_design.md](quantity_pricing_design.md)。完整结构直接维护于 [init_mysql56.sql](init_mysql56.sql)，包含商户注册开关、SMTP 设置、验证码挑战、三类账号、阶梯价、订单优惠、审核、多包履约、分阶段付款及全部业务表、主键、索引和菜单字典。部署人员仅在确认的空库执行此脚本，再按 [bootstrap_platform.sql](bootstrap_platform.sql) 引导首个平台账号；具体步骤见 11.4。应用和测试不自动执行建表、迁移或初始化。
 
 不执行旧版本的一次性迁移脚本，不将历史升级步骤作为新系统上线或测试前置条件。不创建视图、外键、触发器、存储过程或会话表；运费保存在 merchant 表，推荐渠道取本商户有效渠道 sort_no/id 排序后的第一条。
 
@@ -676,7 +683,10 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 
 | 方法与路径 | 入参 / 返回要点 | 需求 |
 | --- | --- | --- |
+| `GET /customer/storefront` | 品牌信息及 `registrationEnabled`；不返回 SMTP 配置 | MERCHANT / C-01 |
 | `POST /customer/auth/login` | email/password → accessToken、expiresAt、客户基本资料；不回密码 | C-01 |
+| `POST /customer/auth/registration-code` | email；按请求 Host 商户发送一次性 6 位邮件码；无账号枚举 | C-01 |
+| `POST /customer/auth/register` | email/name/password/confirmation/verificationCode；成功创建 `regular/V1` 买家并记录邮箱验证时间 | C-01 |
 | `POST /admin/auth/login` | account/password → 后台 token、身份、菜单 | S-01 |
 | `POST /{customer\|admin}/auth/logout` | 当前 Bearer；锁账号行并提升认证版本 | C-01 / S-01 |
 | `GET /{customer\|admin}/me` | 当前有效身份与基础信息；客户响应不含客户类型和定价等级 | AUTH |
@@ -787,12 +797,13 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | POST /api/v1/platform/auth/login | 独立平台账号密码登录，失败限流，返回平台 JWT |
 | GET /api/v1/platform/me | 验证平台身份，返回 member，不返回商户或商家菜单 |
 | POST /api/v1/platform/auth/logout | 提升账号 authVersion，使既有平台令牌失效 |
-| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条 |
-| POST /api/v1/platform/merchants | code/name/shippingFee/permissions/adminAccount/adminName/password/confirmation/domain/logoUrl/theme，事务创建 |
-| PUT /api/v1/platform/merchants/{id} | name/active/shippingFee/permissions/expectedUpdatedAt/domain/logoUrl/theme，事务更新 |
-| GET /api/v1/customer/storefront | 免登录，仅返回 name/logoUrl/theme；Cache-Control: no-store，不泄露经营配置 |
+| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条；返回注册开关、SMTP 非密钥字段及密码是否已保存 |
+| POST /api/v1/platform/merchants | 原商户字段，可选 registrationEnabled/mailSettings，连同首管理员事务创建；默认关闭注册 |
+| PUT /api/v1/platform/merchants/{id} | 原商户字段，可选 registrationEnabled/mailSettings/expectedUpdatedAt；smtpPassword 留空保留旧值，事务更新 |
+| POST /api/v1/platform/merchants/{id}/email-settings/test | 使用已保存配置发送测试邮件；仅平台身份可调用 |
+| GET /api/v1/customer/storefront | 免登录，返回 name/logoUrl/theme/registrationEnabled；Cache-Control: no-store，不返回 SMTP 设置 |
 
-删除旧 /admin/merchants 与 merchant-settings API，不保留兼容入口。商户响应附带 domain/logoUrl/theme。平台页面 `/platform/` 使用独立 localStorage 键 dailyactivity.platform.token；商家和买家认证键保持各自独立。买家入口在挂载 App 前读取品牌，失败展示错误和重试；样式以受控 data-storefront-theme 选择 CSS，不改变共享业务组件和服务端规则。
+删除旧 /admin/merchants 与 merchant-settings API，不保留兼容入口。商户响应附带 domain/logoUrl/theme/registrationEnabled/mailSettings；SMTP 密码始终不回传。平台页面 `/platform/` 使用独立 localStorage 键 dailyactivity.platform.token；商家和买家认证键保持各自独立。买家入口在挂载 App 前读取品牌和注册开关，失败展示错误和重试；样式以受控 data-storefront-theme 选择 CSS，不改变共享业务组件和服务端规则。
 
 
 ## 8. 查询、统计、时间与 CSV
@@ -973,7 +984,9 @@ CI 检查 Maven 实际使用 JDK 17，产物必须可在生产 JDK 17 启动；�
 
 ### 11.3 YAML 配置与数据库脚本
 
-全部业务配置从 `application.yml`、`application-dev.yml`、`application-live.yml` 读取，不使用环境变量占位或 .env，不引入 application-prod.yml。公共参数放 application.yml，开发/线上参数放对应 profile 文件；通过启动参数 `--spring.profiles.active=live` 选择线上环境，这只是 profile 选择，连接、密钥、目录等值仍在 YAML。
+业务配置从 `application.yml`、`application-dev.yml`、`application-live.yml` 读取，不引入 .env 或 application-prod.yml。唯一新增的密钥例外是 `REGISTRATION_SECRET`：它由部署密钥管理注入，用于注册验证码 HMAC 与 SMTP 密码 AES-GCM 加密，不写入仓库或普通 YAML。未配置此密钥时不得保存 SMTP 凭据或开放注册。其余公共参数放 application.yml，开发/线上参数放对应 profile 文件；通过启动参数 `--spring.profiles.active=live` 选择线上环境。
+
+`REGISTRATION_SECRET` 至少 32 字节，所有后端实例必须使用相同且长期稳定的值。更换该密钥前先用旧密钥解密并重新加密所有商户 SMTP 密码；不能直接轮换，否则已保存凭据将无法读取，当前尚未过期的验证码也会失效。注册验证码摘要与 SMTP 密码使用不同用途派生密钥。
 
 以下为当前代码使用的关键配置示例。线上文件由部署管理、限制读取权限，不把真实口令或签名密钥提交公共仓库；配置仍使用 YAML。
 
@@ -1123,7 +1136,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 
 | 场景 | 预期与证据 | PRD 验收 |
 | --- | --- | --- |
-| 建号/身份 | 随机三位大写 Base36 code、比较不区分大小写、唯一冲突重试、软删除不重用；email/account 由应用 trim 并转为小写后唯一；无公开注册 | AC-01/21/23/29/30/39/40/68/74 |
+| 建号/身份 | 商家后台建号与商户开放时的邮箱自助注册并存；随机三位大写 Base36 code、比较不区分大小写、唯一冲突重试、软删除不重用；email/account 由应用 trim 并转为小写后唯一 | AC-01/21/23/29/30/39/40/68/74/96 |
 | JWT 与撤权 | 无 HttpSession/会话表；退出/改密/停用后旧 JWT 在下一请求失败；撤权后旧页 403，客户 token 不可调后台 | AC-02/39/51/60/74 |
 | 目录/定价 | 正品零价拒绝、空等级价回默认、赠品不开放客户采购、类目排序/停用生效 | AC-03～06/32/33/41 |
 | 报价与编号 | 同一 quoteToken 最多创建一个订单并返回 `QUOTE_ALREADY_USED`；订单号符合 `YT + MMDD + 4 位数字` 且依靠唯一索引防止重复；配置文件运费变化需重确认，未配置不能下单 | AC-07～10/65/68/73/76 |
@@ -1167,7 +1180,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 | 原型来源 | 已核对逻辑 | 本方案对应 |
 | --- | --- | --- |
 | [customer/store.js](customer/store.js) | 共享 DemoStore、固定等级价、浏览器认证、地区运费与客户码生成 | 稳定客户 ID、服务端定价/JWT、配置文件统一运费、三位随机 Base36 code |
-| [客户登录](customer/login_register.html)、[商家登录](seller/login.html) | 已开通账号登录、统一错误、独立入口 | 3、7.2；无开放注册，客户/后台 audience 分离 |
+| [客户登录](customer/login_register.html)、[商家登录](seller/login.html) | 原型提供已开通账号登录；正式商城按商户开关显示邮箱注册入口；统一错误、独立入口 | 3、7.2；客户/后台 audience 分离 |
 | [商品目录](customer/index.html) | renderCategories/renderCatalog、加车、库存与价格 | 类目启停排序由服务端控制；移除预购承诺；本人等级价格 |
 | [COA 目录](customer/coas.html) | coaRows/renderCoas，商品×证书展开、商品级字段优先 | 证书自身元数据；业务引用鉴权、文件后端签名下载；完成时捕获快照 |
 | [购物车与结算](customer/shoping_cart.html) | 四步结算、placeOrderBtn、payNowBtn、清购物车 | 6.3；按客户行锁分配编号、一次性报价、即时扣库存、完整快照、只消费本次购物车项 |

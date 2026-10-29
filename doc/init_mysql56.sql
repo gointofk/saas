@@ -1,7 +1,7 @@
 -- DailyActivity V1.8: 全量 MySQL 5.6.51 初始化
 -- 仅在预先创建的空业务库执行。数据库由 mysql 命令参数选择。
 -- 不含 CREATE DATABASE/USE，不修改用户账户，不导入 Demo 或默认密码。
--- 34 张 InnoDB 实体表；无视图、外键、触发器、存储过程、会话表。
+-- 36 张 InnoDB 实体表；无视图、外键、触发器、存储过程、会话表。
 -- 不含原生 JSON、生成列、CHECK、CTE 或 5.7/8.x 专有 SQL。
 -- 所有文件引用使用 file_asset.file_uuid；文件内容仍在本地磁盘，业务 JSON 按字段约定保存为 LONGTEXT 或有界 VARCHAR。
 -- 每个索引按 COMPACT 的 767 字节限制设计，唯一键不使用前缀缩短。
@@ -9,7 +9,7 @@
 -- 数量/金额/枚举/引用/0%不结算等规则由应用层事务校验。
 -- DDL 隐式提交；执行错误必须停止，勿使用 --force，勿在业务库反复重跑。
 -- 仅用于首次空库初始化；不包含业务示例数据或会话存储表。
--- 运行账户需要 SELECT/INSERT/UPDATE，并仅对 cart_item、product_tier_price 需要 DELETE。
+-- 运行账户需要 SELECT/INSERT/UPDATE；DELETE 仅用于 cart_item、product_tier_price 和过期 customer_registration_challenge 清理。
 
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 SET SESSION time_zone = '+00:00';
@@ -24,6 +24,7 @@ CREATE TABLE merchant (
   logo_url VARCHAR(512) NOT NULL DEFAULT '/ytpeps-logo.svg',
   theme VARCHAR(32) NOT NULL DEFAULT 'classic',
   active TINYINT NOT NULL DEFAULT 1,
+  customer_registration_enabled TINYINT NOT NULL DEFAULT 0,
   shipping_fee DECIMAL(18,2) NOT NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -52,6 +53,20 @@ CREATE TABLE merchant_event (
   detail LONGTEXT NOT NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id), KEY idx_merchant_event (merchant_id,created_at,id)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE merchant_email_settings (
+  merchant_id BIGINT NOT NULL,
+  smtp_host VARCHAR(253) NOT NULL,
+  smtp_port INT NOT NULL,
+  smtp_username VARCHAR(255) NOT NULL,
+  smtp_password_ciphertext VARCHAR(1024) NULL,
+  tls_mode VARCHAR(16) NOT NULL,
+  sender_email VARCHAR(254) NOT NULL,
+  sender_name VARCHAR(100) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (merchant_id)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE coa_binding_lock (
   id BIGINT NOT NULL,
@@ -83,6 +98,7 @@ CREATE TABLE `user` (
   referrer_id BIGINT NULL,
   commission_rate DECIMAL(5,2) NULL,
   auth_version BIGINT NOT NULL DEFAULT 0,
+  email_verified_at DATETIME(6) NULL,
   last_login_at DATETIME(6) NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -95,6 +111,20 @@ CREATE TABLE `user` (
   UNIQUE KEY uk_user_customer_code(code), KEY idx_user_merchant(merchant_id,id),
   KEY idx_user_active(deleted,active,id), KEY idx_user_referrer(referrer_id,deleted,id),
   KEY idx_user_customer_type(deleted,customer_type,id), KEY idx_user_last_login(deleted,last_login_at,id)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE customer_registration_challenge (
+  merchant_id BIGINT NOT NULL,
+  email VARCHAR(128) NOT NULL,
+  code_hmac CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  expires_at DATETIME(6) NOT NULL,
+  resend_after DATETIME(6) NOT NULL,
+  attempt_count INT NOT NULL DEFAULT 0,
+  consumed_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (merchant_id,email),
+  KEY idx_customer_registration_expiry (expires_at)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE seller (

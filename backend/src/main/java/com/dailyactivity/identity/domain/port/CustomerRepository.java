@@ -14,6 +14,10 @@ public interface CustomerRepository {
 
     long create(long merchantId, CustomerInput input, String code, long actorId);
 
+    long createSelfRegistered(long merchantId, String email, String name, String passwordHash, String code, Instant verifiedAt);
+
+    boolean emailExists(long merchantId, String email);
+
     void update(long merchantId, long id, CustomerInput input, long actorId);
 
     void setActive(long merchantId, long id, boolean active, long actorId);

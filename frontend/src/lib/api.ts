@@ -337,19 +337,35 @@ export type AdminMember = {
 }
 
 export type PublicMenu = 'products' | 'certificates' | 'categories'
+export type MerchantMailSettings = {
+  smtpHost: string; smtpPort: number; smtpUsername: string; tlsMode: 'starttls' | 'ssl'
+  senderEmail: string; senderName: string; passwordConfigured: boolean
+}
+export type MerchantMailSettingsInput = {
+  smtpHost: string; smtpPort: number | null; smtpUsername: string; smtpPassword: string
+  tlsMode: 'starttls' | 'ssl'; senderEmail: string; senderName: string
+}
 export type MerchantIdentity = {
   id: number; code: string; name: string; active: boolean
   shippingFee: number | string; updatedAt: string; domain: string; logoUrl: string; theme: string
+  registrationEnabled: boolean
 }
-export type Merchant = MerchantIdentity & { permissions: PublicMenu[] }
+export type Merchant = MerchantIdentity & { permissions: PublicMenu[]; mailSettings: MerchantMailSettings | null }
 export type MerchantPage = { items: Merchant[]; page: number; total: number; totalPages: number }
 export type MerchantCreate = {
   code: string; name: string; shippingFee: string; permissions: PublicMenu[]; domain: string; logoUrl: string; theme: string
   adminAccount: string; adminName: string; password: string; confirmation: string
+  registrationEnabled: boolean; mailSettings: MerchantMailSettingsInput | null
+}
+export const customerRegistrationApi = {
+  requestCode: (email: string) => request<{ message: string }>('/customer/auth/registration-code', { method: 'POST', body: JSON.stringify({ email }) }, 'customer', { token: null, clearOnUnauthorized: false }),
+  register: (body: { email: string; name: string; password: string; confirmation: string; verificationCode: string }) =>
+    request<{ registered: boolean }>('/customer/auth/register', { method: 'POST', body: JSON.stringify(body) }, 'customer', { token: null, clearOnUnauthorized: false }),
 }
 export const merchantApi = {
   page: (page: number) => request<MerchantPage>(`/platform/merchants?page=${page}`, {}, 'platform'),
   create: (body: MerchantCreate) => request<Merchant>('/platform/merchants', { method: 'POST', body: JSON.stringify(body) }, 'platform'),
-  update: (id: number, body: { name: string; active: boolean; shippingFee: string; permissions: PublicMenu[]; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string }) =>
+  update: (id: number, body: { name: string; active: boolean; shippingFee: string; permissions: PublicMenu[]; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string; registrationEnabled: boolean; mailSettings: MerchantMailSettingsInput | null }) =>
     request<Merchant>(`/platform/merchants/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'platform'),
+  testEmail: (id: number, recipient: string) => request<void>(`/platform/merchants/${id}/email-settings/test`, { method: 'POST', body: JSON.stringify({ recipient }) }, 'platform'),
 }

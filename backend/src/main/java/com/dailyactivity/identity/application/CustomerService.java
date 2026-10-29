@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.security.SecureRandom;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,11 +19,9 @@ import java.util.Map;
 
 @Service
 public class CustomerService {
-    private static final char[] CODE_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
     private final CustomerRepository customers;
     private final AccountService accounts;
     private final AccountRepository users;
-    private final SecureRandom random = new SecureRandom();
 
     public CustomerService(CustomerRepository customers, AccountService accounts, AccountRepository users) {
         this.customers = customers;
@@ -168,9 +165,7 @@ public class CustomerService {
     }
 
     private String newCode() {
-        char[] code = new char[3];
-        for (int i = 0; i < 3; i++) code[i] = CODE_CHARS[random.nextInt(CODE_CHARS.length)];
-        return new String(code);
+        return CustomerCodeGenerator.next();
     }
 
     private Map<String, Object> view(CustomerRepository.Customer c) {

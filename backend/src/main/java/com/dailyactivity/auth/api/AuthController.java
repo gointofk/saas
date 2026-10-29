@@ -1,6 +1,7 @@
 package com.dailyactivity.auth.api;
 
 import com.dailyactivity.auth.application.AccountService;
+import com.dailyactivity.identity.application.CustomerRegistrationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -15,16 +16,32 @@ public class AuthController {
     private final AccountService accounts;
     private final com.dailyactivity.merchant.application.StorefrontService storefront;
     private final TrustedClientIpResolver clientIps;
+    private final CustomerRegistrationService registrations;
 
-    public AuthController(AccountService accounts, TrustedClientIpResolver clientIps, com.dailyactivity.merchant.application.StorefrontService storefront) {
+    public AuthController(AccountService accounts, TrustedClientIpResolver clientIps, com.dailyactivity.merchant.application.StorefrontService storefront, CustomerRegistrationService registrations) {
         this.storefront = storefront;
         this.accounts = accounts;
         this.clientIps = clientIps;
+        this.registrations = registrations;
     }
 
     @PostMapping("/customer/auth/login")
     public Map<String, Object> customerLogin(@Valid @RequestBody CustomerLoginRequest request, HttpServletRequest httpRequest) {
         return accounts.customerLogin(storefront.resolve(httpRequest).id(), request.email(), request.password(), clientIps.resolve(httpRequest));
+    }
+
+    @PostMapping("/customer/auth/registration-code")
+    public Map<String, String> registrationCode(@Valid @RequestBody RegistrationCodeRequest request, HttpServletRequest httpRequest) {
+        long merchantId = storefront.resolve(httpRequest).id();
+        registrations.requestCode(merchantId, request.email(), clientIps.resolve(httpRequest));
+        return Map.of("message", "If registration is available for this email, a verification code will be sent.");
+    }
+
+    @PostMapping("/customer/auth/register")
+    public ResponseEntity<Map<String, Boolean>> register(@Valid @RequestBody CustomerRegistrationRequest request, HttpServletRequest httpRequest) {
+        long merchantId = storefront.resolve(httpRequest).id();
+        registrations.register(merchantId, request.email(), request.name(), request.password(), request.confirmation(), request.verificationCode(), clientIps.resolve(httpRequest));
+        return ResponseEntity.status(201).body(Map.of("registered", true));
     }
 
     @PostMapping("/admin/auth/login")
@@ -59,6 +76,14 @@ public class AuthController {
     }
 
     public record CustomerLoginRequest(@NotBlank String email, @NotBlank String password) {
+    }
+
+    public record RegistrationCodeRequest(@NotBlank String email) {
+    }
+
+    public record CustomerRegistrationRequest(@NotBlank String email, @NotBlank String name,
+                                              @NotBlank String password, @NotBlank String confirmation,
+                                              @NotBlank String verificationCode) {
     }
 
     public record SellerLoginRequest(@NotBlank String account, @NotBlank String password) {

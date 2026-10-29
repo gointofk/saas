@@ -2893,12 +2893,14 @@ watch(adminSearch, () => {
     :error="loginError"
     :busy="busy"
     :language="language"
+    :registration-enabled="area === 'customer' && storefrontBrand.registrationEnabled"
     :t="t"
     @update:account="loginAccount = $event"
     @update:password="loginPassword = $event"
     @update:language="language = $event"
     @change-language="changeLanguage"
     @sign-in="signIn"
+    @registered="loginAccount = $event; loginPassword = ''; loginError = ''"
   >
     <SellerAccountSwitcher v-if="area === 'admin'" :disabled="busy" :t="t" @activated="activateSellerAccount" />
   </LoginScreen>
