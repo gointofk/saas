@@ -1,0 +1,44 @@
+@layer responsive {
+  /* Checkout and payment layouts. Keep this import after responsive.css. */
+  @media (max-width: 760px) {
+    .demo-customer-shell .checkout-container .page-wrap > * { margin-right: 0; margin-left: 0; }
+    .demo-customer-shell .checkout-empty-cart .page-wrap { row-gap: 24px; }
+    .demo-customer-shell .checkout-empty-cart .cart-head { min-height: 74px; padding: 0 20px 22px; grid-template-columns: minmax(0, 1fr) 72px 72px 0; }
+    .demo-customer-shell .checkout-empty-cart .checkout-actions .next-btn { min-height: 54px; border-radius: 9px; font-size: 16px; }
+    .demo-customer-shell .cart-empty-state { min-height: 235px; padding: 24px 15px; }
+    .demo-customer-shell .cart-empty-state span, .demo-customer-shell .cart-empty-state .cart-empty-link { font-size: 17px; }
+    .demo-customer-shell .payment-modal { max-height: calc(100vh - 20px); }
+    .demo-customer-shell .payment-modal-header { padding: 16px 17px; }
+    .demo-customer-shell .payment-modal-summary { margin: 16px 17px 0; padding: 14px; }
+    .demo-customer-shell .payment-modal-section { margin: 16px 17px 20px; }
+    .demo-customer-shell .payment-modal-footer { padding: 12px 17px; }
+    .demo-customer-shell .payment-modal-footer button { min-width: 0; flex: 1; }
+    .demo-customer-shell .checkout-actions { padding-right: 0; padding-left: 0; }
+    .demo-customer-shell .cart-head { display: none; }
+    .demo-customer-shell .cart-item { grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; padding: 16px; }
+    .demo-customer-shell .item-price, .demo-customer-shell .qty-input, .demo-customer-shell .confirm-quantity, .demo-customer-shell .remove-btn { grid-column: 2; justify-self: end; }
+    .demo-customer-shell .item-price { grid-row: 1; }
+    .demo-customer-shell .qty-input, .demo-customer-shell .confirm-quantity { grid-row: 2; }
+    .demo-customer-shell .remove-btn { grid-row: 3; }
+    .demo-customer-shell .cart-item-main { grid-column: 1; grid-row: 1 / span 3; align-self: start; }
+    .demo-customer-shell .address-panel, .demo-customer-shell .confirm-panel, .demo-customer-shell .order-note-panel, .demo-customer-shell .totals-card, .demo-customer-shell .payment-step-panel { padding: 22px 18px; }
+    .demo-customer-shell .payment-transfer-grid { grid-template-columns: minmax(0, 1fr); }
+    .demo-customer-shell .payment-qr-button, .demo-customer-shell .payment-qr-placeholder { width: min(178px, 100%); }
+    .demo-customer-shell .checkout-address-picker { padding: 23px 18px 18px; }
+    .demo-customer-shell .checkout-address-picker .address-option { grid-template-columns: 20px minmax(0, 1fr); padding: 13px; }
+    .demo-customer-shell .address-default-tag { grid-column: 2; }
+    .demo-customer-shell .payment-success-modal { padding: 27px 20px; }
+    .demo-customer-shell .payment-success-actions { grid-template-columns: minmax(0, 1fr); }
+    .demo-customer-shell .payment-qr-preview { padding: 42px 20px 24px; }
+  }
+
+  @media (max-width: 420px) {
+    .demo-customer-shell .checkout-container { width: calc(100% - 28px); }
+    .demo-customer-shell .checkout-container .page-title { font-size: 36px; }
+    .demo-customer-shell .step-label { font-size: 10px; }
+    .demo-customer-shell .step-indicator { margin-bottom: 23px; }
+    .demo-customer-shell .payment-channel-option { flex-wrap: wrap; padding: 12px; }
+    .demo-customer-shell .recommended-tag { margin-left: 30px; }
+    .demo-customer-shell .payment-step-order { align-items: flex-start; flex-direction: column; gap: 6px; }
+  }
+}

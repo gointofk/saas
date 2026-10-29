@@ -1,0 +1,24 @@
+@layer responsive {
+  /* Order history filters, detail and edit overlays. Keep this import after checkout rules. */
+  .demo-customer-shell .history-page .history-payment-row { margin-top: 16px; }
+  @media (min-width: 761px) {
+    .demo-customer-shell .history-page .history-filter-row { grid-template-columns: minmax(0, 1fr); }
+    .demo-customer-shell .history-page .history-payment-row { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1.25fr); }
+  }
+  @media (max-width: 760px) {
+    .demo-customer-shell .customer-order-detail-modal,
+    .demo-customer-shell .customer-order-edit-modal { width: 100%; max-height: calc(100vh - 20px); border-radius: 13px; }
+    .demo-customer-shell .customer-order-modal-header { padding: 16px 18px; }
+    .demo-customer-shell .customer-order-modal-header .modal-title { font-size: 19px; }
+    .demo-customer-shell .customer-order-modal-body { padding: 18px; }
+    .demo-customer-shell .customer-order-modal-footer { padding: 12px 18px; }
+    .demo-customer-shell .detail-payment-summary { align-items: flex-start; flex-direction: column; gap: 14px; padding: 15px; }
+    .demo-customer-shell .order-detail-section-heading h3,
+    .demo-customer-shell .order-edit-section-heading h3,
+    .demo-customer-shell .order-progress-section h3 { font-size: 18px; }
+    .demo-customer-shell .history-page .history-range-row { flex-wrap: wrap; }
+    .demo-customer-shell .history-page .history-range-field { min-width: 0; flex: 1 1 135px; }
+    .demo-customer-shell .history-page .history-range-field input { width: 100%; min-width: 0; }
+    .demo-customer-shell .history-page .history-search { flex-basis: 100%; min-width: 0; }
+  }
+}

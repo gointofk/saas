@@ -1,0 +1,13 @@
+/* Shared layout rules load first; buyer/seller themes remain the final visual overrides. */
+@layer tokens, base, auth, customer, admin, responsive, buyer-theme, seller-theme;
+
+@import "./styles/tokens.css";
+@import "./styles/base.css";
+@import "./styles/auth.css";
+@import "./styles/customer.css";
+@import "./styles/admin.css";
+@import "./styles/responsive.css";
+@import "./styles/responsive-checkout.css";
+@import "./styles/responsive-order-history.css";
+@import "./styles/buyer-theme.css";
+@import "./styles/seller-theme.css";

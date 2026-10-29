@@ -1,0 +1,46 @@
+server:
+  address: 127.0.0.1
+  port: 8080
+  tomcat:
+    accept-count: 128
+    threads:
+      max: 32
+      min-spare: 8
+      max-queue-capacity: 64
+
+spring:
+  application:
+    name: dailyactivity-api
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+      validation-timeout: 3000
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+      connection-init-sql: "SET time_zone = '+00:00', sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"
+  jackson:
+    time-zone: UTC
+
+app:
+  auth:
+    issuer: Xu
+    audience-customer: customer
+    audience-admin: admin
+    token-days: 30
+    clock-skew-seconds: 60
+    login-window-seconds: 300
+    login-max-attempts: 5
+  quote:
+    ttl-seconds: 72000
+  file:
+    signed-url-seconds: 3600
+  export:
+    max-rows: 10000
