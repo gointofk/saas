@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { storefrontBrand } from '../lib/storefront'
 defineProps<{
   activePage: string
   cartCount: number
@@ -17,8 +18,8 @@ const emit = defineEmits<{
 <template>
   <header class="customer-header">
     <button class="brand brand-button" type="button" @click="emit('navigate', 'products')">
-      <img src="/ytpeps-logo.svg" alt="" class="brand-logo">
-      <span class="brand-name">YTPEPS</span>
+      <img :src="storefrontBrand.logoUrl" alt="" class="brand-logo">
+      <span class="brand-name">{{ storefrontBrand.name }}</span>
     </button>
     <nav class="customer-nav" :aria-label="t('Customer navigation')">
       <button type="button" :class="{ active: activePage === 'products' }" :aria-current="activePage === 'products' ? 'page' : undefined" @click="emit('navigate', 'products')">

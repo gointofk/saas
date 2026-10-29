@@ -224,3 +224,26 @@ test('switcher renders saved accounts, recovery states and translated guidance',
   assert.equal(busyView.state.open.value, true)
   assert.equal(calls.length, 0)
 })
+
+test('platform authentication is independent from seller and customer sessions', async () => {
+  auth.setToken('platform', 'platform-token')
+  fetch = async (path, init) => {
+    assert.equal(path, '/api/v1/platform/merchants?page=1')
+    assert.equal(new Headers(init.headers).get('Authorization'), 'Bearer platform-token')
+    return json({ message: 'Expired' }, 401)
+  }
+  await assert.rejects(() => auth.request('/platform/merchants?page=1', {}, 'platform'), e => e.status === 401)
+  assert.equal(auth.getToken('platform'), null)
+  assert.equal(auth.getToken('customer'), 'customer-token')
+  assert.equal(auth.getToken('admin'), 'token-a')
+})
+
+test('buyer header renders the current merchant name and logo', async () => {
+  const { storefrontBrand } = await server.ssrLoadModule('/src/lib/storefront.ts')
+  const { default: Header } = await server.ssrLoadModule('/src/components/CustomerHeader.vue')
+  Object.assign(storefrontBrand, { name: 'Forest Research', logoUrl: 'https://cdn.example.com/forest.png', theme: 'forest' })
+  const html = await renderToString(createSSRApp(Header, { activePage: 'products', cartCount: 0, language: 'en', t: text => text }))
+  assert.match(html, /Forest Research/)
+  assert.match(html, /https:\/\/cdn.example.com\/forest.png/)
+  assert.doesNotMatch(html, /YTPEPS/)
+})

@@ -29,7 +29,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
         return jdbc.query("SELECT c.id,c.name,c.sort_no,c.active,"
                         + "(SELECT COUNT(*) FROM product p WHERE p.category_id=c.id AND p.deleted=0) product_count,"
                         + "u.name updated_by,c.updated_at "
-                        + "FROM category c LEFT JOIN `user` u ON u.id=c.updated_by_user_id "
+                        + "FROM category c LEFT JOIN seller u ON u.id=c.updated_by_user_id "
                         + "WHERE c.deleted=0" + active + " ORDER BY c.sort_no,c.id",
                 new MapSqlParameterSource(), (rs, row) -> new CategoryView(rs.getLong("id"), rs.getString("name"),
                         rs.getInt("sort_no"), rs.getBoolean("active"), rs.getLong("product_count"),
@@ -136,7 +136,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
     @Override
     public void updateCategory(long id, String name, int sortNo, boolean active, long actorId, java.time.Instant expectedUpdatedAt) {
         try {
-            int rows = jdbc.update("UPDATE category SET name=:name,sort_no=:sortNo,active=:active,updated_by_user_id=:actor,updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0 AND (:version IS NULL OR updated_at=:version)",
+            int rows = jdbc.update("UPDATE category SET name=:name,sort_no=:sortNo,active=:active,updated_by_user_id=:actor,updated_by_type='seller',updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0 AND (:version IS NULL OR updated_at=:version)",
                     new MapSqlParameterSource().addValue("id", id).addValue("version", expectedUpdatedAt == null ? null : java.sql.Timestamp.from(expectedUpdatedAt)).addValue("name", name).addValue("sortNo", sortNo).addValue("active", active).addValue("actor", actorId));
             if (rows != 1) throw ApiException.conflict("CATEGORY_CHANGED", "Category changed. Refresh and try again.");
         } catch (DuplicateKeyException e) {
@@ -149,7 +149,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
         Long products = jdbc.queryForObject("SELECT COUNT(*) FROM product WHERE category_id=:id", new MapSqlParameterSource("id", id), Long.class);
         if (products != null && products > 0)
             throw ApiException.conflict("CATEGORY_HAS_PRODUCTS", "A category with product history cannot be deleted.");
-        int rows = jdbc.update("UPDATE category SET deleted=id,updated_by_user_id=:actor,updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0",
+        int rows = jdbc.update("UPDATE category SET deleted=id,updated_by_user_id=:actor,updated_by_type='seller',updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0",
                 new MapSqlParameterSource().addValue("id", id).addValue("actor", actorId));
         if (rows != 1) throw ApiException.notFound("Category not found.");
     }
@@ -170,7 +170,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
     @Override
     public void updateProduct(long id, ProductCommand c, long actorId) {
         try {
-            int rows = jdbc.update("UPDATE product SET category_id=:categoryId,sku=:sku,name=:name,description=:description,product_type=:productType,active=:active,base_price=:basePrice,cost_price=:costPrice,updated_by_user_id=:actor,updated_at=UTC_TIMESTAMP(6),price_revision=price_revision+1 WHERE id=:id AND deleted=0",
+            int rows = jdbc.update("UPDATE product SET category_id=:categoryId,sku=:sku,name=:name,description=:description,product_type=:productType,active=:active,base_price=:basePrice,cost_price=:costPrice,updated_by_user_id=:actor,updated_by_type='seller',updated_at=UTC_TIMESTAMP(6),price_revision=price_revision+1 WHERE id=:id AND deleted=0",
                     productParams(c, actorId).addValue("id", id));
             if (rows != 1) throw ApiException.notFound("Product not found.");
             replacePrices(id, c.tierPrices(), actorId);
@@ -181,7 +181,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
 
     @Override
     public void setProductActive(long id, boolean active, long actorId) {
-        int rows = jdbc.update("UPDATE product SET active=:active,updated_by_user_id=:actor,updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0",
+        int rows = jdbc.update("UPDATE product SET active=:active,updated_by_user_id=:actor,updated_by_type='seller',updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0",
                 new MapSqlParameterSource().addValue("id", id).addValue("active", active).addValue("actor", actorId));
         if (rows != 1) throw ApiException.notFound("Product not found.");
     }
@@ -192,7 +192,7 @@ public class JdbcCatalogRepository implements CatalogRepository {
         if (active == null) throw ApiException.notFound("Product not found.");
         if (active)
             throw ApiException.conflict("PRODUCT_MUST_BE_OFFLINE", "Take the product offline before deleting it.");
-        jdbc.update("UPDATE product SET deleted=id,updated_by_user_id=:actor,updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0", new MapSqlParameterSource().addValue("id", id).addValue("actor", actorId));
+        jdbc.update("UPDATE product SET deleted=id,updated_by_user_id=:actor,updated_by_type='seller',updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0", new MapSqlParameterSource().addValue("id", id).addValue("actor", actorId));
     }
 
     private String productSelect() {

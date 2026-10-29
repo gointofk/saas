@@ -4,7 +4,6 @@ import { ApiRequestError, api, orderPaymentApi, orderParcelApi, type PaymentOrde
 import { chineseCustomerText } from './lib/customer-locale'
 import { sellerTranslationKey, translateSeller } from './lib/seller-locale'
 import AdminSidebar from './components/AdminSidebar.vue'
-import MerchantManagement from './components/MerchantManagement.vue'
 import type { AdminMember, MerchantIdentity } from './lib/api'
 import SellerLanguageSwitch from './components/SellerLanguageSwitch.vue'
 import SellerAccountSwitcher from './components/SellerAccountSwitcher.vue'
@@ -12,6 +11,7 @@ import { rememberSellerSession, type SellerIdentity } from './lib/seller-session
 import SellerSearchField from './components/SellerSearchField.vue'
 import SellerFilePicker from './components/SellerFilePicker.vue'
 import AppModal from './components/AppModal.vue'
+import { storefrontBrand } from './lib/storefront'
 import CustomerHeader from './components/CustomerHeader.vue'
 import CustomerDatePicker from './components/CustomerDatePicker.vue'
 import CustomerNotice from './components/CustomerNotice.vue'
@@ -164,7 +164,6 @@ const passwordConfirmation = ref('')
 const adminPage = ref('orders')
 const adminMode = ref('')
 const currentMerchant = ref<MerchantIdentity | null>(null)
-const merchantManagement = ref(false)
 const merchantPermissions = ref<string[]>([])
 const canManageCoa = computed(() => adminPermissions.value.includes('certificates'))
 const adminMember = ref<AnyRecord>({})
@@ -1756,7 +1755,6 @@ async function loadAdminSession() {
   const token = getToken('admin')
   if (token) rememberSellerSession(result as SellerIdentity, token)
   currentMerchant.value = result.merchant as MerchantIdentity
-  merchantManagement.value = result.merchantManagement === true
   merchantPermissions.value = Array.isArray(result.merchantPermissions) ? result.merchantPermissions.map(String) : []
   adminMember.value = result.member as AnyRecord
   adminPermissions.value = Array.isArray(result.permissions) ? result.permissions.map(String) : []
@@ -2053,7 +2051,7 @@ async function createMember() {
 }
 
 function openMember(member?: AdminMember) {
-  if (member?.merchantManagement) return
+
   memberEditingId.value = member?.id || null
   memberDraft.account = member?.account || ''
   memberDraft.name = member?.name || ''
@@ -2443,7 +2441,7 @@ async function toggleUser(user: AnyRecord) {
 }
 
 async function toggleMember(member: AdminMember) {
-  if (member.merchantManagement) return
+
   const action = t(member.active ? '停用' : '启用')
   if (!window.confirm(t('确定{0}成员“{1}”（{2}）吗？', [action, member.name, member.account]))) return
   try {
@@ -2816,9 +2814,8 @@ const adminNavItems = computed(() => [
   { key: 'categories', label: '类目管理' },
   { key: 'payments', label: '支付管理' },
   { key: 'permissions', label: '权限管理' },
-  { key: 'merchants', label: '商户管理' },
+
 ].filter(item => {
-  if (item.key === 'merchants') return merchantManagement.value
   const permission = ({ 'order-audit': 'order_audit', commissions: 'commissions', billing: 'bills', coas: 'certificates', users: 'customers', payments: 'payment_channels', permissions: 'members' } as Record<string, string>)[item.key] || item.key
   return adminPermissions.value.includes(permission)
 }))
@@ -3057,7 +3054,7 @@ watch(adminSearch, () => {
       @change-password="changePassword"
     />
 
-    <footer class="customer-footer"><div class="footer-top"><div class="footer-left"><div class="footer-company-name">YTPEPS</div><p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}<br><br>{{ t('The nice research company') }}</p></div><div class="footer-right"><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>{{ t('© 2026 YTPEPS Co., Ltd.') }}</p></div></div></footer>
+    <footer class="customer-footer"><div class="footer-top"><div class="footer-left"><div class="footer-company-name">{{ storefrontBrand.name }}</div><p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}<br><br>{{ t('The nice research company') }}</p></div><div class="footer-right"><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div></div></footer>
     <a v-if="customerPage === 'products'" class="float-cart" href="/cart" @click.prevent="goCustomer('cart')"><span class="cart-count-badge">{{ cartCount }}</span><span class="float-cart-label">{{ money(cart.total) }}{{ t('View cart →') }}</span></a>
     <CustomerOrderEditModal
       v-if="orderEditOpen"
@@ -3146,8 +3143,7 @@ watch(adminSearch, () => {
     />
     <div class="main"><header class="topbar"><div><div class="topbar-title">{{ t(adminHeaderTitle) }}</div><div class="topbar-desc">{{ t(adminHeaderDescription) }}</div></div><div class="topbar-right"><span class="topbar-user">{{ currentMerchant?.name }} · {{ adminMember.name || 'Admin' }}</span><SellerAccountSwitcher :current-member-id="adminMember.id" :disabled="busy || signingOut" can-sign-out :signing-out="signingOut" :t="t" @activated="activateSellerAccount" @sign-out="signOut" /><SellerLanguageSwitch :model-value="language" :label="t('Language')" @update:model-value="language = $event; changeLanguage()" /></div></header>
       <main class="content">
-        <MerchantManagement v-if="adminPage === 'merchants' && merchantManagement" @saved="loadAdminSession" />
-        <section v-else-if="adminPage === 'order-audit'" class="panel active" id="panel-order-audit">
+        <section v-if="adminPage === 'order-audit'" class="panel active" id="panel-order-audit">
           <div class="filter-card seller-filter-card audit-filter-card">
             <div class="filter-row">
               <div class="filter-group">
@@ -3342,7 +3338,7 @@ watch(adminSearch, () => {
 
         <section v-else-if="adminPage === 'settings'" class="panel active" id="panel-payments"><div class="card"><div class="card-head"><button class="btn" @click="openPaymentChannel()">{{ t('＋ 新增支付渠道') }}</button></div><div class="card-body table-wrap"><table class="admin-table payment-table"><thead><tr><th>{{ t('渠道名') }}</th><th>{{ t('收款二维码') }}</th><th>{{ t('收款地址') }}</th><th>{{ t('附加费率') }}</th><th>{{ t('更新时间') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="item in adminChannels.items" :key="item.id"><td>{{ item.name }}</td><td>{{ item.qrFileUuid || '—' }}</td><td>{{ item.receivingAddress }}</td><td>{{ item.additionalRate == null || Number(item.additionalRate) <= 0 ? '—' : '+' + Number(item.additionalRate).toFixed(2) + '%' }}</td><td>{{ item.updatedAt || '—' }}</td><td><button class="link-button" @click="openPaymentChannel(item)">{{ t('编辑') }}</button><button class="link-button danger-link" @click="deletePaymentChannel(item)">{{ t('删除') }}</button></td></tr></tbody></table></div></div></section>
 
-        <section v-else-if="adminPage === 'members'" class="panel active" id="panel-permissions"><div class="card"><div class="card-head"><div class="toolbar"><SellerSearchField :loading="adminMembersLoading" @refresh="refreshAdminSearch"><input autocomplete="off" v-model="adminMemberSearch" :placeholder="t('搜索成员 / 账号…')" @keyup.enter="searchAdminMembers"></SellerSearchField><button class="btn" @click="openMember()">{{ t('＋ 新增成员') }}</button></div></div><div class="card-body table-wrap"><table class="admin-table permission-table"><thead><tr><th>{{ t('成员') }}</th><th>{{ t('登录账号') }}</th><th>{{ t('状态') }}</th><th>{{ t('菜单权限') }}</th><th>{{ t('添加人') }}</th><th>{{ t('更新时间') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="item in visibleAdminMembers" :key="item.id"><td>{{ item.name }}</td><td>{{ item.account }}</td><td><span :class="['status-badge', item.active ? 'status-paid' : 'status-cancelled']">{{ item.active ? t('启用') : t('停用') }}</span></td><td><div class="member-permission-list"><span v-for="permission in item.permissions || []" :key="permission" class="member-permission-tag">{{ t(memberPermissionName(permission)) }}</span></div></td><td>Admin</td><td>{{ formatDateTime(item.updatedAt) }}</td><td><button class="link-button" :disabled="item.merchantManagement" :title="item.merchantManagement ? t('商户管理账号在权限管理中只读。') : undefined" @click="openMember(item)">{{ t('编辑') }}</button><button class="link-button" :disabled="item.merchantManagement" :title="item.merchantManagement ? t('商户管理账号在权限管理中只读。') : undefined" @click="toggleMember(item)">{{ item.active ? t('停用') : t('启用') }}</button></td></tr></tbody></table><div v-if="!visibleAdminMembers.length" class="table-empty">{{ t(adminMembersLoading ? '加载中…' : '暂无成员') }}</div></div>
+        <section v-else-if="adminPage === 'members'" class="panel active" id="panel-permissions"><div class="card"><div class="card-head"><div class="toolbar"><SellerSearchField :loading="adminMembersLoading" @refresh="refreshAdminSearch"><input autocomplete="off" v-model="adminMemberSearch" :placeholder="t('搜索成员 / 账号…')" @keyup.enter="searchAdminMembers"></SellerSearchField><button class="btn" @click="openMember()">{{ t('＋ 新增成员') }}</button></div></div><div class="card-body table-wrap"><table class="admin-table permission-table"><thead><tr><th>{{ t('成员') }}</th><th>{{ t('登录账号') }}</th><th>{{ t('状态') }}</th><th>{{ t('菜单权限') }}</th><th>{{ t('添加人') }}</th><th>{{ t('更新时间') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="item in visibleAdminMembers" :key="item.id"><td>{{ item.name }}</td><td>{{ item.account }}</td><td><span :class="['status-badge', item.active ? 'status-paid' : 'status-cancelled']">{{ item.active ? t('启用') : t('停用') }}</span></td><td><div class="member-permission-list"><span v-for="permission in item.permissions || []" :key="permission" class="member-permission-tag">{{ t(memberPermissionName(permission)) }}</span></div></td><td>Admin</td><td>{{ formatDateTime(item.updatedAt) }}</td><td><button class="link-button" @click="openMember(item)">{{ t('编辑') }}</button><button class="link-button" @click="toggleMember(item)">{{ item.active ? t('停用') : t('启用') }}</button></td></tr></tbody></table><div v-if="!visibleAdminMembers.length" class="table-empty">{{ t(adminMembersLoading ? '加载中…' : '暂无成员') }}</div></div>
           <div v-if="adminMembers.total" class="admin-pagination" :aria-busy="adminMembersLoading">
             <span>{{ t('共 {0} 条 · 第 {1} / {2} 页', [adminMembers.total, adminMembers.page, adminMembers.totalPages]) }}</span>
             <div>

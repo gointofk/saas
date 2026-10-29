@@ -18,9 +18,9 @@ public class MemberService {
     private final MemberRepository members;
     private final AccountService accounts;
     private final com.dailyactivity.merchant.domain.port.MerchantRepository merchants;
-    private final com.dailyactivity.auth.domain.port.UserRepository users;
+    private final com.dailyactivity.auth.domain.port.AccountRepository users;
 
-    public MemberService(MemberRepository members, AccountService accounts, com.dailyactivity.merchant.domain.port.MerchantRepository merchants, com.dailyactivity.auth.domain.port.UserRepository users) {
+    public MemberService(MemberRepository members, AccountService accounts, com.dailyactivity.merchant.domain.port.MerchantRepository merchants, com.dailyactivity.auth.domain.port.AccountRepository users) {
         this.merchants = merchants;
         this.users = users;
         this.members = members;
@@ -40,35 +40,33 @@ public class MemberService {
         merchants.lock(p.merchantId());
         accounts.validateMemberPermissions(p, r.permissions());
         validate(r, true);
-        return Map.of("id", members.create(p.merchantId(), new MemberRepository.MemberInput(r.account().trim().toLowerCase(), r.name().trim(), PasswordHasher.hash(r.password()), r.permissions()), p.userId()));
+        return Map.of("id", members.create(p.merchantId(), new MemberRepository.MemberInput(r.account().trim().toLowerCase(), r.name().trim(), PasswordHasher.hash(r.password()), r.permissions()), p.actor()));
     }
 
     @Transactional
     public void update(Principal p, long id, MemberRequest r) {
         accounts.requireMenu(p, "members");
         merchants.lock(p.merchantId());
-        protectSpecialManager(p, id);
+        lockTargetMember(p, id);
         accounts.validateMemberPermissions(p, r.permissions());
         validate(r, false);
         protectLastMemberManager(p, id, r.permissions(), true);
-        members.update(p.merchantId(), id, new MemberRepository.MemberInput(r.account().trim().toLowerCase(), r.name().trim(), r.password() == null || r.password().isBlank() ? null : PasswordHasher.hash(r.password()), r.permissions()), p.userId());
+        members.update(p.merchantId(), id, new MemberRepository.MemberInput(r.account().trim().toLowerCase(), r.name().trim(), r.password() == null || r.password().isBlank() ? null : PasswordHasher.hash(r.password()), r.permissions()), p.actor());
     }
 
     @Transactional
     public void status(Principal p, long id, boolean active) {
         accounts.requireMenu(p, "members");
-        merchants.lockManagement();
         merchants.lock(p.merchantId());
-        protectSpecialManager(p, id);
+        lockTargetMember(p, id);
         if (!active) protectLastMemberManager(p, id, null, false);
-        members.setActive(p.merchantId(), id, active, p.userId());
+        members.setActive(p.merchantId(), id, active, p.actor());
     }
 
-    private void protectSpecialManager(Principal p, long id) {
-        var target = users.findByIdForUpdate(id).filter(a -> a.seller() && a.merchantId() == p.merchantId())
+    private void lockTargetMember(Principal p, long id) {
+        users.findByIdForUpdate("seller", id).filter(a -> a.seller() && a.merchantId() == p.merchantId())
                 .orElseThrow(() -> ApiException.notFound("Member not found."));
-        if (target.merchantManagement())
-            throw ApiException.forbidden("Merchant management accounts are read-only in member management.");
+
     }
 
     private void validate(MemberRequest r, boolean passwordRequired) {

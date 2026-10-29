@@ -20,7 +20,7 @@ const editing = ref<Merchant | null>(null)
 const options: Array<{ code: PublicMenu; label: string }> = [
   { code: 'products', label: '商品管理' }, { code: 'certificates', label: 'COA 管理' }, { code: 'categories', label: '类目管理' },
 ]
-const draft = reactive({ code: '', name: '', active: true, shippingFee: '0.00', permissions: [] as PublicMenu[], adminAccount: '', adminName: '', password: '', confirmation: '' })
+const draft = reactive({ domain: '', logoUrl: '/ytpeps-logo.svg', theme: 'classic', code: '', name: '', active: true, shippingFee: '0.00', permissions: [] as PublicMenu[], adminAccount: '', adminName: '', password: '', confirmation: '' })
 function message(e: unknown) { return e instanceof Error ? e.message : 'Request failed.' }
 async function load(page = result.value.page) {
   loading.value = true; error.value = ''
@@ -32,7 +32,7 @@ function setPage(page: number) {
 }
 function open(item: Merchant | null = null) {
   editing.value = item; error.value = ''
-  Object.assign(draft, { code: item?.code || '', name: item?.name || '', active: item?.active ?? true, shippingFee: String(item?.shippingFee ?? '0.00'), permissions: [...(item?.permissions || [])], adminAccount: '', adminName: '', password: '', confirmation: '' })
+  Object.assign(draft, { domain: item?.domain || '', logoUrl: item?.logoUrl || '/ytpeps-logo.svg', theme: item?.theme || 'classic', code: item?.code || '', name: item?.name || '', active: item?.active ?? true, shippingFee: String(item?.shippingFee ?? '0.00'), permissions: [...(item?.permissions || [])], adminAccount: '', adminName: '', password: '', confirmation: '' })
   modal.value = true
 }
 function close() { if (!saving.value) { modal.value = false; draft.password = ''; draft.confirmation = '' } }
@@ -43,8 +43,8 @@ async function save() {
   if (!editing.value && (draft.password.length < 12 || draft.password.length > 64 || draft.password !== draft.confirmation)) { error.value = t('密码须为 12–64 位，两次输入需一致。'); return }
   saving.value = true
   try {
-    if (editing.value) await merchantApi.update(editing.value.id, { name: draft.name.trim(), active: draft.active, shippingFee: draft.shippingFee, permissions: draft.permissions, expectedUpdatedAt: editing.value.updatedAt })
-    else await merchantApi.create({ code: draft.code.trim(), name: draft.name.trim(), shippingFee: draft.shippingFee, permissions: draft.permissions, adminAccount: draft.adminAccount.trim(), adminName: draft.adminName.trim(), password: draft.password, confirmation: draft.confirmation })
+    if (editing.value) await merchantApi.update(editing.value.id, { domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, name: draft.name.trim(), active: draft.active, shippingFee: draft.shippingFee, permissions: draft.permissions, expectedUpdatedAt: editing.value.updatedAt })
+    else await merchantApi.create({ code: draft.code.trim(), domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, name: draft.name.trim(), shippingFee: draft.shippingFee, permissions: draft.permissions, adminAccount: draft.adminAccount.trim(), adminName: draft.adminName.trim(), password: draft.password, confirmation: draft.confirmation })
     modal.value = false; draft.password = ''; draft.confirmation = ''
     await load(); emit('saved')
   } catch (e) { error.value = message(e) } finally { saving.value = false }
@@ -60,7 +60,7 @@ onMounted(() => load())
       <div class="card-body table-wrap" :aria-busy="loading">
         <p v-if="loading">{{ t('加载中…') }}</p>
         <table v-else class="admin-table"><thead><tr><th>{{ t('商户编号') }}</th><th>{{ t('商户名称') }}</th><th>{{ t('状态') }}</th><th>{{ t('运费') }}</th><th>{{ t('公共管理权限') }}</th><th>{{ t('操作') }}</th></tr></thead>
-          <tbody><tr v-for="item in result.items" :key="item.id"><td>{{ item.code }}</td><td>{{ item.name }}</td><td>{{ t(item.active ? '启用' : '停用') }}</td><td>USD {{ item.shippingFee }}</td><td>{{ options.filter(option => item.permissions.includes(option.code)).map(option => t(option.label)).join(' / ') || '—' }}</td><td><button class="link-button" @click="open(item)">{{ t('编辑') }}</button></td></tr><tr v-if="!result.items.length"><td colspan="6">{{ t('暂无商户') }}</td></tr></tbody>
+          <tbody><tr v-for="item in result.items" :key="item.id"><td>{{ item.code }}</td><td>{{ item.name }}<small class="merchant-domain">{{ item.domain }}</small></td><td>{{ t(item.active ? '启用' : '停用') }}</td><td>USD {{ item.shippingFee }}</td><td>{{ options.filter(option => item.permissions.includes(option.code)).map(option => t(option.label)).join(' / ') || '—' }}</td><td><button class="link-button" @click="open(item)">{{ t('编辑') }}</button></td></tr><tr v-if="!result.items.length"><td colspan="6">{{ t('暂无商户') }}</td></tr></tbody>
         </table>
       </div>
       <div v-if="result.total" class="admin-pagination">
@@ -85,6 +85,9 @@ onMounted(() => load())
           <div class="form-grid">
             <label class="form-group">{{ t('商户编号') }}<input v-model="draft.code" required pattern="[A-Za-z0-9_-]{2,32}" maxlength="32" :disabled="!!editing"></label>
             <label class="form-group">{{ t('商户名称') }}<input v-model="draft.name" required maxlength="100"></label>
+            <label class="form-group">商城域名<input v-model="draft.domain" required maxlength="253" placeholder="shop.example.com"></label>
+            <label class="form-group">Logo 地址<input v-model="draft.logoUrl" required maxlength="512" placeholder="https://..."></label>
+            <label class="form-group">商城样式<select v-model="draft.theme"><option value="classic">经典</option><option value="forest">森林</option><option value="editorial">简约目录</option></select></label>
             <label class="form-group">{{ t('运费') }} (USD)<input v-model="draft.shippingFee" required type="number" min="0" step="0.01"></label>
           </div>
           <label v-if="editing" class="checkbox-field"><input v-model="draft.active" type="checkbox">{{ t('启用') }}</label>
@@ -106,6 +109,7 @@ onMounted(() => load())
   </section>
 </template>
 <style scoped>
+.merchant-domain { display:block; color:#667085; margin-top:4px; }
 .merchant-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
 </style>

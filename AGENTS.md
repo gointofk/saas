@@ -36,11 +36,13 @@ DailyActivity 是一个前后端分离的共享商品、多商户独立经营商
 
 ### API、安全与错误
 
+- 买家存于 user、商家成员存于 seller、平台管理员存于 admin，成员菜单存于 seller_permission。认证查询必须同时指定身份类型和 ID；三表可有同号 ID，审计按类型和 ID 关联，不能混用。
 - 买家和成员固定归属一个商户，订单下单时固化 merchant_id。所有私有业务的查询、统计、导出、详情和写操作必须校验商户归属；根 Repository 显式传入商户范围。
 - 商品、等级价、成本、库存、类目、COA 共用；公共管理要求商户授权与成员菜单同时满足。COA 绑定统一要求 certificates。库存流水按商户隔离。
-- merchant_management 是受控指定的账号能力，普通成员授权不能设置；它不授予跨商户订单/客户/财务访问。运费来自 merchant.shipping_fee。
+- 平台超级管理员使用独立 platform 身份，不归属商户；商户、域名、品牌、主题、运费及公共授权由平台管理，不授予跨商户订单/客户/财务访问。商家成员不持有 merchant_management 特殊能力。运费来自 merchant.shipping_fee。
+- 买家登录按唯一商户域名查找账号，邮箱在商户内唯一；客户请求同时校验域名、JWT 与持久账号归属。路径解析应与 MVC 路由一致，不能因分号参数等路径变体跳过校验。
 
-- REST API 统一位于 `/api/v1/customer/**` 或 `/api/v1/admin/**`。客户和商家 JWT 的 audience、用户类型和数据范围必须严格隔离。
+- REST API 按身份位于 `/api/v1/customer/**`、`/api/v1/admin/**` 或 `/api/v1/platform/**`；已有签名文件接口沿用 `/api/v1/files/**`。客户、商家、平台 JWT 的 audience、用户类型和数据范围必须严格隔离。
 - 使用现有 `AuthFilter`、`AuthSupport` 和 `AccountService` 校验身份、`authVersion`、账号状态、客户数据归属及商家菜单权限。前端隐藏按钮不能代替服务端鉴权。
 - 写操作必须由事务、行锁、条件更新或业务唯一索引防止重复副作用；有并发覆盖风险的订单、商品等主表操作可用 `updated_at` 做乐观冲突检查。除有明确业务键的单次消费场景外，不使用通用 `Idempotency-Key` 或保存首次响应的幂等表。
 - 业务错误使用 `ApiException` 和稳定的错误码；不要向客户端泄露堆栈、SQL、密钥或内部文件路径。Filter 内异常与 MVC 异常分别沿用现有响应方式。
@@ -66,7 +68,7 @@ DailyActivity 是一个前后端分离的共享商品、多商户独立经营商
 
 - 使用 Vue 3 Composition API、TypeScript 严格模式和 Vite；以 `frontend/package.json` 的实际依赖为准。文档中规划但尚未安装的 Vue Router、Pinia、Vue I18n 等不得假定已经可用。
 - API 请求集中复用或扩展 `frontend/src/lib/api.ts`，保持 `/api/v1` 前缀、Bearer Token、JSON/FormData 处理和 401 清理一致；请求未结束时禁用触发请求的按钮。
-- 客户侧和商家侧使用独立的认证存储键与授权上下文，不能串用 token 或在前端伪造权限。
+- 客户侧、商家侧和平台侧使用独立的认证存储键与授权上下文，不能串用 token 或在前端伪造权限。
 - 业务金额、状态和权限结论以服务端响应为准，不在浏览器中维护可与后端分叉的业务事实。
 - 新增交互应覆盖加载、空数据、校验失败、服务端错误、重复提交和窄屏场景。保持现有视觉语言；参考 UI 只作设计输入，不复制其模拟数据或浏览器端业务逻辑。
 - 修改 API 类型或字段时，避免无约束的 `any`；优先补充明确的 TypeScript 类型并更新所有调用点。

@@ -1,5 +1,6 @@
 package com.dailyactivity.order.domain.port;
 
+import com.dailyactivity.auth.domain.Actor;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -10,7 +11,7 @@ public interface OrderRepository {
 
     boolean quoteAlreadyUsed(String quoteTokenHash);
 
-    void insertItem(long orderId, ItemCreate item, long actorId);
+    void insertItem(long orderId, ItemCreate item, Actor actorId);
 
     void saveQuantityPrices(long orderId, long productId, List<com.dailyactivity.catalog.domain.QuantityPricing.Band> bands);
 
@@ -18,13 +19,13 @@ public interface OrderRepository {
 
     void deleteCart(long customerId, List<Long> productIds);
 
-    long addEvent(long orderId, String operationId, String action, String fromStatus, String toStatus, String beforeData, String afterData, String note, long actorId);
+    long addEvent(long orderId, String operationId, String action, String fromStatus, String toStatus, String beforeData, String afterData, String note, Actor actorId);
 
     void attachFiles(long orderId, long eventId, List<String> fileUuids, String stage);
 
-    void createReceivable(OrderRow order, long actorId);
+    void createReceivable(OrderRow order, Actor actorId);
 
-    void createAccrual(OrderRow order, long actorId);
+    void createAccrual(OrderRow order, Actor actorId);
 
     Optional<OrderRow> findForUpdate(long merchantId, long orderId, Long customerId);
 
@@ -38,9 +39,9 @@ public interface OrderRepository {
 
     long countAudit(long merchantId, String result, String query);
 
-    void decideAudit(long orderId, String result, String remark, long actorId);
+    void decideAudit(long orderId, String result, String remark, Actor actorId);
 
-    void withdrawPendingAudit(long orderId, long actorId);
+    void withdrawPendingAudit(long orderId, Actor actorId);
 
     List<OrderRow> findPage(long merchantId, Long customerId, String status, String paymentStatus, String query, Instant from, Instant to, int page);
 
@@ -64,9 +65,9 @@ public interface OrderRepository {
 
     List<PaymentReceiptNoteRow> paymentReceiptNotes(long orderId);
 
-    void savePaymentSubmission(PaymentSubmissionInput input, String snapshot, long actorId);
+    void savePaymentSubmission(PaymentSubmissionInput input, String snapshot, Actor actorId);
 
-    void savePaymentReceipt(PaymentReceiptInput input, String snapshot, long actorId);
+    void savePaymentReceipt(PaymentReceiptInput input, String snapshot, Actor actorId);
 
     Optional<PaymentSubmissionRow> pendingPaymentSubmission(long orderId);
 
@@ -76,33 +77,33 @@ public interface OrderRepository {
 
     long paymentRecordCount(long orderId);
 
-    void confirmSubmission(long submissionId, long actorId);
+    void confirmSubmission(long submissionId, Actor actorId);
 
-    void updatePaymentTotals(long orderId, String status, BigDecimal paidAmount, long actorId);
+    void updatePaymentTotals(long orderId, String status, BigDecimal paidAmount, Actor actorId);
 
-    void updateStatus(long orderId, String status, String buyerNote, String internalNote, long actorId);
+    void updateStatus(long orderId, String status, String buyerNote, String internalNote, Actor actorId);
 
-    void updateCustomerDetails(long orderId, String addressSnapshot, String recipientName, String city, String buyerNote, long actorId);
+    void updateCustomerDetails(long orderId, String addressSnapshot, String recipientName, String city, String buyerNote, Actor actorId);
 
-    void updateSellerDetails(long orderId, String addressSnapshot, String recipientName, String city, String buyerNote, String internalNote, long actorId);
+    void updateSellerDetails(long orderId, String addressSnapshot, String recipientName, String city, String buyerNote, String internalNote, Actor actorId);
 
-    void updateItem(long itemId, int quantity, BigDecimal unitPrice, long actorId);
+    void updateItem(long itemId, int quantity, BigDecimal unitPrice, Actor actorId);
 
-    void removeItem(long itemId, long actorId);
+    void removeItem(long itemId, Actor actorId);
 
-    void markItemManualPrice(long itemId, long actorId);
+    void markItemManualPrice(long itemId, Actor actorId);
 
-    void updateOrderAmounts(long orderId, BigDecimal subtotal, BigDecimal discountAmount, BigDecimal total, long actorId);
+    void updateOrderAmounts(long orderId, BigDecimal subtotal, BigDecimal discountAmount, BigDecimal total, Actor actorId);
 
-    void updateBillingVoid(long orderId, long actorId);
+    void updateBillingVoid(long orderId, Actor actorId);
 
-    void updateCommissionVoid(long orderId, long actorId);
+    void updateCommissionVoid(long orderId, Actor actorId);
 
     boolean hasSettledCommission(long orderId);
 
-    void updateBillingPayable(long orderId, long actorId);
+    void updateBillingPayable(long orderId, Actor actorId);
 
-    void captureCoaSnapshots(long orderId, long actorId);
+    void captureCoaSnapshots(long orderId, Actor actorId);
 
     Dashboard dashboard(long merchantId);
 
@@ -129,7 +130,7 @@ public interface OrderRepository {
     }
 
     record EventRow(long id, String action, String fromStatus, String toStatus, String note,
-                    Instant occurredAt, long actorUserId, String actorName, Long parcelId) {
+                    Instant occurredAt, long actorUserId, String actorType, String actorName, Long parcelId) {
     }
 
     record PaymentReceiptNoteRow(long verifiedByUserId, Instant verifiedAt, String internalNote) {

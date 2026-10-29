@@ -179,7 +179,7 @@ class PrdStagedPaymentTest extends PrdDatabaseTest {
         var other = new com.dailyactivity.auth.domain.Principal(data.referrerId(), "customer", 0, data.seller().merchantId());
         assertThatThrownBy(() -> orders.paymentRecords(other, id, 1)).isInstanceOf(ApiException.class);
         var member = PrdTestFixture.seedRestrictedSeller(jdbc, data.sellerId());
-        jdbc.update("UPDATE user_permission SET menu_code='products' WHERE user_id=?", member.userId());
+        jdbc.update("UPDATE seller_permission SET menu_code='products' WHERE seller_id=?", member.userId());
         assertThatThrownBy(() -> orders.paymentRecords(member, id, 1))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("FORBIDDEN");
     }
@@ -190,16 +190,20 @@ class PrdStagedPaymentTest extends PrdDatabaseTest {
         // Arrange
         var order = createOrder("staged-http", 1);
         long id = orderId(order);
-        String token = (String) accounts.customerLogin(data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD).get("accessToken");
+        String token = (String) accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD).get("accessToken");
+        String domain = jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?", String.class, data.customer().merchantId());
         String fields = "\"channelId\":" + data.channelId() + ",\"transactionNo\":\"http-tx\",\"expectedTotalAmount\":110";
         // Act
         var missingVersion = http.perform(post("/api/v1/customer/orders/{id}/payment-submissions", id)
+                .header(HttpHeaders.HOST, domain)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                 .content("{" + fields + ",\"declaredAmount\":30}")).andReturn().getResponse();
         var missingAmount = http.perform(post("/api/v1/customer/orders/{id}/payment-submissions", id)
+                .header(HttpHeaders.HOST, domain)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                 .content("{" + fields + ",\"expectedUpdatedAt\":\"" + version(order) + "\"}")).andReturn().getResponse();
         var success = http.perform(post("/api/v1/customer/orders/{id}/payment-submissions", id)
+                .header(HttpHeaders.HOST, domain)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
                 .content("{" + fields + ",\"expectedUpdatedAt\":\"" + version(order) + "\",\"declaredAmount\":30}")).andReturn().getResponse();
         // Assert
@@ -211,6 +215,7 @@ class PrdStagedPaymentTest extends PrdDatabaseTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM payment_submission WHERE order_id=?", Long.class, id)).isEqualTo(1);
         assertAmount(orders.detail(customer(), id), "paidAmount", "0.00");
         var history = http.perform(get("/api/v1/customer/orders/{id}/payments", id)
+                .header(HttpHeaders.HOST, domain)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)).andReturn().getResponse();
         assertThat(history.getStatus()).isEqualTo(200);
         assertThat(history.getContentAsString()).doesNotContain("internalNote", "verifiedByName");

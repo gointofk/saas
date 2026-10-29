@@ -13,16 +13,18 @@ import java.util.Map;
 @RequestMapping("/api/v1")
 public class AuthController {
     private final AccountService accounts;
+    private final com.dailyactivity.merchant.application.StorefrontService storefront;
     private final TrustedClientIpResolver clientIps;
 
-    public AuthController(AccountService accounts, TrustedClientIpResolver clientIps) {
+    public AuthController(AccountService accounts, TrustedClientIpResolver clientIps, com.dailyactivity.merchant.application.StorefrontService storefront) {
+        this.storefront = storefront;
         this.accounts = accounts;
         this.clientIps = clientIps;
     }
 
     @PostMapping("/customer/auth/login")
     public Map<String, Object> customerLogin(@Valid @RequestBody CustomerLoginRequest request, HttpServletRequest httpRequest) {
-        return accounts.customerLogin(request.email(), request.password(), clientIps.resolve(httpRequest));
+        return accounts.customerLogin(storefront.resolve(httpRequest).id(), request.email(), request.password(), clientIps.resolve(httpRequest));
     }
 
     @PostMapping("/admin/auth/login")
@@ -30,15 +32,20 @@ public class AuthController {
         return accounts.sellerLogin(request.account(), request.password(), clientIps.resolve(httpRequest));
     }
 
-    @PostMapping("/{area:customer|admin}/auth/logout")
+    @PostMapping("/platform/auth/login")
+    public Map<String,Object> platformLogin(@Valid @RequestBody SellerLoginRequest body,HttpServletRequest request) {
+        return accounts.platformLogin(body.account(),body.password(),clientIps.resolve(request));
+    }
+
+    @PostMapping("/{area:customer|admin|platform}/auth/logout")
     public ResponseEntity<Void> logout(@PathVariable String area, HttpServletRequest request) {
-        accounts.logout(AuthSupport.principal(request, "customer".equals(area) ? "customer" : "seller"));
+        accounts.logout(AuthSupport.principal(request, "platform".equals(area) ? "platform" : "customer".equals(area) ? "customer" : "seller"));
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/{area:customer|admin}/me")
+    @GetMapping("/{area:customer|admin|platform}/me")
     public Map<String, Object> me(@PathVariable String area, HttpServletRequest request) {
-        return accounts.me(AuthSupport.principal(request, "customer".equals(area) ? "customer" : "seller"));
+        return accounts.me(AuthSupport.principal(request, "platform".equals(area) ? "platform" : "customer".equals(area) ? "customer" : "seller"));
     }
 
     @PatchMapping("/customer/me/profile")

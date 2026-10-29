@@ -57,12 +57,12 @@ class OrderDiscountTest {
         assertThat(result).containsEntry("auditStatus", "pending");
         assertThat((BigDecimal) result.get("discountAmount")).isEqualByComparingTo("20.00");
         assertThat((BigDecimal) result.get("total")).isEqualByComparingTo("80.00");
-        verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), new BigDecimal("20.00"), new BigDecimal("80.00"), 3);
+        verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), new BigDecimal("20.00"), new BigDecimal("80.00"), new com.dailyactivity.auth.domain.Actor("seller",3));
         verify(repository).addEvent(eq(1L), anyString(), eq("audit_updated"), eq("pending"), eq("pending"),
-                contains("\"discountAmount\":0.00"), contains("\"discountAmount\":20.00"), isNull(), eq(3L));
-        verify(repository, never()).decideAudit(anyLong(), anyString(), any(), anyLong());
-        verify(repository, never()).createReceivable(any(), anyLong());
-        verify(repository, never()).createAccrual(any(), anyLong());
+                contains("\"discountAmount\":0.00"), contains("\"discountAmount\":20.00"), isNull(), eq(new com.dailyactivity.auth.domain.Actor("seller",3L)));
+        verify(repository, never()).decideAudit(anyLong(), anyString(), any(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(repository, never()).createReceivable(any(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(repository, never()).createAccrual(any(), any(com.dailyactivity.auth.domain.Actor.class));
         verifyNoInteractions(inventory);
     }
 
@@ -85,8 +85,8 @@ class OrderDiscountTest {
         when(repository.findAuditOrderForUpdate(1L, 1)).thenReturn(Optional.of(row("pending_verification", "pending", "0.00")));
         when(repository.findAuditOrder(1L, 1)).thenReturn(Optional.of(row("pending_verification", "pending", "20.00")));
         service.updateAudit(SELLER, 1, edit("20.00", VERSION));
-        verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), new BigDecimal("20.00"), new BigDecimal("80.00"), 3);
-        verify(repository, never()).savePaymentSubmission(any(), anyString(), anyLong());
+        verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), new BigDecimal("20.00"), new BigDecimal("80.00"), new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(repository, never()).savePaymentSubmission(any(), anyString(), any(com.dailyactivity.auth.domain.Actor.class));
     }
 
     @ParameterizedTest
@@ -98,7 +98,7 @@ class OrderDiscountTest {
         assertThatThrownBy(() -> service.updateAudit(SELLER, 1, edit(discount, VERSION)))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("INVALID_DISCOUNT_AMOUNT");
         verifyNoWrites();
-        verify(repository, never()).updateItem(anyLong(), anyInt(), any(), anyLong());
+        verify(repository, never()).updateItem(anyLong(), anyInt(), any(), any(com.dailyactivity.auth.domain.Actor.class));
         verifyNoInteractions(inventory);
     }
 
@@ -129,9 +129,9 @@ class OrderDiscountTest {
 
         assertThat(result).containsEntry("auditStatus", "approved").containsEntry("paymentStatus", "pending_verification");
         assertThat((BigDecimal) result.get("total")).isEqualByComparingTo("80.00");
-        verify(repository, never()).updateOrderAmounts(anyLong(), any(), any(), any(), anyLong());
-        verify(repository).createReceivable(approved, 3);
-        verify(repository).createAccrual(approved, 3);
+        verify(repository, never()).updateOrderAmounts(anyLong(), any(), any(), any(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(repository).createReceivable(approved, new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(repository).createAccrual(approved, new com.dailyactivity.auth.domain.Actor("seller",3));
     }
 
     @Test
@@ -143,10 +143,10 @@ class OrderDiscountTest {
         var result = service.decideAudit(SELLER, 1, new OrderService.AuditDecision("rejected", null, VERSION));
 
         assertThat((BigDecimal) result.get("discountAmount")).isEqualByComparingTo("20.00");
-        verify(repository).decideAudit(1, "rejected", null, 3);
-        verify(repository).updateStatus(1, "cancelled", null, null, 3);
-        verify(repository, never()).updateOrderAmounts(anyLong(), any(), any(), any(), anyLong());
-        verify(repository, never()).createReceivable(any(), anyLong());
+        verify(repository).decideAudit(1, "rejected", null, new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(repository).updateStatus(1, "cancelled", null, null, new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(repository, never()).updateOrderAmounts(anyLong(), any(), any(), any(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(repository, never()).createReceivable(any(), any(com.dailyactivity.auth.domain.Actor.class));
     }
 
     @Test
@@ -157,7 +157,7 @@ class OrderDiscountTest {
 
         service.updateAudit(SELLER, 1, edit(null, VERSION));
 
-        verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), new BigDecimal("20.00"), new BigDecimal("80.00"), 3);
+        verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), new BigDecimal("20.00"), new BigDecimal("80.00"), new com.dailyactivity.auth.domain.Actor("seller",3));
     }
 
     @ParameterizedTest
@@ -170,7 +170,7 @@ class OrderDiscountTest {
         service.updateAudit(SELLER, 1, edit(discount, VERSION));
 
         var amount = new BigDecimal(discount);
-        verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), amount, new BigDecimal("100.00").subtract(amount), 3);
+        verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), amount, new BigDecimal("100.00").subtract(amount), new com.dailyactivity.auth.domain.Actor("seller",3));
     }
 
     private void prepareEdit(String discount) {
@@ -203,12 +203,12 @@ class OrderDiscountTest {
         assertThat((BigDecimal) result.get("discountAmount")).isEqualByComparingTo("20.00");
         assertThat((BigDecimal) result.get("total")).isEqualByComparingTo("80.00");
         var writes = inOrder(repository);
-        writes.verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), new BigDecimal("20.00"), new BigDecimal("80.00"), 3);
-        writes.verify(repository).decideAudit(1, "approved", null, 3);
-        writes.verify(repository).createReceivable(approved, 3);
-        writes.verify(repository).createAccrual(approved, 3);
+        writes.verify(repository).updateOrderAmounts(1, new BigDecimal("100.00"), new BigDecimal("20.00"), new BigDecimal("80.00"), new com.dailyactivity.auth.domain.Actor("seller",3));
+        writes.verify(repository).decideAudit(1, "approved", null, new com.dailyactivity.auth.domain.Actor("seller",3));
+        writes.verify(repository).createReceivable(approved, new com.dailyactivity.auth.domain.Actor("seller",3));
+        writes.verify(repository).createAccrual(approved, new com.dailyactivity.auth.domain.Actor("seller",3));
         verify(repository).addEvent(eq(1L), anyString(), eq("audit_discounted"), eq("pending"), eq("pending"),
-                contains("\"total\":100.00"), contains("\"discountAmount\":20.00"), contains("80.00"), eq(3L));
+                contains("\"total\":100.00"), contains("\"discountAmount\":20.00"), contains("80.00"), eq(new com.dailyactivity.auth.domain.Actor("seller",3L)));
     }
 
     @Test
@@ -228,7 +228,7 @@ class OrderDiscountTest {
         when(repository.findForUpdate(1L, 1, 2L)).thenReturn(Optional.of(approved));
         when(repository.find(1L, 1, 2L)).thenReturn(Optional.of(approved));
         service.decideAudit(SELLER, 1, decision("20.00"));
-        verify(repository).createReceivable(approved, 3);
+        verify(repository).createReceivable(approved, new com.dailyactivity.auth.domain.Actor("seller",3));
     }
 
     @ParameterizedTest
@@ -278,11 +278,11 @@ class OrderDiscountTest {
     }
 
     private void verifyNoWrites() {
-        verify(repository, never()).updateOrderAmounts(anyLong(), any(), any(), any(), anyLong());
-        verify(repository, never()).decideAudit(anyLong(), anyString(), any(), anyLong());
-        verify(repository, never()).createReceivable(any(), anyLong());
-        verify(repository, never()).createAccrual(any(), anyLong());
-        verify(repository, never()).addEvent(anyLong(), anyString(), anyString(), any(), any(), any(), any(), any(), anyLong());
+        verify(repository, never()).updateOrderAmounts(anyLong(), any(), any(), any(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(repository, never()).decideAudit(anyLong(), anyString(), any(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(repository, never()).createReceivable(any(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(repository, never()).createAccrual(any(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(repository, never()).addEvent(anyLong(), anyString(), anyString(), any(), any(), any(), any(), any(), any(com.dailyactivity.auth.domain.Actor.class));
     }
 
     private OrderRepository.OrderRow row(String paymentStatus, String auditStatus, String discount) {

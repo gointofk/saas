@@ -22,7 +22,7 @@ class PrdAuthenticationAndAuthorizationTest extends PrdDatabaseTest {
     @DisplayName("登录会更新最近登录时间，退出后原令牌版本立即失效")
     void logoutInvalidatesExistingPrincipal() {
         // Arrange / Act
-        Map<String, Object> login = accounts.customerLogin("  " + data.customerEmail().toUpperCase() + "  ", PrdTestFixture.CUSTOMER_PASSWORD);
+        Map<String, Object> login = accounts.customerLogin(data.customer().merchantId(), "  " + data.customerEmail().toUpperCase() + "  ", PrdTestFixture.CUSTOMER_PASSWORD);
 
         // Assert login response has no password and exposes customer identity.
         assertThat(login).containsKeys("accessToken", "expiresAt", "customer").doesNotContainKey("password");

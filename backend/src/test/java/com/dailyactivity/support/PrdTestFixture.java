@@ -28,11 +28,17 @@ public final class PrdTestFixture {
     public static long merchant(JdbcTemplate jdbc, String code) {
         var ids = jdbc.queryForList("SELECT id FROM merchant WHERE code=?", Long.class, code);
         if (!ids.isEmpty()) return ids.get(0);
-        jdbc.update("INSERT INTO merchant(code,name,shipping_fee) VALUES(?, 'Test Merchant',20.00)", code);
+        jdbc.update("INSERT INTO merchant(code,name,shipping_fee,domain) VALUES(?, 'Test Merchant',20.00,?)", code,code.toLowerCase()+".test");
         long id = jdbc.queryForObject("SELECT id FROM merchant WHERE code=?",Long.class,code);
         for (String menu : List.of("products","certificates","categories"))
             jdbc.update("INSERT INTO merchant_permission(merchant_id,menu_code) VALUES(?,?)",id,menu);
         return id;
+    }
+
+    public static Principal platform(JdbcTemplate jdbc) {
+        String account="platform-"+UUID.randomUUID();
+        jdbc.update("INSERT INTO admin(account,name,password_hash) VALUES(?,'Platform',?)",account,PasswordHasher.hash(SELLER_PASSWORD));
+        return new Principal(jdbc.queryForObject("SELECT id FROM admin WHERE account=?",Long.class,account),"platform",0,0);
     }
 
     public static Scenario seed(JdbcTemplate jdbc) {
@@ -52,20 +58,20 @@ public final class PrdTestFixture {
         String customerCode = unusedCustomerCode(jdbc, "C");
         String passwordHash = PasswordHasher.hash(CUSTOMER_PASSWORD);
 
-        jdbc.update("INSERT INTO `user`(merchant_id,user_type,account,name,password_hash,active,auth_version,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(?,'seller',?,?,?,1,0,NULL,NULL)",
+        jdbc.update("INSERT INTO seller(merchant_id,account,name,password_hash,active,auth_version,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,1,0,NULL,NULL)",
                 merchantId, sellerAccount, "Test Admin", PasswordHasher.hash(SELLER_PASSWORD));
-        long sellerId = jdbc.queryForObject("SELECT id FROM `user` WHERE account=?", Long.class, sellerAccount);
+        long sellerId = jdbc.queryForObject("SELECT id FROM seller WHERE account=?", Long.class, sellerAccount);
         insertPermissions(jdbc, sellerId, sellerId,
                 List.of("order_audit", "orders", "commissions", "bills", "customers", "products", "certificates", "categories", "payment_channels", "members"));
 
-        jdbc.update("INSERT INTO `user`(merchant_id,user_type,email,name,password_hash,code,customer_type,price_tier,active,auth_version,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(?,'customer',?,?,?,?,?,'V1',1,0,?,?)",
+        jdbc.update("INSERT INTO `user`(merchant_id,email,name,password_hash,code,customer_type,price_tier,active,auth_version,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,?,?,'V1',1,0,?,?)",
                 merchantId, referrerEmail, "Test Referrer", passwordHash, referrerCode, "partner", sellerId, sellerId);
         long referrerId = jdbc.queryForObject("SELECT id FROM `user` WHERE email=?", Long.class, referrerEmail);
 
-        jdbc.update("INSERT INTO `user`(merchant_id,user_type,email,name,password_hash,code,customer_type,price_tier,active,referrer_id,commission_rate,auth_version,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(?,'customer',?,?,?,?,?,'V1',1,?,?,0,?,?)",
+        jdbc.update("INSERT INTO `user`(merchant_id,email,name,password_hash,code,customer_type,price_tier,active,referrer_id,commission_rate,auth_version,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,?,?,'V1',1,?,?,0,?,?)",
                 merchantId, customerEmail, "Test Customer", passwordHash, customerCode, "regular", referrerId, new BigDecimal("5.00"), sellerId, sellerId);
         long customerId = jdbc.queryForObject("SELECT id FROM `user` WHERE email=?", Long.class, customerEmail);
 
@@ -118,13 +124,13 @@ public final class PrdTestFixture {
     }
 
     public static Principal seedRestrictedSeller(JdbcTemplate jdbc, long creatorId) {
-        long merchantId = jdbc.queryForObject("SELECT merchant_id FROM `user` WHERE id=?",Long.class,creatorId);
+        long merchantId = jdbc.queryForObject("SELECT merchant_id FROM seller WHERE id=?",Long.class,creatorId);
         String suffix = UUID.randomUUID().toString().replace("-", "");
         String account = "test-orders-only-" + suffix;
-        jdbc.update("INSERT INTO `user`(merchant_id,user_type,account,name,password_hash,active,auth_version,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(?,'seller',?,?,?,1,0,?,?)",
+        jdbc.update("INSERT INTO seller(merchant_id,account,name,password_hash,active,auth_version,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,1,0,?,?)",
                 merchantId, account, "Orders Only", PasswordHasher.hash(SELLER_PASSWORD), creatorId, creatorId);
-        long sellerId = jdbc.queryForObject("SELECT id FROM `user` WHERE account=?", Long.class, account);
+        long sellerId = jdbc.queryForObject("SELECT id FROM seller WHERE account=?", Long.class, account);
         insertPermissions(jdbc, sellerId, creatorId, List.of("orders"));
         return new Principal(sellerId, "seller", 0, merchantId);
     }
@@ -140,7 +146,7 @@ public final class PrdTestFixture {
 
     private static void insertPermissions(JdbcTemplate jdbc, long userId, long actorId, List<String> permissions) {
         for (String permission : permissions) {
-            jdbc.update("INSERT INTO user_permission(user_id,menu_code,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?)",
+            jdbc.update("INSERT INTO seller_permission(seller_id,menu_code,created_by_user_id,updated_by_user_id) VALUES(?,?,?,?)",
                     userId, permission, actorId, actorId);
         }
     }

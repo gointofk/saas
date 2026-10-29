@@ -106,7 +106,7 @@ class PrdOrderAuditEditTest extends PrdDatabaseTest {
         assertThatThrownBy(() -> orders.auditEditProducts(restricted, id, null, 1))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("FORBIDDEN");
         assertThatThrownBy(() -> orders.updateAudit(customer(), id, request)).isInstanceOf(ApiException.class);
-        jdbc.update("UPDATE user_permission SET menu_code='order_audit' WHERE user_id=?", restricted.userId());
+        jdbc.update("UPDATE seller_permission SET menu_code='order_audit' WHERE seller_id=?", restricted.userId());
         assertThat(orders.auditEditProducts(restricted, id, "Test Regular Product", 1).items()).isNotEmpty();
         assertThat(orders.updateAudit(restricted, id, request)).containsEntry("auditStatus", "pending");
     }

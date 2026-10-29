@@ -108,73 +108,42 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
     }
     @Test
     void managerCanCreateMerchantButCannotAccessItsOrdersAndRevocationClearsMemberGrants() {
-        jdbc.update("UPDATE `user` SET merchant_management=1 WHERE id=?",data.sellerId());
+        var platform=PrdTestFixture.platform(jdbc);
         var b=other();
         var order=approved(b);
-        assertThatThrownBy(()->orders.detail(data.seller(),orderId(order))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->orders.detail(platform,orderId(order))).isInstanceOf(ApiException.class);
         var existing=merchantRepository.find(b.seller().merchantId()).orElseThrow();
-        merchants.update(data.seller(),existing.id(),new MerchantService.Update(existing.name(),true,existing.shippingFee(),List.of(),existing.updatedAt()));
+        merchants.update(platform,existing.id(),new MerchantService.Update(existing.name(),true,existing.shippingFee(),List.of(),existing.updatedAt(),existing.domain(),existing.logoUrl(),existing.theme()));
         assertThatThrownBy(()->accounts.requireMenu(b.seller(),"products")).isInstanceOf(ApiException.class);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM user_permission WHERE user_id=? AND menu_code IN ('products','certificates','categories') AND deleted=0",Long.class,b.sellerId())).isZero();
-        var created=merchants.create(data.seller(),new MerchantService.Create("NEW"+UUID.randomUUID().toString().substring(0,8),"New merchant",new BigDecimal("7.50"),List.of("products"),"new-"+UUID.randomUUID(),"Initial admin",PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD));
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM `user` WHERE merchant_id=? AND user_type='seller' AND merchant_management=0",Long.class,created.id())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM seller_permission WHERE seller_id=? AND menu_code IN ('products','certificates','categories') AND deleted=0",Long.class,b.sellerId())).isZero();
+        var created=merchants.create(platform,new MerchantService.Create("NEW"+UUID.randomUUID().toString().substring(0,8),"New merchant",new BigDecimal("7.50"),List.of("products"),"new-"+UUID.randomUUID(),"Initial admin",PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD,"new-"+UUID.randomUUID()+".test","/ytpeps-logo.svg","classic"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM seller WHERE merchant_id=?",Long.class,created.id())).isEqualTo(1);
         assertThat(created.permissions()).containsExactly("products");
     }
     @Test
-    void lastMerchantManagerCannotDisableItsOwnMerchant() {
-        jdbc.update("UPDATE `user` SET merchant_management=1 WHERE id=?",data.sellerId());
-        var m=merchantRepository.find(data.seller().merchantId()).orElseThrow();
-        assertThatThrownBy(()->merchants.update(data.seller(),m.id(),new MerchantService.Update(m.name(),false,m.shippingFee(),List.of("products","certificates","categories"),m.updatedAt())))
-                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("LAST_MERCHANT_MANAGER");
-    }
-    @Test
     void disabledMerchantBlocksBothRolesAndReenableDoesNotRestoreOldTokens() {
-        jdbc.update("UPDATE `user` SET merchant_management=1 WHERE id=?",data.sellerId());
+        var platform=PrdTestFixture.platform(jdbc);
         var b=other();
         var m=merchantRepository.find(b.seller().merchantId()).orElseThrow();
-        merchants.update(data.seller(),m.id(),new MerchantService.Update(m.name(),false,m.shippingFee(),List.of("products"),m.updatedAt()));
+        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),false,m.shippingFee(),List.of("products"),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
         assertThatThrownBy(()->accounts.assertValid(b.seller())).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->accounts.assertValid(b.customer())).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->accounts.customerLogin(b.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->accounts.customerLogin(b.customer().merchantId(), b.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD)).isInstanceOf(ApiException.class);
         var disabled=merchantRepository.find(m.id()).orElseThrow();
-        merchants.update(data.seller(),m.id(),new MerchantService.Update(m.name(),true,m.shippingFee(),List.of("products"),disabled.updatedAt()));
+        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),true,m.shippingFee(),List.of("products"),disabled.updatedAt(),disabled.domain(),disabled.logoUrl(),disabled.theme()));
         assertThatThrownBy(()->accounts.assertValid(b.customer())).isInstanceOf(ApiException.class);
-        assertThat(accounts.customerLogin(b.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD)).containsKey("accessToken");
+        assertThat(accounts.customerLogin(b.customer().merchantId(), b.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD)).containsKey("accessToken");
     }
 
     @Test
-    void ordinaryMemberManagerCannotTakeOverDesignatedManagementAccount() {
-        jdbc.update("UPDATE `user` SET merchant_management=1 WHERE id=?",data.sellerId());
-        var ordinary=PrdTestFixture.seedRestrictedSeller(jdbc,data.sellerId());
-        jdbc.update("INSERT INTO user_permission(user_id,menu_code) VALUES(?,'members')",ordinary.userId());
-        var replacement=new MemberService.MemberRequest(data.sellerAccount(),"Replaced",PrdTestFixture.SELLER_PASSWORD,
-                PrdTestFixture.SELLER_PASSWORD,List.of("members"));
-        assertThatThrownBy(()->members.update(ordinary,data.sellerId(),replacement)).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->members.status(ordinary,data.sellerId(),false)).isInstanceOf(ApiException.class);
-        assertThat(jdbc.queryForObject("SELECT name FROM `user` WHERE id=?",String.class,data.sellerId())).isEqualTo("Test Admin");
-    }
-
-    @Test
-    void designatedManagerIsMarkedInMemberListAndCannotEditOrDisableSelf() {
-        jdbc.update("UPDATE `user` SET merchant_management=1 WHERE id=?", data.sellerId());
-        assertThat(members.page(data.seller(), data.sellerAccount(), 1).items())
-                .filteredOn(member -> member.id() == data.sellerId())
-                .singleElement().extracting(member -> member.merchantManagement()).isEqualTo(true);
-        var replacement = new MemberService.MemberRequest(data.sellerAccount(), "Changed", null, null, List.of("members"));
-        assertThatThrownBy(() -> members.update(data.seller(), data.sellerId(), replacement))
-                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("FORBIDDEN");
-        assertThatThrownBy(() -> members.status(data.seller(), data.sellerId(), false))
-                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("FORBIDDEN");
-        assertThat(jdbc.queryForObject("SELECT name FROM `user` WHERE id=?", String.class, data.sellerId())).isEqualTo("Test Admin");
-        assertThat(jdbc.queryForObject("SELECT active FROM `user` WHERE id=?", Boolean.class, data.sellerId())).isTrue();
-    }
-
-    @Test
-    void accountIdentifiersStayGlobalWhilePaymentChannelNamesAreMerchantLocal() {
+    void customerEmailsAreMerchantLocalWhileSellerAccountsRemainGlobal() {
         var b=other();
-        assertThatThrownBy(()->customers.create(b.seller(),new CustomerService.CustomerRequest(data.customerEmail(),"Duplicate",
+        assertThatCode(()->customers.create(b.seller(),new CustomerService.CustomerRequest(data.customerEmail(),"Duplicate",
                 PrdTestFixture.CUSTOMER_PASSWORD,PrdTestFixture.CUSTOMER_PASSWORD,"regular","V1",null,null)))
-                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("CUSTOMER_EMAIL_EXISTS");
+                .doesNotThrowAnyException();
+        var localLogin=accounts.customerLogin(data.customer().merchantId(),data.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD);
+        var foreignLogin=accounts.customerLogin(b.customer().merchantId(),data.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD);
+        assertThat(((Map<?,?>)localLogin.get("customer")).get("id")).isNotEqualTo(((Map<?,?>)foreignLogin.get("customer")).get("id"));
         assertThatThrownBy(()->members.create(b.seller(),new MemberService.MemberRequest(data.sellerAccount(),"Duplicate",
                 PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD,List.of("orders"))))
                 .isInstanceOf(ApiException.class);
@@ -190,8 +159,17 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         carts.set(data.customer(),data.productId(),1);
         var q=orders.quote(data.customer(),new OrderService.QuoteRequest(data.addressId(),List.of(new OrderService.CartRequest(data.productId(),1))));
         var m=merchantRepository.find(data.seller().merchantId()).orElseThrow();
-        merchants.settings(data.seller(),new MerchantService.Settings(new BigDecimal("25.00"),m.updatedAt()));
+        merchants.update(PrdTestFixture.platform(jdbc),m.id(),new MerchantService.Update(m.name(),true,new BigDecimal("25.00"),List.of("products","certificates","categories"),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
         assertThatThrownBy(()->orders.create(data.customer(),new OrderService.CreateRequest((String)q.get("quoteToken"),"test",List.of(new OrderService.CartRequest(data.productId(),1)),data.addressId())))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("QUOTE_CHANGED");
     }
+    @Test
+    void duplicateDomainIsRejected() {
+        var b=other();var m=merchantRepository.find(b.seller().merchantId()).orElseThrow();
+        var existing=merchantRepository.find(data.seller().merchantId()).orElseThrow();
+        assertThatThrownBy(()->merchants.update(PrdTestFixture.platform(jdbc),m.id(),
+                new MerchantService.Update("Changed",true,BigDecimal.ONE,List.of(),m.updatedAt(),existing.domain(),m.logoUrl(),m.theme())))
+                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("MERCHANT_DOMAIN_EXISTS");
+    }
+
 }

@@ -64,10 +64,10 @@ class StagedPaymentServiceTest {
         var result = service.sellerAction(SELLER, 1, "confirm-payment", action("28.00", "差异原因", VERSION, 8L));
         // Assert
         assertThat(result).containsEntry("paymentStatus", "partially_paid").containsEntry("status", "pending");
-        verify(orders).savePaymentReceipt(new OrderRepository.PaymentReceiptInput(1, 8L, 5, "verified-tx", new BigDecimal("28.00"), "差异原因"), SNAPSHOT, 3);
-        verify(orders).confirmSubmission(8, 3);
-        verify(orders).updatePaymentTotals(1, "partially_paid", new BigDecimal("58.00"), 3);
-        verify(orders, never()).updateStatus(anyLong(), anyString(), any(), any(), anyLong());
+        verify(orders).savePaymentReceipt(new OrderRepository.PaymentReceiptInput(1, 8L, 5, "verified-tx", new BigDecimal("28.00"), "差异原因"), SNAPSHOT, new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(orders).confirmSubmission(8, new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(orders).updatePaymentTotals(1, "partially_paid", new BigDecimal("58.00"), new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(orders, never()).updateStatus(anyLong(), anyString(), any(), any(), any(com.dailyactivity.auth.domain.Actor.class));
         verifyNoInteractions(payments, inventory);
     }
 
@@ -79,7 +79,7 @@ class StagedPaymentServiceTest {
         // Act
         service.sellerAction(SELLER, 1, "confirm-payment", action("70.00", "核实本次抵扣 70", VERSION, 8L));
         // Assert
-        verify(orders).updatePaymentTotals(1, "paid", new BigDecimal("100.00"), 3);
+        verify(orders).updatePaymentTotals(1, "paid", new BigDecimal("100.00"), new com.dailyactivity.auth.domain.Actor("seller",3));
     }
 
     @Test
@@ -123,9 +123,9 @@ class StagedPaymentServiceTest {
         // Act
         service.submitPayment(CUSTOMER, 1, new OrderService.PaymentRequest(5, "next-tx", new BigDecimal("100.00"), VERSION, new BigDecimal("20.00")));
         // Assert
-        verify(orders).savePaymentSubmission(new OrderRepository.PaymentSubmissionInput(1, 2, 5, "next-tx", new BigDecimal("100.00"), new BigDecimal("20.00")), channel.snapshot(), 2);
-        verify(orders).updatePaymentTotals(1, "pending_verification", new BigDecimal("30.00"), 2);
-        verify(orders, never()).savePaymentReceipt(any(), anyString(), anyLong());
+        verify(orders).savePaymentSubmission(new OrderRepository.PaymentSubmissionInput(1, 2, 5, "next-tx", new BigDecimal("100.00"), new BigDecimal("20.00")), channel.snapshot(), new com.dailyactivity.auth.domain.Actor("customer",2));
+        verify(orders).updatePaymentTotals(1, "pending_verification", new BigDecimal("30.00"), new com.dailyactivity.auth.domain.Actor("customer",2));
+        verify(orders, never()).savePaymentReceipt(any(), anyString(), any(com.dailyactivity.auth.domain.Actor.class));
     }
 
     @Test
@@ -154,9 +154,9 @@ class StagedPaymentServiceTest {
     }
 
     private void verifyNoFinancialWrites() {
-        verify(orders, never()).savePaymentReceipt(any(), anyString(), anyLong());
-        verify(orders, never()).confirmSubmission(anyLong(), anyLong());
-        verify(orders, never()).updatePaymentTotals(anyLong(), anyString(), any(), anyLong());
+        verify(orders, never()).savePaymentReceipt(any(), anyString(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(orders, never()).confirmSubmission(anyLong(), any(com.dailyactivity.auth.domain.Actor.class));
+        verify(orders, never()).updatePaymentTotals(anyLong(), anyString(), any(), any(com.dailyactivity.auth.domain.Actor.class));
     }
 
     private OrderRepository.OrderRow row(String paymentStatus, String paidAmount) {

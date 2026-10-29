@@ -78,7 +78,7 @@ public class OrderParcelService {
             for (var item : parcel.items()) parcels.insertItem(id, item.orderItemId(), item.quantity());
             addEvent(orderId, id, operation, "parcel_packed", null, "packed", parcel.publicNote(), parcel.files(), actor);
         }
-        refreshOrder(order, actor.userId());
+        refreshOrder(order, actor.actor());
     }
 
     private void validatePack(long orderId, List<PackParcel> requested, List<ParcelRepository.ParcelRow> existing) {
@@ -138,7 +138,7 @@ public class OrderParcelService {
             parcels.ship(parcel.id(), input.trackingNo().trim(), blankToNull(input.carrier()), actor.userId());
             addEvent(orderId, parcel.id(), operation, "parcel_shipped", "packed", "shipped", input.publicNote(), input.labelFiles(), actor);
         }
-        refreshOrder(order, actor.userId());
+        refreshOrder(order, actor.actor());
     }
 
     @Transactional
@@ -156,7 +156,7 @@ public class OrderParcelService {
             parcels.receive(id, actor.userId());
             addEvent(orderId, id, operation, "parcel_received", "shipped", "received", request.publicNote(), List.of(), actor);
         }
-        refreshOrder(order, actor.userId());
+        refreshOrder(order, actor.actor());
     }
 
     @Transactional(readOnly = true)
@@ -206,7 +206,7 @@ public class OrderParcelService {
         return parcel;
     }
 
-    private void refreshOrder(OrderRepository.OrderRow order, long actor) {
+    private void refreshOrder(OrderRepository.OrderRow order, com.dailyactivity.auth.domain.Actor actor) {
         var summary = summary(order.id(), orders.items(order.id()));
         String state = "all".equals(summary.receiptStatus()) ? "received" : "all".equals(summary.shippingStatus()) ? "shipped" : "all".equals(summary.packingStatus()) ? "packed" : "pending";
         orders.updateStatus(order.id(), state, null, null, actor);
@@ -215,7 +215,7 @@ public class OrderParcelService {
     private void addEvent(long orderId, long parcelId, String operation, String action, String from, String to,
                           String note, List<OrderService.FileReference> refs, Principal actor) {
         // An operation can touch many parcels; each has a distinct audit operation identity.
-        long event = orders.addEvent(orderId, operation + ":" + parcelId, action, from, to, null, null, blankToNull(note), actor.userId());
+        long event = orders.addEvent(orderId, operation + ":" + parcelId, action, from, to, null, null, blankToNull(note), actor.actor());
         parcels.associateEvent(event, parcelId);
         if (refs != null && !refs.isEmpty()) orders.attachFiles(orderId, event, refs.stream().map(OrderService.FileReference::fileUuid).toList(), to);
     }

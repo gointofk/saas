@@ -93,7 +93,7 @@ public class CatalogService {
         accounts.requireMenu(principal, "categories");
         validateCategory(request);
         long id = catalog.createCategory(request.name().trim(), request.sortNo(), principal.userId());
-        audit.audit(principal.merchantId(), principal.userId(), "catalog.createCategory", "id=" + id);
+        audit.audit(principal.merchantId(), principal.actor(), "catalog.createCategory", "id=" + id);
         return Map.of("id", id);
     }
 
@@ -102,14 +102,14 @@ public class CatalogService {
         accounts.requireMenu(principal, "categories");
         validateCategory(request);
         catalog.updateCategory(id, request.name().trim(), request.sortNo(), request.active(), principal.userId(), request.expectedUpdatedAt());
-        audit.audit(principal.merchantId(), principal.userId(), "catalog.updateCategory", "id=" + id);
+        audit.audit(principal.merchantId(), principal.actor(), "catalog.updateCategory", "id=" + id);
     }
 
     @Transactional
     public void deleteCategory(Principal principal, long id) {
         accounts.requireMenu(principal, "categories");
         catalog.softDeleteCategory(id, principal.userId());
-        audit.audit(principal.merchantId(), principal.userId(), "catalog.deleteCategory", "id=" + id);
+        audit.audit(principal.merchantId(), principal.actor(), "catalog.deleteCategory", "id=" + id);
     }
 
     @Transactional
@@ -118,7 +118,7 @@ public class CatalogService {
         validateProduct(request);
         long id = catalog.createProduct(toCommand(request), principal.userId());
         quantityPrices.replace(id, request.quantityPrices(), principal.userId());
-        audit.audit(principal.merchantId(), principal.userId(), "catalog.createProduct", "id=" + id);
+        audit.audit(principal.merchantId(), principal.actor(), "catalog.createProduct", "id=" + id);
         return Map.of("id", id);
     }
 
@@ -134,8 +134,8 @@ public class CatalogService {
         catalog.updateProduct(id, toCommand(request), principal.userId());
         quantityPrices.replace(id, "gift".equals(request.productType()) ? List.of() : request.quantityPrices(), principal.userId());
         if (request.stockAvailable() != current.stock())
-            inventory.adjust(id, request.stockAvailable(), request.stockReason().trim(), java.util.UUID.randomUUID().toString(), principal.userId());
-        audit.audit(principal.merchantId(), principal.userId(), "catalog.updateProduct", "id=" + id);
+            inventory.adjust(id, request.stockAvailable(), request.stockReason().trim(), java.util.UUID.randomUUID().toString(), principal.actor());
+        audit.audit(principal.merchantId(), principal.actor(), "catalog.updateProduct", "id=" + id);
     }
 
     @Transactional
@@ -149,7 +149,7 @@ public class CatalogService {
         var current = catalog.product(id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
         checkProductVersion(current, expectedUpdatedAt);
         catalog.setProductActive(id, active, principal.userId());
-        audit.audit(principal.merchantId(), principal.userId(), "catalog.setProductActive", "id=" + id);
+        audit.audit(principal.merchantId(), principal.actor(), "catalog.setProductActive", "id=" + id);
     }
 
     @Transactional
@@ -163,7 +163,7 @@ public class CatalogService {
         var current = catalog.product(id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
         checkProductVersion(current, expectedUpdatedAt);
         catalog.softDeleteProduct(id, principal.userId());
-        audit.audit(principal.merchantId(), principal.userId(), "catalog.deleteProduct", "id=" + id);
+        audit.audit(principal.merchantId(), principal.actor(), "catalog.deleteProduct", "id=" + id);
     }
 
     @Transactional
@@ -173,9 +173,9 @@ public class CatalogService {
             throw ApiException.badRequest("INVALID_STOCK", "targetStock must be non-negative.");
         var current = catalog.product(id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
         checkProductVersion(current, request.expectedUpdatedAt());
-        inventory.adjust(id, request.targetStock(), request.reason(), java.util.UUID.randomUUID().toString(), p.userId());
+        inventory.adjust(id, request.targetStock(), request.reason(), java.util.UUID.randomUUID().toString(), p.actor());
         var updated = catalog.product(id, "V1", false, false).orElseThrow(() -> ApiException.notFound("Product not found."));
-        audit.audit(p.merchantId(), p.userId(), "catalog.adjustStock", "id=" + id);
+        audit.audit(p.merchantId(), p.actor(), "catalog.adjustStock", "id=" + id);
         return Map.of("productId", id, "stock", request.targetStock(), "updatedAt", updated.updatedAt());
     }
 

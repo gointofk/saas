@@ -36,9 +36,10 @@ class PrdHttpAuthorizationTest extends PrdDatabaseTest {
     @Test
     @DisplayName("客户令牌不能访问后台商品接口")
     void customerTokenCannotAccessAdminEndpoint() throws Exception {
-        String token = (String) accounts.customerLogin(data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD).get("accessToken");
+        String token = (String) accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD).get("accessToken");
 
         MvcResult result = mockMvc.perform(get("/api/v1/admin/products")
+                        .header(HttpHeaders.HOST, jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?",String.class,data.customer().merchantId()))
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andReturn();
 
@@ -51,6 +52,7 @@ class PrdHttpAuthorizationTest extends PrdDatabaseTest {
         String token = (String) accounts.sellerLogin(data.sellerAccount(), PrdTestFixture.SELLER_PASSWORD).get("accessToken");
 
         MvcResult result = mockMvc.perform(get("/api/v1/customer/products")
+                        .header(HttpHeaders.HOST, jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?",String.class,data.customer().merchantId()))
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andReturn();
 
@@ -61,10 +63,11 @@ class PrdHttpAuthorizationTest extends PrdDatabaseTest {
     @DisplayName("菜单权限在 MVC 入口统一校验")
     void restrictedSellerCannotAccessUnassignedMenu() throws Exception {
         var restricted = PrdTestFixture.seedRestrictedSeller(jdbc, data.sellerId());
-        String account = jdbc.queryForObject("SELECT account FROM `user` WHERE id=?", String.class, restricted.userId());
+        String account = jdbc.queryForObject("SELECT account FROM seller WHERE id=?", String.class, restricted.userId());
         String token = (String) accounts.sellerLogin(account, PrdTestFixture.SELLER_PASSWORD).get("accessToken");
 
         MvcResult result = mockMvc.perform(get("/api/v1/admin/products")
+                        .header(HttpHeaders.HOST, jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?",String.class,data.customer().merchantId()))
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andReturn();
 
@@ -77,13 +80,15 @@ class PrdHttpAuthorizationTest extends PrdDatabaseTest {
     void orderMenuCannotEditAuditOrder() throws Exception {
         long id = orderId(createPendingOrder("audit-http-permission", 1));
         var restricted = PrdTestFixture.seedRestrictedSeller(jdbc, data.sellerId());
-        String account = jdbc.queryForObject("SELECT account FROM `user` WHERE id=?", String.class, restricted.userId());
+        String account = jdbc.queryForObject("SELECT account FROM seller WHERE id=?", String.class, restricted.userId());
         String token = (String) accounts.sellerLogin(account, PrdTestFixture.SELLER_PASSWORD).get("accessToken");
 
         var searchResult = mockMvc.perform(get("/api/v1/admin/order-audits/{id}/products", id)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)).andReturn();
+                .header(HttpHeaders.HOST, jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?",String.class,data.customer().merchantId()))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)).andReturn();
         var editResult = mockMvc.perform(patch("/api/v1/admin/order-audits/{id}", id)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header(HttpHeaders.HOST, jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?",String.class,data.customer().merchantId()))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content("{\"items\":[],\"expectedUpdatedAt\":\"2026-10-02T00:00:00Z\"}")).andReturn();
 
@@ -94,10 +99,11 @@ class PrdHttpAuthorizationTest extends PrdDatabaseTest {
     @Test
     @DisplayName("停用客户后原 HTTP 令牌不能继续访问")
     void disabledCustomerTokenCannotContinueUsingApi() throws Exception {
-        String token = (String) accounts.customerLogin(data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD).get("accessToken");
+        String token = (String) accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD).get("accessToken");
         jdbc.update("UPDATE `user` SET active=0,auth_version=auth_version+1 WHERE id=?", data.customerId());
 
         MvcResult result = mockMvc.perform(get("/api/v1/customer/products")
+                        .header(HttpHeaders.HOST, jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?",String.class,data.customer().merchantId()))
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andReturn();
 

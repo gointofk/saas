@@ -1,7 +1,7 @@
--- DailyActivity V1.7: 全量 MySQL 5.6.51 初始化
+-- DailyActivity V1.8: 全量 MySQL 5.6.51 初始化
 -- 仅在预先创建的空业务库执行。数据库由 mysql 命令参数选择。
 -- 不含 CREATE DATABASE/USE，不修改用户账户，不导入 Demo 或默认密码。
--- 31 张 InnoDB 实体表；无视图、外键、触发器、存储过程、会话表。
+-- 34 张 InnoDB 实体表；无视图、外键、触发器、存储过程、会话表。
 -- 不含原生 JSON、生成列、CHECK、CTE 或 5.7/8.x 专有 SQL。
 -- 所有文件引用使用 file_asset.file_uuid；文件内容仍在本地磁盘，业务 JSON 按字段约定保存为 LONGTEXT 或有界 VARCHAR。
 -- 每个索引按 COMPACT 的 767 字节限制设计，唯一键不使用前缀缩短。
@@ -15,24 +15,30 @@ SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 SET SESSION time_zone = '+00:00';
 SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 
--- 商户资料及公共菜单授权。商户管理员的特殊管理能力由受控初始化指定。
+-- 商户资料及公共菜单授权，由独立平台管理员管理。
 CREATE TABLE merchant (
   id BIGINT NOT NULL AUTO_INCREMENT,
   code VARCHAR(32) NOT NULL,
   name VARCHAR(100) NOT NULL,
+  domain VARCHAR(253) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+  logo_url VARCHAR(512) NOT NULL DEFAULT '/ytpeps-logo.svg',
+  theme VARCHAR(32) NOT NULL DEFAULT 'classic',
   active TINYINT NOT NULL DEFAULT 1,
   shipping_fee DECIMAL(18,2) NOT NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   created_by_user_id BIGINT NULL,
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'platform',
   updated_by_user_id BIGINT NULL,
-  PRIMARY KEY (id), UNIQUE KEY uk_merchant_code (code)
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'platform',
+  PRIMARY KEY (id), UNIQUE KEY uk_merchant_code (code), UNIQUE KEY uk_merchant_domain (domain)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE merchant_permission (
   id BIGINT NOT NULL AUTO_INCREMENT,
   merchant_id BIGINT NOT NULL,
   menu_code VARCHAR(32) NOT NULL,
   created_by_user_id BIGINT NULL,
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'platform',
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   deleted BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY (id), UNIQUE KEY uk_merchant_permission (merchant_id,menu_code,deleted)
@@ -41,18 +47,12 @@ CREATE TABLE merchant_event (
   id BIGINT NOT NULL AUTO_INCREMENT,
   merchant_id BIGINT NOT NULL,
   actor_user_id BIGINT NOT NULL,
+  actor_type VARCHAR(16) NOT NULL,
   action VARCHAR(64) NOT NULL,
   detail LONGTEXT NOT NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (id), KEY idx_merchant_event (merchant_id,created_at,id)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
--- 仅用于串行保护最后一个商户管理账号，不保存认证会话。
-CREATE TABLE merchant_management_lock (
-  id BIGINT NOT NULL,
-  PRIMARY KEY (id)
-) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-INSERT INTO merchant_management_lock(id) VALUES(1);
-
 CREATE TABLE coa_binding_lock (
   id BIGINT NOT NULL,
   PRIMARY KEY (id)
@@ -69,54 +69,85 @@ CREATE TABLE `permission_menu` (
   UNIQUE KEY `uk_menu_code` (`menu_code`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='固定菜单定义';
 
--- 统一客户/卖家身份；user_type 取 customer 或 seller，类型专属字段由应用校验
+-- 买家账号；邮箱在商户内唯一，所有账号表独立生成ID。
 CREATE TABLE `user` (
-  `merchant_id` BIGINT NOT NULL COMMENT '所属商户ID',
-  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `merchant_management` TINYINT NOT NULL DEFAULT 0 COMMENT '受控指定的商户管理能力，普通成员接口不得修改',
-  `user_type` VARCHAR(16) NOT NULL COMMENT '用户类型：customer客户，seller卖家',
-  `account` VARCHAR(64) NULL COMMENT '卖家登录账号',
-  `email` VARCHAR(128) NULL COMMENT '客户登录邮箱；应用层trim并转为小写后写入',
-  `name` VARCHAR(100) NOT NULL COMMENT '名称',
-  `password_hash` VARCHAR(255) NOT NULL COMMENT 'Argon2id密码摘要',
-  `code` CHAR(3) NULL COMMENT '客户编号：0-9、A-Z生成，不区分大小写',
-  `customer_type` VARCHAR(16) NULL COMMENT '客户类型：partner合作伙伴，regular固定客户',
-  `price_tier` CHAR(2) NULL COMMENT '客户价格等级：V1～V6',
-  `active` TINYINT NOT NULL DEFAULT 1 COMMENT '启用状态：1启用，0停用',
-  `referrer_id` BIGINT NULL COMMENT '当前推荐人客户ID',
-  `commission_rate` DECIMAL(5,2) NULL COMMENT '当前推荐佣金比例',
-  `auth_version` BIGINT NOT NULL DEFAULT 0 COMMENT '认证版本号',
-  `last_login_at` DATETIME(6) NULL COMMENT '最后登录时间',
-  `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
-  `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
-  `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
-  `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
-  `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
-  KEY `idx_user_merchant` (`merchant_id`,`id`),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_account` (`account`),
-  UNIQUE KEY `uk_user_email` (`email`),
-  UNIQUE KEY `uk_user_customer_code` (`code`),
-  KEY `idx_user_type_active` (`user_type`,`deleted`,`active`,`id`),
-  KEY `idx_user_customer_referrer` (`user_type`,`referrer_id`,`deleted`,`id`),
-  KEY `idx_user_customer_type` (`user_type`,`deleted`,`customer_type`,`id`),
-  KEY `idx_user_last_login` (`user_type`,`deleted`,`last_login_at`,`id`)
-) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='统一客户和卖家身份及客户业务资料，无会话记录';
+  merchant_id BIGINT NOT NULL,
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  email VARCHAR(128) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  code CHAR(3) NOT NULL,
+  customer_type VARCHAR(16) NOT NULL,
+  price_tier CHAR(2) NOT NULL,
+  active TINYINT NOT NULL DEFAULT 1,
+  referrer_id BIGINT NULL,
+  commission_rate DECIMAL(5,2) NULL,
+  auth_version BIGINT NOT NULL DEFAULT 0,
+  last_login_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  created_by_user_id BIGINT NULL,
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
+  updated_by_user_id BIGINT NULL,
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
+  deleted BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY(id), UNIQUE KEY uk_user_email(merchant_id,email),
+  UNIQUE KEY uk_user_customer_code(code), KEY idx_user_merchant(merchant_id,id),
+  KEY idx_user_active(deleted,active,id), KEY idx_user_referrer(referrer_id,deleted,id),
+  KEY idx_user_customer_type(deleted,customer_type,id), KEY idx_user_last_login(deleted,last_login_at,id)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 卖家用户菜单授权，撤权软删除；user_id 必须指向 user_type=seller 的用户
-CREATE TABLE `user_permission` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `user_id` BIGINT NOT NULL COMMENT '用户ID',
-  `menu_code` VARCHAR(32) NOT NULL COMMENT '菜单编码',
-  `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
-  `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
-  `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
-  `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
-  `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_menu_active` (`user_id`,`menu_code`,`deleted`),
-  KEY `idx_user_permissions` (`user_id`,`deleted`)
-) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='卖家用户菜单授权，撤权软删除';
+CREATE TABLE seller (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  merchant_id BIGINT NOT NULL,
+  account VARCHAR(64) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  active TINYINT NOT NULL DEFAULT 1,
+  auth_version BIGINT NOT NULL DEFAULT 0,
+  last_login_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  created_by_user_id BIGINT NULL,
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
+  updated_by_user_id BIGINT NULL,
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
+  deleted BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY(id), UNIQUE KEY uk_seller_account(account), KEY idx_seller_merchant(merchant_id,deleted,active,id)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE admin (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  account VARCHAR(64) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  active TINYINT NOT NULL DEFAULT 1,
+  auth_version BIGINT NOT NULL DEFAULT 0,
+  last_login_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  created_by_user_id BIGINT NULL,
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'platform',
+  updated_by_user_id BIGINT NULL,
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'platform',
+  deleted BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY(id), UNIQUE KEY uk_admin_account(account)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 商家成员菜单授权；seller_id 只指向 seller。
+CREATE TABLE seller_permission (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  seller_id BIGINT NOT NULL,
+  menu_code VARCHAR(32) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  created_by_user_id BIGINT NULL,
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
+  updated_by_user_id BIGINT NULL,
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
+  deleted BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY(id), UNIQUE KEY uk_seller_menu(seller_id,menu_code,deleted), KEY idx_seller_permissions(seller_id,deleted)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 客户地址；每个客户最多一个有效默认地址由应用事务维护
 CREATE TABLE `customer_address` (
@@ -133,7 +164,9 @@ CREATE TABLE `customer_address` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
   KEY `idx_address_customer` (`customer_id`,`deleted`,`id`),
@@ -149,7 +182,9 @@ CREATE TABLE `category` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_category_name` (`name`),
@@ -172,7 +207,9 @@ CREATE TABLE `product` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_product_sku` (`sku`),
@@ -189,7 +226,9 @@ CREATE TABLE `product_tier_price` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_product_tier` (`product_id`,`tier`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='V1至V6等级价，正品NULL表示回默认价，替换时物理删除旧行';
@@ -205,7 +244,9 @@ CREATE TABLE `product_quantity_price` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   `created_by_user_id` BIGINT NULL,
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL,
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_product_quantity_price` (`product_id`,`tier`,`min_quantity`,`deleted`)
@@ -220,7 +261,9 @@ CREATE TABLE `cart_item` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_cart_customer_product` (`customer_id`,`product_id`),
   KEY `idx_cart_customer` (`customer_id`,`id`)
@@ -239,7 +282,7 @@ CREATE TABLE `sales_order` (
   `order_status` VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT '履约状态：pending待处理，packed已打包，shipped已发货，received已收货，completed已完成，cancelled已取消',
   `payment_status` VARCHAR(32) NOT NULL DEFAULT 'unpaid' COMMENT '支付状态：unpaid待支付，pending_verification待验证，partially_paid部分支付，paid已付清',
   `audit_status` VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT '审核状态：pending待审核，approved已通过，rejected未通过，withdrawn审核前撤回',
-  `audited_by_user_id` BIGINT NULL COMMENT '审核人卖家用户ID',
+  `audited_by_user_id` BIGINT NULL COMMENT '审核人seller.id',
   `audited_at` DATETIME(6) NULL COMMENT '审核时间（UTC）',
   `audit_remark` VARCHAR(1000) NULL COMMENT '审核备注',
   `currency` CHAR(3) NOT NULL DEFAULT 'USD' COMMENT '订单币种：仅USD',
@@ -262,7 +305,9 @@ CREATE TABLE `sales_order` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   KEY `idx_sales_order_merchant` (`merchant_id`,`id`),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_order_no` (`order_no`),
@@ -293,7 +338,9 @@ CREATE TABLE `order_item` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_order_product_active` (`order_id`,`product_id`,`deleted`),
@@ -328,7 +375,9 @@ CREATE TABLE `order_parcel` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   `created_by_user_id` BIGINT NULL,
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL,
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_parcel_uuid` (`parcel_uuid`),
   UNIQUE KEY `uk_order_parcel_no` (`order_id`,`parcel_no`),
@@ -360,6 +409,7 @@ CREATE TABLE `order_event` (
   `note` VARCHAR(256) NULL COMMENT '操作备注',
   `occurred_at` DATETIME(6) NOT NULL COMMENT '事件发生时间',
   `actor_user_id` BIGINT NOT NULL COMMENT '操作用户ID',
+  actor_type VARCHAR(16) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_order_operation_action` (`order_id`,`operation_id`,`action`),
   KEY `idx_event_order_time` (`order_id`,`occurred_at`,`id`)
@@ -376,12 +426,14 @@ CREATE TABLE `file_asset` (
   `size_bytes` BIGINT NOT NULL COMMENT '文件字节数',
   `sha256` CHAR(64) NOT NULL COMMENT '文件SHA-256摘要',
   `status` VARCHAR(16) NOT NULL DEFAULT 'available' COMMENT '文件状态：available可引用，unavailable不可引用',
-  `uploaded_by_user_id` BIGINT NOT NULL COMMENT '文件上传用户ID',
+  `uploaded_by_user_id` BIGINT NOT NULL COMMENT '文件上传人seller.id',
   `uploaded_at` DATETIME(6) NOT NULL COMMENT '文件上传时间',
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`file_uuid`),
   UNIQUE KEY `uk_file_stored_name` (`stored_file_name`)
@@ -415,6 +467,7 @@ CREATE TABLE `stock_movement` (
   `operation_id` VARCHAR(64) NOT NULL COMMENT '服务端单次操作审计ID',
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   KEY `idx_stock_movement_merchant` (`merchant_id`,`id`),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_stock_operation_product` (`operation_id`,`product_id`),
@@ -438,7 +491,9 @@ CREATE TABLE `payment_channel` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   KEY `idx_payment_channel_merchant` (`merchant_id`,`id`),
   PRIMARY KEY (`id`),
@@ -461,7 +516,9 @@ CREATE TABLE `payment_submission` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'customer',
   PRIMARY KEY (`id`),
   KEY `idx_submission_order_status` (`order_id`,`status`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='逐笔付款原始申报，保留申报快照，交易号不唯一';
@@ -476,7 +533,7 @@ CREATE TABLE `payment_receipt` (
   `verified_transaction_no` VARCHAR(256) NOT NULL COMMENT '核验交易号',
   `received_amount` DECIMAL(18,2) NOT NULL COMMENT '实际收款金额',
   `currency` CHAR(3) NOT NULL DEFAULT 'USD' COMMENT '订单币种：仅USD',
-  `verified_by_user_id` BIGINT NOT NULL COMMENT '收款核验用户ID',
+  `verified_by_user_id` BIGINT NOT NULL COMMENT '收款核验人seller.id',
   `verified_at` DATETIME(6) NOT NULL COMMENT '收款核验时间',
   `internal_note` VARCHAR(1000) NULL COMMENT '内部备注',
   PRIMARY KEY (`id`),
@@ -497,7 +554,9 @@ CREATE TABLE `coa_certificate` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
   KEY `idx_coa_created` (`deleted`,`created_at`,`id`)
@@ -508,13 +567,15 @@ CREATE TABLE `product_coa_link` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `product_id` BIGINT NOT NULL COMMENT '商品ID',
   `coa_id` BIGINT NOT NULL COMMENT 'COA证书ID',
-  `linked_by_user_id` BIGINT NOT NULL COMMENT 'COA绑定用户ID',
+  `linked_by_user_id` BIGINT NOT NULL COMMENT 'COA绑定人seller.id',
   `linked_at` DATETIME(6) NOT NULL COMMENT 'COA绑定时间',
   `ended_at` DATETIME(6) NULL COMMENT '绑定结束时间',
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_coa_active` (`coa_id`,`deleted`),
@@ -535,7 +596,7 @@ CREATE TABLE `order_item_coa_snapshot` (
   `fill_snapshot` VARCHAR(64) NULL COMMENT 'COA填充信息快照',
   `test_date_snapshot` DATE NULL COMMENT 'COA检测日期快照',
   `file_uuid` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '文件UUID',
-  `linked_by_user_id_snapshot` BIGINT NOT NULL COMMENT 'COA绑定用户ID快照',
+  `linked_by_user_id_snapshot` BIGINT NOT NULL COMMENT 'COA绑定人seller.id快照',
   `linked_at_snapshot` DATETIME(6) NOT NULL COMMENT 'COA绑定时间快照',
   `captured_at` DATETIME(6) NOT NULL COMMENT 'COA快照捕获时间',
   PRIMARY KEY (`id`),
@@ -561,7 +622,9 @@ CREATE TABLE `commission_accrual` (
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
+  updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   KEY `idx_commission_accrual_merchant` (`merchant_id`,`id`),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_accrual_order` (`order_id`),
@@ -578,7 +641,7 @@ CREATE TABLE `commission_settlement_batch` (
   `order_count` INT NOT NULL COMMENT '结算订单数量',
   `total_base` DECIMAL(18,2) NOT NULL COMMENT '结算佣金基数合计',
   `total_commission` DECIMAL(18,2) NOT NULL COMMENT '结算佣金合计',
-  `settled_by_user_id` BIGINT NOT NULL COMMENT '结算操作用户ID',
+  `settled_by_user_id` BIGINT NOT NULL COMMENT '结算操作人seller.id',
   `settled_at` DATETIME(6) NOT NULL COMMENT '线下结算时间',
   `remark` VARCHAR(1000) NULL COMMENT '结算备注',
   `offline_paid_confirmed` TINYINT NOT NULL COMMENT '线下付款确认标记：1已确认，0未确认（提交结算仅允许1）',
@@ -604,7 +667,7 @@ CREATE TABLE `commission_settlement` (
   `rate` DECIMAL(5,2) NOT NULL COMMENT '订单锁定佣金比例',
   `commission_amount` DECIMAL(18,2) NOT NULL COMMENT '佣金金额',
   `settled_at` DATETIME(6) NOT NULL COMMENT '线下结算时间',
-  `settled_by_user_id` BIGINT NOT NULL COMMENT '结算操作用户ID',
+  `settled_by_user_id` BIGINT NOT NULL COMMENT '结算操作人seller.id',
   `remark` VARCHAR(1000) NULL COMMENT '结算备注',
   KEY `idx_commission_settlement_merchant` (`merchant_id`,`id`),
   PRIMARY KEY (`id`),

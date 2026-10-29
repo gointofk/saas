@@ -47,7 +47,7 @@ class OrderParcelServiceTest {
         when(order.updatedAt()).thenReturn(VERSION);
         when(orders.findForUpdate(1L, 1, null)).thenReturn(Optional.of(order));
         when(orders.items(1)).thenReturn(ITEMS);
-        doAnswer(call -> { orderStatus = call.getArgument(1); return null; }).when(orders).updateStatus(eq(1L), anyString(), isNull(), isNull(), eq(3L));
+        doAnswer(call -> { orderStatus = call.getArgument(1); return null; }).when(orders).updateStatus(eq(1L), anyString(), isNull(), isNull(), eq(new com.dailyactivity.auth.domain.Actor("seller",3L)));
         service = new OrderParcelService(orders, parcels, mock(AccountService.class), files);
     }
 

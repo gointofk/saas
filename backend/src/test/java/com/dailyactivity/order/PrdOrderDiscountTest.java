@@ -175,8 +175,8 @@ class PrdOrderDiscountTest extends PrdDatabaseTest {
         assertThat((BigDecimal) customers.referralSummary(referrer).get("settledCommissionAmount")).isEqualByComparingTo("4.00");
         // Updating a current order or customer cannot recalculate the settled commission fact.
         jdbc.update("UPDATE `user` SET commission_rate=10 WHERE id=?", data.customerId());
-        repository.updateOrderAmounts(id, new BigDecimal("200.00"), new BigDecimal("20.00"), new BigDecimal("200.00"), data.sellerId());
-        repository.updateBillingPayable(id, data.sellerId());
+        repository.updateOrderAmounts(id, new BigDecimal("200.00"), new BigDecimal("20.00"), new BigDecimal("200.00"), data.seller().actor());
+        repository.updateBillingPayable(id, data.seller().actor());
         assertAmount("SELECT base_amount FROM commission_accrual WHERE order_id=?", id, "80.00");
         assertAmount("SELECT commission_amount FROM commission_accrual WHERE order_id=?", id, "4.00");
         assertAmount("SELECT commission_amount FROM commission_settlement WHERE order_id=?", id, "4.00");

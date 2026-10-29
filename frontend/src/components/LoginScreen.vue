@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { storefrontBrand } from '../lib/storefront'
 import type { Area } from '../lib/api'
 import SellerLanguageSwitch from './SellerLanguageSwitch.vue'
 
@@ -25,8 +26,8 @@ const emit = defineEmits<{
   <div :class="['auth-screen', { 'customer-auth-screen': area === 'customer' }]">
     <header v-if="area === 'customer'" class="auth-header">
       <div class="brand">
-        <img class="brand-icon" src="/ytpeps-logo.svg" alt="YTPEPS">
-        <span class="brand-name">YTPEPS</span>
+        <img class="brand-icon" :src="area === 'customer' ? storefrontBrand.logoUrl : '/ytpeps-logo.svg'" :alt="storefrontBrand.name">
+        <span class="brand-name">{{ storefrontBrand.name }}</span>
       </div>
       <div class="auth-header-actions">
         <span class="auth-header-action">{{ t('Login') }}</span>
@@ -56,8 +57,8 @@ const emit = defineEmits<{
 
       <section class="auth-card">
         <div class="auth-brand customer-only-brand">
-          <img class="brand-icon" src="/ytpeps-logo.svg" alt="">
-          <div><strong>YTPEPS</strong><small>{{ t('Research materials marketplace') }}</small></div>
+          <img class="brand-icon" :src="area === 'customer' ? storefrontBrand.logoUrl : '/ytpeps-logo.svg'" alt="">
+          <div><strong>{{ storefrontBrand.name }}</strong><small>{{ t('Research materials marketplace') }}</small></div>
         </div>
         <div class="auth-copy">
           <h1>{{ area === 'admin' ? t('登录商家后台') : t('Sign In') }}</h1>
@@ -101,10 +102,10 @@ const emit = defineEmits<{
     <footer v-if="area === 'customer'" class="customer-footer auth-page-footer">
       <div class="footer-top">
         <div class="footer-left">
-          <div class="footer-company-name">YTPEPS</div>
+          <div class="footer-company-name">{{ storefrontBrand.name }}</div>
           <p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}<br><br>{{ t('The nice research company') }}</p>
         </div>
-        <div class="footer-right"><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>{{ t('© 2026 YTPEPS Co., Ltd.') }}</p></div>
+        <div class="footer-right"><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div>
       </div>
     </footer>
     <p v-else class="auth-footer">{{ t('Research use only · YTPEPS Co., Ltd.') }}</p>

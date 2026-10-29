@@ -9,5 +9,9 @@
 @import "./styles/responsive.css";
 @import "./styles/responsive-checkout.css";
 @import "./styles/responsive-order-history.css";
-@import "./styles/buyer-theme.css";
+@import "./styles/themes/classic.css";
 @import "./styles/seller-theme.css";
+
+/* Merchant theme overrides load after the shared classic baseline. */
+@import "./styles/themes/forest.css";
+@import "./styles/themes/editorial.css";

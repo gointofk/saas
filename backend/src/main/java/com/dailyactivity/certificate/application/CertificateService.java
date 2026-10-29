@@ -66,7 +66,7 @@ public class CertificateService {
         validate(r);
         validateNewFile(p, r);
         long id = certificates.create(r.input(), p.userId());
-        audit.audit(p.merchantId(), p.userId(), "coa.create", "id=" + id);
+        audit.audit(p.merchantId(), p.actor(), "coa.create", "id=" + id);
         return Map.of("id", id);
     }
 
@@ -77,28 +77,28 @@ public class CertificateService {
         var existing = certificates.find(id).orElseThrow(() -> ApiException.notFound("Certificate not found."));
         if (!existing.fileUuid().equals(r.fileUuid().trim())) validateNewFile(p, r);
         certificates.update(id, r.input(), p.userId(), r.expectedUpdatedAt());
-        audit.audit(p.merchantId(), p.userId(), "coa.update", "id=" + id);
+        audit.audit(p.merchantId(), p.actor(), "coa.update", "id=" + id);
     }
 
     @Transactional
     public void remove(Principal p, long id) {
         accounts.requireMenu(p, "certificates");
         certificates.softDelete(id, p.userId());
-        audit.audit(p.merchantId(), p.userId(), "coa.remove", "id=" + id);
+        audit.audit(p.merchantId(), p.actor(), "coa.remove", "id=" + id);
     }
 
     @Transactional
     public void bind(Principal p, long id, Long productId) {
         accounts.requireMenu(p, "certificates");
         certificates.bindProduct(id, productId, p.userId());
-        audit.audit(p.merchantId(), p.userId(), "coa.bind", "id=" + id);
+        audit.audit(p.merchantId(), p.actor(), "coa.bind", "id=" + id);
     }
 
     @Transactional
     public void bindFromProduct(Principal p, long id, Long productId) {
         accounts.requireMenu(p, "certificates");
         certificates.bindProduct(id, productId, p.userId());
-        audit.audit(p.merchantId(), p.userId(), "coa.bindFromProduct", "id=" + id);
+        audit.audit(p.merchantId(), p.actor(), "coa.bindFromProduct", "id=" + id);
     }
 
     @Transactional(readOnly = true)
@@ -120,7 +120,7 @@ public class CertificateService {
         if (coaIds != null && ids.size() != coaIds.size())
             throw com.dailyactivity.common.ApiException.badRequest("INVALID_COA_BINDING", "COA selections must be unique.");
         certificates.replaceProductCertificates(productId, ids, p.userId());
-        audit.audit(p.merchantId(), p.userId(), "coa.replaceProductCertificates", "id=" + productId);
+        audit.audit(p.merchantId(), p.actor(), "coa.replaceProductCertificates", "id=" + productId);
     }
 
     @Transactional(readOnly = true)

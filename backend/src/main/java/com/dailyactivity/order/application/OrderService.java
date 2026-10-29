@@ -155,16 +155,16 @@ public class OrderService {
         if (orderId < 0)
             throw ApiException.conflict("ORDER_NUMBER_EXHAUSTED", "No unique order number is available for this date.");
         for (var line : orderedLines) {
-            if (!inventory.decrement(line.productId(), line.quantity(), customer.id(), operationId, orderId))
+            if (!inventory.decrement(line.productId(), line.quantity(), principal.actor(), operationId, orderId))
                 throw ApiException.conflict("INSUFFICIENT_STOCK", "Stock changed while creating the order.");
             var product = quotedProducts.get(line.productId());
             String priceSource = product.price().compareTo(product.basePrice()) == 0 ? "base_price" : "tier_price";
-            orders.insertItem(orderId, new OrderRepository.ItemCreate(line.productId(), line.sku(), line.name(), line.productType(), line.quantity(), line.unitPrice(), product.costPrice(), priceSource, customer.priceTier()), customer.id());
+            orders.insertItem(orderId, new OrderRepository.ItemCreate(line.productId(), line.sku(), line.name(), line.productType(), line.quantity(), line.unitPrice(), product.costPrice(), priceSource, customer.priceTier()), principal.actor());
             orders.saveQuantityPrices(orderId, line.productId(), productBands(line.productId(), customer.priceTier()));
         }
         orders.deleteCart(customer.id(), orderedLines.stream().map(QuoteTokenService.QuoteLine::productId).toList());
         var row = orders.findForUpdate(principal.merchantId(), orderId, customer.id()).orElseThrow(() -> ApiException.notFound("Order was not created."));
-        orders.addEvent(orderId, operationId, "submitted", null, "pending", null, null, null, customer.id());
+        orders.addEvent(orderId, operationId, "submitted", null, "pending", null, null, null, principal.actor());
         return detail(row, false, principal);
     }
 
@@ -333,26 +333,26 @@ public class OrderService {
             var old = existing.get(productId);
             var change = byProduct.get(productId);
             int delta = (change == null ? 0 : change.quantity()) - (old == null ? 0 : old.quantity());
-            if (delta > 0 && !inventory.decrement(productId, delta, p.userId(), operationId, id))
+            if (delta > 0 && !inventory.decrement(productId, delta, p.actor(), operationId, id))
                 throw ApiException.conflict("INSUFFICIENT_STOCK", "商品库存不足，订单未保存。");
-            if (delta < 0) inventory.restore(productId, -delta, "Order review edit", operationId, id, p.userId());
+            if (delta < 0) inventory.restore(productId, -delta, "Order review edit", operationId, id, p.actor());
             if (change == null) {
-                orders.removeItem(old.id(), p.userId());
+                orders.removeItem(old.id(), p.actor());
             } else if (old != null) {
-                orders.updateItem(old.id(), change.quantity(), change.price(), p.userId());
-                if (change.manualPrice()) orders.markItemManualPrice(old.id(), p.userId());
+                orders.updateItem(old.id(), change.quantity(), change.price(), p.actor());
+                if (change.manualPrice()) orders.markItemManualPrice(old.id(), p.actor());
             } else {
                 var product = change.product();
                 var bands = productBands(product.id(), tier);
                 String source = change.manualPrice() ? "manual" : !bands.isEmpty() ? "quantity_price" : product.price().compareTo(product.basePrice()) == 0 ? "base_price" : "tier_price";
                 orders.insertItem(id, new OrderRepository.ItemCreate(product.id(), product.sku(), product.name(), product.productType(),
-                        change.quantity(), change.price(), product.costPrice(), source, ("tier_price".equals(source) || "quantity_price".equals(source)) ? tier : null), p.userId());
+                        change.quantity(), change.price(), product.costPrice(), source, ("tier_price".equals(source) || "quantity_price".equals(source)) ? tier : null), p.actor());
                 orders.saveQuantityPrices(id, product.id(), bands);
             }
         }
-        orders.updateOrderAmounts(id, subtotal, discount, total, p.userId());
+        orders.updateOrderAmounts(id, subtotal, discount, total, p.actor());
         orders.addEvent(id, operationId, "audit_updated", row.status(), row.status(),
-                editSnapshot(before, row.subtotal(), row.discountAmount(), row.total()), editSnapshot(orders.items(id), subtotal, discount, total), request.reason(), p.userId());
+                editSnapshot(before, row.subtotal(), row.discountAmount(), row.total()), editSnapshot(orders.items(id), subtotal, discount, total), request.reason(), p.actor());
         return detail(orders.findAuditOrder(p.merchantId(), id).orElseThrow(), true, p);
     }
 
@@ -426,27 +426,27 @@ public class OrderService {
         if ("approved".equals(request.result()) && discountChanged && request.expectedUpdatedAt() == null)
             throw ApiException.badRequest("ORDER_VERSION_REQUIRED", "设置优惠额前请重新打开订单。");
         if ("approved".equals(request.result()) && discountChanged) {
-            orders.updateOrderAmounts(id, row.subtotal(), discount, total, p.userId());
+            orders.updateOrderAmounts(id, row.subtotal(), discount, total, p.actor());
             var items = orders.items(id);
             orders.addEvent(id, operationId, "audit_discounted", row.status(), row.status(),
                     editSnapshot(items, row.subtotal(), row.discountAmount(), row.total()),
                     editSnapshot(items, row.subtotal(), discount, total),
-                    "订单优惠 " + discount.toPlainString() + " USD；应付 " + total.toPlainString() + " USD", p.userId());
+                    "订单优惠 " + discount.toPlainString() + " USD；应付 " + total.toPlainString() + " USD", p.actor());
         }
-        orders.decideAudit(id, request.result(), remark, p.userId());
+        orders.decideAudit(id, request.result(), remark, p.actor());
         if ("approved".equals(request.result())) {
             var approved = orders.findForUpdate(p.merchantId(), id, row.customerId()).orElseThrow(() -> ApiException.notFound("Order not found."));
-            orders.createReceivable(approved, p.userId());
-            orders.createAccrual(approved, p.userId());
-            orders.updateBillingPayable(id, p.userId());
+            orders.createReceivable(approved, p.actor());
+            orders.createAccrual(approved, p.actor());
+            orders.updateBillingPayable(id, p.actor());
         } else {
             for (var item : orders.items(id))
-                inventory.restore(item.productId(), item.quantity(), "Order review rejected", operationId, id, p.userId());
-            orders.updateStatus(id, "cancelled", null, null, p.userId());
-            orders.addEvent(id, operationId, "cancelled", "pending", "cancelled", null, null, null, p.userId());
+                inventory.restore(item.productId(), item.quantity(), "Order review rejected", operationId, id, p.actor());
+            orders.updateStatus(id, "cancelled", null, null, p.actor());
+            orders.addEvent(id, operationId, "cancelled", "pending", "cancelled", null, null, null, p.actor());
         }
         orders.addEvent(id, operationId, "approved".equals(request.result()) ? "audit_approved" : "audit_rejected",
-                "pending_review", request.result(), null, null, remark, p.userId());
+                "pending_review", request.result(), null, null, remark, p.actor());
         var decided = orders.find(p.merchantId(), id, row.customerId()).orElseThrow(() -> ApiException.notFound("Order not found."));
         return detail(decided, true, p);
     }
@@ -539,11 +539,11 @@ public class OrderService {
             throw ApiException.conflict("ORDER_NOT_EDITABLE", "Only unpaid pending orders can be edited.");
         var address = addresses.findByIdForUpdate(customer.id(), request.addressId()).orElseThrow(() -> ApiException.notFound("Address not found."));
         String operationId = UUID.randomUUID().toString();
-        BigDecimal subtotal = applyItems(row, request.items(), customer.priceTier(), customer.id(), operationId, false);
-        orders.updateCustomerDetails(id, json(address), address.name(), address.city(), request.buyerNote(), customer.id());
+        BigDecimal subtotal = applyItems(row, request.items(), customer.priceTier(), p.actor(), operationId, false);
+        orders.updateCustomerDetails(id, json(address), address.name(), address.city(), request.buyerNote(), p.actor());
         if (!"approved".equals(row.auditStatus()))
-            orders.updateOrderAmounts(id, subtotal, row.discountAmount(), discountedTotal(subtotal, row.shippingFee(), row.discountAmount()), customer.id());
-        orders.addEvent(id, operationId, "customer_updated", "pending", "pending", null, null, null, customer.id());
+            orders.updateOrderAmounts(id, subtotal, row.discountAmount(), discountedTotal(subtotal, row.shippingFee(), row.discountAmount()), p.actor());
+        orders.addEvent(id, operationId, "customer_updated", "pending", "pending", null, null, null, p.actor());
         return detail(orders.find(p.merchantId(), id, customer.id()).orElseThrow(), false, p);
     }
 
@@ -555,15 +555,15 @@ public class OrderService {
         if (!"pending".equals(row.status()) || !"unpaid".equals(row.paymentStatus()) || parcels.hasParcels(id))
             throw ApiException.conflict("ORDER_NOT_EDITABLE", "Only unpaid pending orders can be edited.");
         String operationId = UUID.randomUUID().toString();
-        BigDecimal subtotal = applyItems(row, request.items(), null, p.userId(), operationId, true);
-        orders.updateSellerDetails(id, request.addressSnapshot(), request.recipientName(), request.city(), request.buyerNote(), request.internalNote(), p.userId());
+        BigDecimal subtotal = applyItems(row, request.items(), null, p.actor(), operationId, true);
+        orders.updateSellerDetails(id, request.addressSnapshot(), request.recipientName(), request.city(), request.buyerNote(), request.internalNote(), p.actor());
         if (!"approved".equals(row.auditStatus()))
-            orders.updateOrderAmounts(id, subtotal, row.discountAmount(), discountedTotal(subtotal, row.shippingFee(), row.discountAmount()), p.userId());
-        orders.addEvent(id, operationId, "seller_updated", "pending", "pending", null, null, eventNote(request.internalNote(), request.buyerNote()), p.userId());
+            orders.updateOrderAmounts(id, subtotal, row.discountAmount(), discountedTotal(subtotal, row.shippingFee(), row.discountAmount()), p.actor());
+        orders.addEvent(id, operationId, "seller_updated", "pending", "pending", null, null, eventNote(request.internalNote(), request.buyerNote()), p.actor());
         return detail(orders.find(p.merchantId(), id, null).orElseThrow(), true, p);
     }
 
-    private BigDecimal applyItems(OrderRepository.OrderRow row, List<OrderEditItem> requested, String tier, long actor, String operationId, boolean allowPriceChange) {
+    private BigDecimal applyItems(OrderRepository.OrderRow row, List<OrderEditItem> requested, String tier, com.dailyactivity.auth.domain.Actor actor, String operationId, boolean allowPriceChange) {
         if (requested == null) throw ApiException.badRequest("ORDER_ITEMS_REQUIRED", "Order item quantities are required.");
         Map<Long, OrderEditItem> requestedByProduct = new HashMap<>();
         for (var item : requested) {
@@ -642,12 +642,12 @@ public class OrderService {
             throw ApiException.conflict("ORDER_COMMISSION_SETTLED", "An order cannot be cancelled after its commission has been settled.");
         String operationId = UUID.randomUUID().toString();
         for (var item : orders.items(id))
-            inventory.restore(item.productId(), item.quantity(), "Customer cancelled order", operationId, id, customer.id());
-        orders.updateStatus(id, "cancelled", null, reason, customer.id());
-        orders.updateBillingVoid(id, customer.id());
-        orders.updateCommissionVoid(id, customer.id());
-        orders.withdrawPendingAudit(id, customer.id());
-        orders.addEvent(id, operationId, "cancelled", "pending", "cancelled", null, null, reason, customer.id());
+            inventory.restore(item.productId(), item.quantity(), "Customer cancelled order", operationId, id, p.actor());
+        orders.updateStatus(id, "cancelled", null, reason, p.actor());
+        orders.updateBillingVoid(id, p.actor());
+        orders.updateCommissionVoid(id, p.actor());
+        orders.withdrawPendingAudit(id, p.actor());
+        orders.addEvent(id, operationId, "cancelled", "pending", "cancelled", null, null, reason, p.actor());
         return detail(orders.find(p.merchantId(), id, customer.id()).orElseThrow(), false, p);
     }
 
@@ -664,9 +664,9 @@ public class OrderService {
         validatePaymentAmount(request.declaredAmount(), row.total().subtract(orders.receivedAmount(id)));
         validateTransactionNo(request.transactionNo());
         var channel = payments.channel(p.merchantId(), request.channelId(), true).orElseThrow(() -> ApiException.notFound("Payment channel not found."));
-        orders.savePaymentSubmission(new OrderRepository.PaymentSubmissionInput(id, customer.id(), request.channelId(), request.transactionNo().trim(), row.total(), request.declaredAmount()), channel.snapshot(), customer.id());
-        orders.updatePaymentTotals(id, "pending_verification", orders.receivedAmount(id), customer.id());
-        orders.addEvent(id, UUID.randomUUID().toString(), "payment_submitted", row.paymentStatus(), "pending_verification", null, null, null, customer.id());
+        orders.savePaymentSubmission(new OrderRepository.PaymentSubmissionInput(id, customer.id(), request.channelId(), request.transactionNo().trim(), row.total(), request.declaredAmount()), channel.snapshot(), p.actor());
+        orders.updatePaymentTotals(id, "pending_verification", orders.receivedAmount(id), p.actor());
+        orders.addEvent(id, UUID.randomUUID().toString(), "payment_submitted", row.paymentStatus(), "pending_verification", null, null, null, p.actor());
         return detail(orders.find(p.merchantId(), id, customer.id()).orElseThrow(), false, p);
     }
 
@@ -710,12 +710,12 @@ public class OrderService {
                 String transactionNo = request.transactionNo() == null || request.transactionNo().isBlank()
                         ? sub.map(OrderRepository.PaymentSubmissionRow::transactionNo).orElse(null) : request.transactionNo().trim();
                 validateTransactionNo(transactionNo);
-                orders.savePaymentReceipt(new OrderRepository.PaymentReceiptInput(id, sub.map(OrderRepository.PaymentSubmissionRow::id).orElse(null), channelId, transactionNo, request.receivedAmount(), request.internalNote()), snapshot, p.userId());
-                sub.ifPresent(value -> orders.confirmSubmission(value.id(), p.userId()));
+                orders.savePaymentReceipt(new OrderRepository.PaymentReceiptInput(id, sub.map(OrderRepository.PaymentSubmissionRow::id).orElse(null), channelId, transactionNo, request.receivedAmount(), request.internalNote()), snapshot, p.actor());
+                sub.ifPresent(value -> orders.confirmSubmission(value.id(), p.actor()));
                 BigDecimal received = alreadyReceived.add(request.receivedAmount());
                 String paymentStatus = received.compareTo(row.total()) == 0 ? "paid" : "partially_paid";
-                orders.updatePaymentTotals(id, paymentStatus, received, p.userId());
-                orders.addEvent(id, operationId, "payment_confirmed", row.paymentStatus(), paymentStatus, null, null, eventNote(request.internalNote(), null), p.userId());
+                orders.updatePaymentTotals(id, paymentStatus, received, p.actor());
+                orders.addEvent(id, operationId, "payment_confirmed", row.paymentStatus(), paymentStatus, null, null, eventNote(request.internalNote(), null), p.actor());
                 return detail(orders.find(p.merchantId(), id, null).orElseThrow(), true, p);
             }
             case "pack", "ship", "receive" -> {
@@ -731,11 +731,11 @@ public class OrderService {
             }
             default -> throw ApiException.badRequest("UNKNOWN_ORDER_ACTION", "Unknown order action.");
         }
-        orders.updateStatus(id, next, request.publicNote(), request.internalNote(), p.userId());
+        orders.updateStatus(id, next, request.publicNote(), request.internalNote(), p.actor());
         if ("completed".equals(next)) {
-            orders.captureCoaSnapshots(id, p.userId());
+            orders.captureCoaSnapshots(id, p.actor());
         }
-        orders.addEvent(id, operationId, action, row.status(), next, null, null, eventNote(request.internalNote(), request.publicNote()), p.userId());
+        orders.addEvent(id, operationId, action, row.status(), next, null, null, eventNote(request.internalNote(), request.publicNote()), p.actor());
         return detail(orders.find(p.merchantId(), id, null).orElseThrow(), true, p);
     }
 
@@ -907,6 +907,7 @@ public class OrderService {
             value.put("labels", labels);
             if (seller) {
                 value.put("actorName", e.actorName());
+                value.put("actorType", e.actorType());
             }
             return value;
         }).toList();
@@ -958,7 +959,7 @@ public class OrderService {
         for (int index = 0; index < confirmations.size(); index++) {
             var event = confirmations.get(index);
             var receipt = receipts.get(index);
-            if (receipt.verifiedByUserId() != event.actorUserId() || receipt.verifiedAt().isAfter(event.occurredAt())
+            if (!"seller".equals(event.actorType()) || receipt.verifiedByUserId() != event.actorUserId() || receipt.verifiedAt().isAfter(event.occurredAt())
                     || (index > 0 && receipt.verifiedAt().isBefore(confirmations.get(index - 1).occurredAt()))) return Map.of();
             if ((event.note() == null || event.note().isBlank()) && receipt.internalNote() != null && !receipt.internalNote().isBlank())
                 notes.put(event.id(), receipt.internalNote());

@@ -148,11 +148,11 @@ frontend/
 }
 ```
 
-后台使用独立 `aud=admin`、`sub=user:{id}`、`userType=seller`，不能以客户 JWT 调用后台 API；客户 JWT 的 `aud=customer`、`userType=customer`。issuer 当前配置为 `Xu`。JWT 不放密码、地址、交易号和完整菜单权限；卖家菜单从当前用户权限数据读取，不能相信旧令牌中的授权快照。
+商家使用独立 `aud=admin`、`sub=user:{id}`、`userType=seller`；客户使用 `aud=customer`、`userType=customer`；平台使用 `aud=platform`、`userType=platform`、`merchantId=0`。三类身份分别对应 `/admin/**`、`/customer/**`、`/platform/**`，不能互相访问受保护业务。issuer 当前配置为 `Xu`。JWT 不放密码、地址、交易号和完整菜单权限；卖家菜单从当前用户权限数据读取，不能相信旧令牌中的授权快照。
 
 认证链路自行实现，不引入 Spring Security：
 
-1. 使用 Spring Web 的 `OncePerRequestFilter`（不是 Security 组件）覆盖 `/api/v1/**`；仅两个登录接口和预检 OPTIONS 明确放行，未知 API 默认认证。
+1. 使用 Spring Web 的 `OncePerRequestFilter`（不是 Security 组件）覆盖 `/api/v1/**`；明确放行客户、商家、平台三个登录接口、客户商城品牌配置接口、短时签名文件内容接口、预检 OPTIONS 及健康探活路径（若部署提供）；未知 API 默认认证。
 2. 通过独立 JWT 库校验固定算法、签名、iss/aud/sub、iat/exp、30 天时长；查询账号状态、auth_version。
 3. 不可变 RequestPrincipal 放 request attribute，自定义参数解析器提供给 Controller；不调用 request.getSession，不产生 JSESSIONID，不在跨请求共享对象保存身份。
 4. HandlerInterceptor 解析 `@RequireMenu`，读取当前权限；服务层再校验敏感写操作和资源归属。当前未标注 `@RequireMenu` 的 Handler 默认放行，因此敏感业务必须由 Application Service 显式调用 `requireMenu`；未引入“启动时检查所有 Handler”的机制。
@@ -163,7 +163,7 @@ frontend/
 
 ### 3.2 无会话存储下的即时失效
 
-统一 `user` 表保存 customer 和 seller 两类账号，各保存一个 `auth_version BIGINT`，这是账号安全属性，不是每次登录的记录。`user_type` 创建后不可变，客户只能访问 `/customer/**`，卖家只能访问 `/admin/**`。每次受保护请求验证 JWT 后从 MySQL 主库读取用户，校验：未软删除、类型与 `userType` 一致、启用、令牌版本等于当前版本；卖家用户再读取实时菜单权限。首版不缓存这些判断。
+买家保存在 `user`，商家管理员和成员保存在 `seller`，平台管理员保存在 `admin`。三张表各自保存密码摘要、状态、auth_version 和最近登录时间，各自生成 ID，不保存 user_type 判别列。认证仓储 AccountRepository 按服务端验证的身份类型从固定白名单选表，所有按 ID 的认证查询、行锁、最近登录和退出版本更新必须同时指定身份类型；禁止跨表搜索同一个 ID 或根据存在性推断类型。JWT 仍保存 userType 和独立 audience；sub 的 user:ID 是令牌标识格式，不表示统一 user 表，必须与已验证的 userType 一起解释。客户、卖家和平台分别只能访问各自 API 范围；商户停用校验只适用于买家和卖家。每次受保护请求从 MySQL 主库读取对应账号，验证启用、未删除、authVersion 和归属，不缓存授权判断。
 
 | 事件 | 服务端动作 | 既有 JWT 的结果 |
 | --- | --- | --- |
@@ -176,9 +176,9 @@ frontend/
 
 这是“不保存单独会话信息”与 PRD“退出即时失效”的兼容方案。它提供账号级失效，不承诺只踢出一个设备。若要求退出仅影响当前设备且被复制的该 JWT 立即不可用，就必须新增令牌或设备状态，不能同时声称完全没有逐会话存储；本版不采用该能力。
 
-浏览器在各自 `localStorage` 保存客户或后台 JWT，浏览器重启后仍可恢复登录，直到 JWT 过期或被服务端撤销；每次请求显式通过 `Authorization: Bearer ...` 发送，不放 URL、日志或业务导出。登录存储键按客户和后台隔离；升级时将旧 `sessionStorage` 中对应 token 迁移到 `localStorage`。退出先调用退出 API，成功后清除 `App.vue` 的敏感状态和本地 token；网络失败可清本地状态并提示“服务端退出未确认”，不能宣称服务端令牌已撤销。重复退出不得用旧令牌再次递增版本并误踢新登录。浏览器持久化存储可被同源脚本读取，因此仍须防范 XSS，不保存密码。
+浏览器在独立的 `localStorage` 键保存客户、商家或平台 JWT，浏览器重启后仍可恢复登录，直到 JWT 过期或被服务端撤销；每次请求显式通过 `Authorization: Bearer ...` 发送，不放 URL、日志或业务导出。登录存储键按客户、商家和平台隔离。现有请求封装也能读取对应 sessionStorage 键，但全新系统不依赖历史 token 迁移。退出先调用退出 API，成功后清除 `App.vue` 的敏感状态和本地 token；网络失败可清本地状态并提示“服务端退出未确认”，不能宣称服务端令牌已撤销。重复退出不得用旧令牌再次递增版本并误踢新登录。浏览器持久化存储可被同源脚本读取，因此仍须防范 XSS，不保存密码。
 
-卖家多账号切换复用现有 `POST /admin/auth/login` 和 `GET /admin/me`，无需新增接口、数据库表或修改账号商户归属。`localStorage["dailyactivity.admin.accounts"]` 按成员 ID 保存账号、姓名、商户名称与 JWT；不保存密码或菜单权限，展示缓存不作为鉴权依据。已有单账号登录在 `/admin/me` 成功后纳入列表，旧 token 存储迁移继续兼容。`dailyactivity.admin.token` 仍表示当前活动身份，客户 token 的存储及身份保持独立。
+卖家多账号切换复用现有 `POST /admin/auth/login` 和 `GET /admin/me`，无需新增接口、数据库表或修改账号商户归属。`localStorage["dailyactivity.admin.accounts"]` 按成员 ID 保存账号、姓名、商户名称与 JWT；不保存密码或菜单权限，展示缓存不作为鉴权依据。已有单账号登录在 `/admin/me` 成功后纳入列表，不要求准备历史 token。`dailyactivity.admin.token` 仍表示当前活动身份，客户 token 的存储及身份保持独立。
 
 添加账号时登录请求不携带当前 Bearer，登录失败的 401 不清除当前登录。切换目标账号时使用其候选 token 调用 `/admin/me`，验证成功才更新活动 token；候选验证的 401 仅清除对应已保存凭证并要求重新登录，网络及其他服务端失败保留候选凭证供重试。切换不调用 logout、不续签 token；成功后整页刷新至 `/admin`，重新获取实时商户、菜单和业务数据。后台顶部移除姓名字母头像和独立退出按钮；账号切换弹窗通过 signOut 事件复用 App.vue 的退出确认及处理，退出期间禁用切换、添加、移除和关闭，登录页不提供退出入口。退出当前账号仍按账号级认证版本失效规则执行，前端只清除对应已保存凭证；移除非当前账号仅删除本机列表项。
 
@@ -188,27 +188,26 @@ frontend/
 
 ### 3.3 菜单权限及数据归属
 
-后台菜单码固定为 `order_audit`、`orders`、`commissions`、`bills`、`customers`、`products`、`certificates`、`categories`、`payment_channels`、`members`。每个后台账号都是 `user_type=seller` 的普通用户；拥有某菜单即拥有该菜单的全部操作，不设额外按钮授权或字段脱敏规则。运费从 merchant.shipping_fee 读取，由具有 merchant_management 能力的账号在商户管理页维护，不设独立商城设置菜单。
+后台菜单码固定为 `order_audit`、`orders`、`commissions`、`bills`、`customers`、`products`、`certificates`、`categories`、`payment_channels`、`members`。每个商家后台账号都保存于 seller 表；拥有某菜单即拥有该菜单的全部操作，不设额外按钮授权或字段脱敏规则。运费从 merchant.shipping_fee 读取，由平台管理员在商户管理页维护，不设独立商城设置菜单。
 
-商户 Admin 是拥有本商户获批菜单的 seller 用户。指定 seller 可额外持有 merchant_management 能力，不能由普通成员接口授予。用户管理要求 members 菜单；保护每个商户最后一个 members 持有者，以及全平台最后一个有效商户管理账号。客户定价等级固定为 V1～V6，客户类型仅对 `user_type=customer` 生效，不授予后台权限。
+商户 Admin 是拥有本商户获批菜单的 seller 用户；平台身份独立。每商户保留至少一个有效 members 持有者。客户等级仍为 V1～V6。
 
-客户查询必须将 `customer_id = principal.userId` 写入 SQL 条件，并验证该用户的 `user_type=customer`。地址、购物车、订单、付款和文件签发接口逐项验证归属；他人 ID 返回 404，避免暴露对象存在性。推荐人查询限定 `referrer_id_snapshot = principal.userId`，只返回推荐姓名与佣金快照，不返回被推荐人地址、收款凭证或订单操作能力。
+客户查询必须将 `customer_id = principal.userId` 写入 SQL 条件，并从买家 user 表验证该账号身份。地址、购物车、订单、付款和文件签发接口逐项验证归属；他人 ID 返回 404，避免暴露对象存在性。推荐人查询限定 `referrer_id_snapshot = principal.userId`，只返回推荐姓名与佣金快照，不返回被推荐人地址、收款凭证或订单操作能力。
 
 客户、佣金、账单菜单的关联订单只读能力通过各自资源路径提供：先证明客户/佣金/账单记录与订单关联，再返回后台只读 DTO。写订单永远要求 `orders`。不使用前端传入 `source=commission` 决定授权。后台没有额外字段权限，同一菜单内返回完整业务字段；客户 DTO 必须排除成本和内部备注。
 
 登录入口执行基础频率限制：Nginx 按真实客户端 IP 限速，单应用内按规范化 email/account 和可信回环 Nginx 写入的客户端 IP 做短时失败计数；建议 5 分钟内 10 次失败后短时限制，返回 429。内存计数是防滥用状态，不是登录会话。错误凭证、不存在账号和禁用账号统一文案。首个拥有全部菜单权限的 seller 用户由一次性受控初始化创建，不提交默认密码。
 
-### 3.4 商户上下文与特殊管理能力（V1.7）
+### 3.4 商户上下文与平台身份（V1.8）
 
-`user.merchant_id` 为必填、不可通过账号接口改变；`Principal` 和 JWT 保存 merchantId。每次受保护请求验证账号类型、authVersion、账号启用、merchantId 与持久账号一致，以及商户启用。缺少 merchantId 的旧 JWT 返回 401；上线要求重新登录。商户停用提升其所有账号 authVersion，重新启用不会恢复旧 token。
+买家 user.merchant_id 和卖家 seller.merchant_id 必填且不通过账号编辑改变；平台账号保存于 admin 表，不含 merchant_id，Java Principal/JWT 使用 merchantId=0 作为平台专属标识（不能作为全局业务查询范围）。平台 aud 固定为 platform，客户与卖家仍为 customer/admin。AuthFilter 同时校验实时账号、authVersion、商户状态、API 路径对应身份；平台仅能调用 /platform/**。
 
-`AccountService` 统一计算有效菜单：仅三个公共菜单 products/certificates/categories 需要与 merchant_permission 取交集，其余菜单保留成员授权。requireMenu、requireAnyMenu 和 /me 使用同一判断。创建/修改成员校验固定菜单白名单和商户权限上限，商户授权撤销同事务软删除对应 user_permission。
+买家接口通过原始 Host（允许开发端口）解析唯一商户域名，不使用 X-Forwarded-Host。认证过滤器使用 Spring RequestPath 的解码路径分段识别 API 身份，与 MVC 的分号参数处理一致；段内编码斜线不拆成额外路径段。所有已认证买家请求均校验域名归属，不依赖原始 URI 前缀作为校验开关，带分号参数也不能绕过。公开接口使用严格白名单放行。客户登录查询必须传 merchantId；受保护客户请求要求 Host 商户等于 JWT 和持久账号归属。Nginx 必须覆盖 Host 为实际访问域名，后端不得经会重写任意 forwarded header 为 Host 的配置运行。未知域名返回 404，停用返回 403，不做默认商户回退。商户停用提升全部所属账号 authVersion。
 
-特殊能力保存在 user.merchant_management，不是 permission_menu 中可分配的菜单。指定账号仍属于自己的商户，不获得跨商户业务访问权；MerchantService 独立校验此能力后才可管理其他商户资料和公共授权、创建其首个管理员。普通成员接口不能设置该字段；权限管理对指定管理账号只读：成员列表响应增加布尔字段 merchantManagement，前端据此禁用编辑和启停按钮；列表固定每页 10 条，前端按实际页码调用 GET /members?page=，使用独立的搜索输入及已提交关键词，直接展示服务端分页结果，不再对当页做二次过滤。分页请求中禁用翻页，失败保留原页；MemberService 锁定目标账号后，对 merchant_management=1 的目标统一返回 403 FORBIDDEN，禁止资料、密码、菜单和状态变更，包括本人及其他商户管理者操作。初始化/迁移必须明确指定，禁止自动提升全部旧管理员。
+有效菜单仍按成员授权与商户公共授权计算；创建/修改成员不允许越过商户授权上限。每商户最后一个 members 持有者由商户行锁保护。平台账号不进入成员列表，不存在 user.merchant_management、merchantManagement 响应字段或特殊成员只读规则。平台引导使用 doc/bootstrap_platform.sql，由部署人员设置账号、姓名与 Argon2id 摘要后显式执行，无默认密码，不在启动时自动运行；平台账号没有业务启停/删除接口。
 
-商户管理通过 merchant_management_lock 单行锁串行保护最后管理者；成员更新与启停统一拒绝 merchant_management 账号，每商户 members 保护通过商户行锁串行检查。常规私有 Repository 根查询显式接收必填 long merchantId，SQL 参数绑定商户；子对象经已校验且写操作已锁定的订单或账号访问，不能把空 merchantId 当作全局查询。
+创建商户、域名和主题配置、公共授权、首管理员及其菜单和审计事件在同一事务提交。商户更新以行锁和 expectedUpdatedAt 检查并发冲突，域名唯一索引防并发重复。merchant.domain 使用 ASCII、最长 253，规范化小写并去掉末尾点；应用要求创建/编辑时非空。logo_url 仅接受站点相对路径或 HTTPS URL，平台配置静态图片地址；本期不新增 logo 上传。theme 仅允许 classic/forest/editorial，禁止任意 CSS 或 URL 注入。主题文件按标识分开放在 frontend/src/styles/themes/：classic.css 保存现有买家端基础样式，forest.css 与 editorial.css 分别保存对应主题覆盖规则；通过 frontend/src/styles.css 统一按基础样式、主题覆盖的顺序导入。商户后台等非主题样式放在对应组件或公共样式中。价格、库存、COA 共享，私有 Repository 仍必须显式传入 merchantId。
 
-创建商户、公共授权、首个管理员及其菜单、审计事件同事务提交。共享数据维护在原业务事务内追加 merchant_event，记录商户、操作者、动作和资源标识；商户配置/授权审计保留前后配置，不保存密码摘要、令牌或付款凭据。
 
 ## 4. 状态、金额和快照
 
@@ -285,7 +284,7 @@ Java 全部使用 `BigDecimal`，数据库金额 `DECIMAL(18,2)`、百分比 `DE
 
 ### 4.3 快照时点
 
-佣金基数按 `sales_order.subtotal - discount_amount` 计算。审核通过时创建佣金计提并转为 `payable`，同时生成应付账单；商品金额在审核通过时固定，未结佣也不允许修改已审核订单商品。佣金结算在事务内锁定订单和计提，保存当时的不可变结算快照；结算后禁止改变订单计佣金额或取消订单。订单完成只捕获 COA 快照，不再改变佣金基数或状态。上线前遗留的审核通过 `estimated` 记录由 [migration_commission_approval_settlement.sql](migration_commission_approval_settlement.sql) 按当前订单优惠后商品小计和锁定费率重算基数、佣金额并同步应付账单，再转为 `payable`；已有 `payable`、`settled` 的计提快照不重算；`estimated` 仅为过渡兼容状态，不再新建。佣金列表与结算展示“佣金基数”，佣金 CSV 同名列读取 `commission_accrual.base_amount` 快照，不使用当前订单商品小计重新推算；已有金额响应字段保持兼容。
+佣金基数按 `sales_order.subtotal - discount_amount` 计算。审核通过时创建佣金计提并转为 `payable`，同时生成应付账单；商品金额在审核通过时固定，未结佣也不允许修改已审核订单商品。佣金结算在事务内锁定订单和计提，保存当时的不可变结算快照；结算后禁止改变订单计佣金额或取消订单。订单完成只捕获 COA 快照，不再改变佣金基数或状态。全新系统无遗留佣金数据，新计提在审核通过时进入 `payable`；不执行佣金迁移或历史金额重算。佣金列表与结算展示“佣金基数”，佣金 CSV 同名列读取 `commission_accrual.base_amount` 快照，不使用当前订单商品小计重新推算；已有金额响应字段保持兼容。
 
 | 内容 | 固定时点 | 后续行为 |
 | --- | --- | --- |
@@ -322,18 +321,21 @@ Java 全部使用 `BigDecimal`，数据库金额 `DECIMAL(18,2)`、百分比 `DE
 
 可重复建立且允许软删除的关系使用 `UNIQUE(业务键, deleted)`：旧行删除后 `deleted=id`，新有效行使用 0；避免 `UNIQUE(业务键,is_deleted)` 只能保留一次历史删除的问题。客户码、订单号、每单已消费报价摘要、每单付款申报、每单收款及每单佣金/结算使用永久唯一，不随软删除释放。
 
-为简化身份与历史识别，本方案选择客户邮箱、卖家账号、SKU、类目名、渠道名也不因软删除重新分配；编辑名称/邮箱可改为尚未占用的新值，历史订单通过业务快照追踪。这里的“永久唯一”指保留行当前值不因删除释放，不建立未经要求的所有历史曾用邮箱注册表。客户 code 首版无修改入口且永不重用。
+为简化身份与历史识别，本方案选择本商户客户邮箱、seller 表内唯一账号、admin 表内唯一账号、SKU、类目名、渠道名也不因软删除重新分配；编辑名称/邮箱可改为尚未占用的新值，历史订单通过业务快照追踪。这里的“永久唯一”指保留行当前值不因删除释放，不建立未经要求的所有历史曾用邮箱注册表。客户 code 首版无修改入口且永不重用。
 
-客户和卖家共用 `user` 表的一行身份记录，`user_type` 只取 `customer` 或 `seller` 且创建后不可修改。customer 行要求 `email`、`code`、`customer_type`、`price_tier` 等客户字段有效，`account` 为空；seller 行要求 `account` 有效，客户专属字段为空。MySQL 5.6 不使用 CHECK，类型专属字段、登录入口和关联归属由应用事务校验。客户业务表中的 `customer_id` 均指向 `user.id`，并在应用层验证目标用户为 customer；卖家菜单授权表中的 `user_id` 均验证目标用户为 seller。
+买家 user 表仅保存商户、邮箱、姓名、密码、客户码、类型、等级、推荐关系、费率、状态和认证属性；seller 表保存商户、登录账号、姓名、密码、状态和认证属性；admin 表保存平台登录账号、姓名、密码、状态和认证属性。买家邮箱按 (merchant_id,email) 唯一，客户码在 user 表全局唯一；seller.account 和 admin.account 分别在各自表内唯一，可使用相同账号名。三表无共用身份主表、无 user_type 列。客户业务 customer_id/referrer_id 指向 user.id；seller_permission.seller_id 只指向 seller.id。
 
 ### 5.2 实体关系
 
 ```mermaid
 erDiagram
+    merchant ||--o{ user : has_buyers
+    merchant ||--o{ seller : has_members
+    admin ||--o{ merchant_event : platform_actions
     user ||--o{ customer_address : customer_owns
     user ||--o{ cart_item : customer_owns
     user ||--o{ sales_order : customer_places
-    user ||--o{ user_permission : seller_has
+    seller ||--o{ seller_permission : has
     category ||--o{ product : classifies
     product ||--o{ product_tier_price : prices
     sales_order ||--|{ order_item : contains
@@ -364,8 +366,10 @@ erDiagram
 
 | 表 | 业务字段 | 索引与约束 |
 | --- | --- | --- |
-| `user` | `user_type VARCHAR(16)`（`customer`/`seller`）；`account VARCHAR(64)?`；`email VARCHAR(128)?`；`name VARCHAR(100)`；`password_hash VARCHAR(255)`；客户专属 `code CHAR(3)?`、`customer_type VARCHAR(16)?`、`price_tier CHAR(2)?`、`referrer_id?`、`commission_rate DECIMAL(5,2)?`；`active BOOLEAN`；`auth_version BIGINT`；`last_login_at?` | U(account)、U(email)、U(code)（空值允许多行，类型专属非空由应用校验）；email/account 写入前由应用 trim 并转为小写，code 写入前统一大写；I(user_type,deleted,active,id)、I(user_type,referrer_id,deleted,id)、I(user_type,deleted,customer_type,id)、I(user_type,deleted,last_login_at,id)；customer 必须有 email/code，seller 必须有 account；客户推荐费率默认 0、可输入整数 0～20，无推荐人费率为 NULL，禁止本人推荐 |
-| `user_permission` | `user_id`；`menu_code VARCHAR(32)` | U(user_id,menu_code,deleted)，I(user_id,deleted)；user_id 必须是 `user_type=seller`；撤权软删除，重新授权新增行；拥有 `members` 即可管理卖家用户 |
+| `user` | merchant_id、email(128)、name(100)、password_hash、code(3)、customer_type、price_tier、referrer_id、commission_rate、active、auth_version、last_login_at、审计与软删除 | U(merchant_id,email)、U(code)；邮箱小写，客户码大写，客户推荐只能指向同商户 user |
+| `seller` | merchant_id、account(64)、name(100)、password_hash、active、auth_version、last_login_at、审计与软删除 | U(account)，账号小写；商户内成员与菜单授权 |
+| `admin` | account(64)、name(100)、password_hash、active、auth_version、last_login_at、审计与软删除 | U(account)，账号小写；无 merchant_id，不进入商户成员管理 |
+| `seller_permission` | seller_id、menu_code、创建/修改时间、操作者 ID 与类型、deleted | U(seller_id,menu_code,deleted)，撤权软删除，重新授权新增行 |
 | `customer_address` | `customer_id`（`user.id`，必须为 customer）；`recipient_name VARCHAR(100)`；`street VARCHAR(200)`；`apt VARCHAR(100)?`；`city/region VARCHAR(100)`（region 可空）；`postal_code VARCHAR(20)`；`phone VARCHAR(32)`；`is_default BOOLEAN` | I(customer_id,deleted,id)、I(customer_id,deleted,is_default,id)；应用事务保证每客户最多一个有效默认地址 |
 | `permission_menu` | menu_code、name、sort_no | U(menu_code)；内置 10 个菜单 |
 
@@ -437,15 +441,9 @@ COA 替换先写新文件，再更新 current_file_uuid，不覆盖原文件；�
 
 ### 5.8 MySQL 5.6 兼容约束与初始化入口
 
-数量阶梯价设计见 [quantity_pricing_design.md](quantity_pricing_design.md)。已有库使用 [一次性升级脚本](migration_20261028_quantity_prices.sql)，仅新增 product_quantity_price 与 order_item_quantity_price 两表，不修改或回填历史金额。须在应用切换前完成结构升级；脚本仅在隔离测试库验证，现有业务/测试库未执行。旧商品及旧订单因无阶梯行继续使用原有固定价格。升级须停写、备份并演练，不能重新执行空库初始化脚本。
+数量阶梯价细节见 [quantity_pricing_design.md](quantity_pricing_design.md)。当前为全新系统，无历史数据迁移或旧客户端兼容要求。完整结构直接维护于 [init_mysql56.sql](init_mysql56.sql)，包含商户、域名、三类账号、阶梯价、订单优惠、审核、多包履约、分阶段付款及全部业务表、主键、索引和菜单字典。部署人员仅在确认的空库执行此脚本，再按 [bootstrap_platform.sql](bootstrap_platform.sql) 引导首个平台账号；具体步骤见 11.4。应用和测试不自动执行建表、迁移或初始化。
 
-订单优惠的已有库升级使用一次性脚本 [migration_20261002_order_discount.sql](migration_20261002_order_discount.sql)。停机、备份并确认 discount_amount 尚不存在后人工执行；只增加默认 0 的优惠列，保留历史订单总额和收款/佣金/账单事实。该脚本不是增量迁移框架，不会由应用或测试自动执行。新空库使用完整初始化 SQL，已有库不能重新初始化。
-
-完整可执行脚本见 [doc/init_mysql56.sql](init_mysql56.sql)，包含全部业务表、主键、索引、按表语义设置的审计/软删除字段和菜单，执行说明见第 14 章。不创建视图、外键、触发器、存储过程或会话表；运费由 merchant 表保存；推荐渠道按本商户有效渠道 sort_no/id 排序确定。
-
-已有数据库不能重新执行完整初始化脚本。订单审核的现有库升级使用一次性脚本 [doc/migration_20260927_order_audit.sql](migration_20260927_order_audit.sql)：脚本保留旧订单并将其标为已审核，只把新插入订单的默认审核状态设为待审核；脚本不会自动授予 `order_audit` 菜单权限。需要停机、备份并人工核对执行前置条件。本任务未执行升级脚本，也未连接或修改任何数据库。
-
-本仓库未包含此前设计说明中提及的报价摘要与订单事件备注升级脚本；使用旧库时，维护者需确认这些历史结构变更已单独完成。
+不执行旧版本的一次性迁移脚本，不将历史升级步骤作为新系统上线或测试前置条件。不创建视图、外键、触发器、存储过程或会话表；运费保存在 merchant 表，推荐渠道取本商户有效渠道 sort_no/id 排序后的第一条。
 
 - MySQL 5.6.51 / InnoDB / COMPACT；索引按 767 字节限制设计，不要求 innodb_large_prefix 或 Barracuda。
 - 唯一键不能用前缀索引冒充完整唯一：email 由应用 trim、转为小写后限制为 128 字符；一般名称不超 100 个 utf8mb4 字符；交易号只在订单详情中按订单读取，不单独建立检索索引。file_uuid 使用 ASCII 字符集的 UUID，不受 utf8mb4 索引限制影响。
@@ -477,16 +475,15 @@ WHERE id = :orderId AND customer_id = :customerId
 5. 金额、订单、文件和佣金逻辑不依赖级联；所有父子存在性、所有权和状态关系在同一业务事务内验证并锁定。
 6. 应用数据库账号仅对 `cart_item`、`product_tier_price` 授予 DELETE，以支持购物车和等级价物理删除；其他表仅授予所需的 SELECT/INSERT/UPDATE，不授予 DROP/TRUNCATE/ALTER/CREATE VIEW。
 
-### 5.10 商户数据模型补充（V1.7）
+### 5.10 商户数据模型补充（V1.8）
 
 | 表/字段 | 约定 |
 | --- | --- |
-| merchant | id、全局唯一 code(32)、name(100)、active、shipping_fee DECIMAL(18,2)、创建/修改时间与操作人；不提供删除 |
+| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee DECIMAL(18,2)、创建/修改时间与操作人；不提供删除 |
 | merchant_permission | merchant_id、三个公共 menu_code、created_by_user_id、created_at、deleted；唯一 (merchant_id,menu_code,deleted) |
 | merchant_event | 仅追加：merchant_id、actor_user_id、action、detail、created_at；配置与公共维护审计 |
-| merchant_management_lock | 初始化 id=1，串行检查有效商户管理者；不是会话表 |
 | coa_binding_lock | 初始化 id=1，串行绑定、转移、解绑及 COA 删除；两种页面入口共用 |
-| user | 新增必填 merchant_id、merchant_management 默认 0；account/email/code 继续全局唯一 |
+| user / seller / admin | 三张独立账号表；user/seller 的 merchant_id 必填，admin 无 merchant_id；按身份类型和 ID 读写认证状态 |
 | sales_order | 新增必填 merchant_id，下单从账号写入；订单号及唯一规则不变；时间/审核/支付/履约列表索引前置 merchant_id |
 | payment_channel | 新增必填 merchant_id；名称唯一索引改为 (merchant_id,name)，排序/推荐限定本商户 |
 | billing_entry、commission_accrual、commission_settlement_batch、commission_settlement | 新增必填 merchant_id；订单产生的事实从订单归属写入，结算批次要求全部订单同商户 |
@@ -507,7 +504,7 @@ WHERE id = :orderId AND customer_id = :customerId
 
 该顺序是跨服务约束，代码评审应核对实际 SQL 顺序；死锁/锁超时仍可能发生。仅在能够重新读取并重新验证完整业务状态的调用方显式重试整个请求；不提供通用命令结果重放，客户端不得因结果未知而自动生成新报价或重复提交可能创建新事实的请求。业务冲突、库存不足、报价变化不自动重试。失败不提交部分商品、状态或资金事实。
 
-重要写请求在事务内重新校验当前操作者有效性及菜单权限。卖家用户授权变更锁 `user` 行和 `user_permission` 行，业务写命令也锁同一卖家用户行，确保撤权与正在提交动作有明确先后；撤权提交后的新请求不可继续。已在执行中的请求按锁顺序完成或拒绝，不声称能够撤销已经提交的业务。
+重要写请求在事务内重新校验当前操作者有效性及菜单权限。卖家用户授权变更锁 `seller` 行和 `seller_permission` 行，业务写命令也锁同一卖家用户行，确保撤权与正在提交动作有明确先后；撤权提交后的新请求不可继续。已在执行中的请求按锁顺序完成或拒绝，不声称能够撤销已经提交的业务。
 
 ### 6.2 重复操作与乐观冲突控制
 
@@ -614,7 +611,7 @@ COA 资料和完成快照只在短数据库事务内锁定相关业务行，不�
 
 ### 6.9 主数据修改和软删除
 
-运费保存在 merchant.shipping_fee，由具有 merchant_management 能力的账号在商户管理页维护，保存后即时生效。配置变更只影响本商户的新报价和新订单；创建订单时锁定商户行，将运费写入 sales_order.shipping_fee，历史订单不改写。报价提交比较运费值，不保存配置版本或配置标识。
+运费保存在 merchant.shipping_fee，由平台管理员在商户管理页维护，保存后即时生效。配置变更只影响本商户的新报价和新订单；创建订单时锁定商户行，将运费写入 sales_order.shipping_fee，历史订单不改写。报价提交比较运费值，不保存配置版本或配置标识。
 
 COA 转移在同一事务内锁定并重新读取当前绑定及相关商品/证书行；当前归属不符返回冲突，不能无提示抢占。确认转移后软删除旧关系，写 ended_at，新建有效关系同提交。删除 COA 同时结束有效绑定；不删文件或订单快照。
 
@@ -739,7 +736,7 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | `GET /commission-settlements/{id}` | 结算行详情：批次、订单、推荐人与被推荐客户、基数、费率、金额、结算时间、操作人和备注 | commissions / S-07 |
 | `GET /commissions/{accrualId}/settlement` | 从佣金列表的 accrualId 定位对应不可变结算行；用于已结算佣金详情 | commissions / S-07 |
 | `GET /bills`、`GET /bills/summary` | 列表按 type/status/q/from/to 分页；q 仅匹配账单号、订单号、客户名和邮箱；结果含邮箱及关联订单的 orderStatus/fulfillmentSummary；取消订单不进入列表或账单总数；下单账单状态按 sales_order.payment_status 筛选，结佣账单按 billing_entry.status 筛选。summary 为不受筛选影响的非取消账单数、有效应收、待收、实收和预计/待结/已结佣金汇总；日期按 order_created_at | bills / S-08 |
-| `GET/POST /customers`、`GET/PUT /customers/{id}` | 建号/客户资料；列表支持 q、customerType、unpaid 和 page（每页 10 条），提供最近登录、注册时间、推荐数、订单数、非取消订单总额及待支付订单数/金额；原始 email 唯一、推荐人与费率校验 | customers / S-09 |
+| `GET/POST /customers`、`GET/PUT /customers/{id}` | 建号/客户资料；列表支持 q、customerType、unpaid 和 page（每页 10 条），提供最近登录、注册时间、推荐数、订单数、非取消订单总额及待支付订单数/金额；本商户内规范化 email 唯一、推荐人与费率校验 | customers / S-09 |
 | `PATCH /customers/{id}/status` | active、reason；锁客户行后更新，停用使旧 JWT 失效 | customers / S-09 |
 | `PUT /customers/{id}/password` | 新密码及确认、reason；线下交付，不回传摘要 | customers / S-09 |
 | `GET /customers/{id}/orders`、`GET /customers/{id}/orders/{orderId}` | 列表支持 status、paymentStatus、q、from、to、page 分页（每页 10 条）并返回订单商品；详情校验订单确属该客户 | customers / S-09 |
@@ -758,8 +755,8 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | `PUT /certificates/{id}/product` | productId?；锁相关商品、证书和绑定行后可解除/转移 | certificates / S-11 |
 | `GET/POST /categories`、`PUT/DELETE /categories/{id}` | 类目名称、排序、启停、受限软删除；管理列表返回未软删除的关联商品数 `productCount`、`updatedBy` 和 `updatedAt` | categories / S-12 |
 | `GET/POST /payment-channels`、`PUT/DELETE /payment-channels/{id}` | 名称/币种/网络/地址/说明/可选附加费率/二维码/启停/排序；推荐渠道取有效列表第一条 | payment_channels / S-13 |
-| `GET/POST /members`、`PUT /members/{id}` | account/name/password?、菜单集合；成员列表返回 `updatedAt`、`merchantManagement`；编辑 merchantManagement=true 目标返回 403；账号最多 64 个字符、姓名最多 100 个字符、密码 12～64 个字符；编辑密码空值表示不改 | members / S-14 |
-| `PATCH /members/{id}/status` | active、reason；锁 seller 用户行后校验目标，merchant_management=1 返回 403，其余按原规则更新；用户管理权限按 `members` 菜单控制 | members / S-14 |
+| `GET/POST /members`、`PUT /members/{id}` | account/name/password?、菜单集合；成员列表返回 `updatedAt`；账号最多 64 个字符、姓名最多 100 个字符、密码 12～64 个字符；编辑密码空值表示不改 | members / S-14 |
+| `PATCH /members/{id}/status` | active、reason；锁本商户 seller 用户行后校验目标及最后 members 保护；用户管理权限按 `members` 菜单控制 | members / S-14 |
 
 商品菜单与 COA 菜单可分别完成自身入口的绑定动作，不要求同时具有两个菜单权限。当前实际候选接口为 `/certificates/{id}/product-options` 和 `/products/{productId}/certificates`；文档规划的 `/products/{id}/certificate-options`、`/certificates/product-options` 和 `/orders/{id}/product-options` 当前没有实现，也没有等价替代。
 
@@ -783,21 +780,20 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 
 导出在当前默认 `READ_COMMITTED` 只读事务内读取当前匹配集合与全部关联事实，并校验菜单权限和最多 10000 条输出明细行。同步 CSV 完整生成校验后才发下载头，不把生成成功描述为浏览器已保存。事务不覆盖下载网络耗时。
 
-### 7.5 商户管理 API（V1.7）
+### 7.5 平台与商城配置 API（V1.8）
 
-以下均在 `/api/v1/admin`，使用现有 seller audience。商户管理能力由服务端读取，前端不能通过 merchantId 切换业务身份。
+| API | 规则 |
+|---|---|
+| POST /api/v1/platform/auth/login | 独立平台账号密码登录，失败限流，返回平台 JWT |
+| GET /api/v1/platform/me | 验证平台身份，返回 member，不返回商户或商家菜单 |
+| POST /api/v1/platform/auth/logout | 提升账号 authVersion，使既有平台令牌失效 |
+| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条 |
+| POST /api/v1/platform/merchants | code/name/shippingFee/permissions/adminAccount/adminName/password/confirmation/domain/logoUrl/theme，事务创建 |
+| PUT /api/v1/platform/merchants/{id} | name/active/shippingFee/permissions/expectedUpdatedAt/domain/logoUrl/theme，事务更新 |
+| GET /api/v1/customer/storefront | 免登录，仅返回 name/logoUrl/theme；Cache-Control: no-store，不泄露经营配置 |
 
-| 路径 | 请求/响应与授权 |
-| --- | --- |
-| GET /merchants?page=1 | 固定 10 条；merchant_management；商户资料和公共 permissions，不含其他商户成员、客户或订单 |
-| POST /merchants | code/name/shippingFee/permissions/adminAccount/adminName/password/confirmation；merchant_management；原子创建，返回商户资料 |
-| PUT /merchants/{id} | name/active/shippingFee/permissions/expectedUpdatedAt；merchant_management；版本冲突 409；code 不可改 |
-| GET /merchant-settings | 保留兼容接口，当前前端不再调用；payment_channels；只读当前商户运费资料和版本 |
-| PATCH /merchant-settings | 保留兼容接口，当前前端不再调用；shippingFee/expectedUpdatedAt；payment_channels；只能更新当前商户运费 |
+删除旧 /admin/merchants 与 merchant-settings API，不保留兼容入口。商户响应附带 domain/logoUrl/theme。平台页面 `/platform/` 使用独立 localStorage 键 dailyactivity.platform.token；商家和买家认证键保持各自独立。买家入口在挂载 App 前读取品牌，失败展示错误和重试；样式以受控 data-storefront-theme 选择 CSS，不改变共享业务组件和服务端规则。
 
-/me 增加 merchant；后台 /me 另增加 merchantManagement、merchantPermissions，permissions 为有效成员菜单。登录响应增加 merchant。客户渠道接口路径不变，返回本商户渠道；付款申报与直接登记收款都再次验证 channelId 的商户归属。文件上传写商户归属并检查目标订单；签发私有链接校验文件所属商户，客户二维码只限本商户渠道。已有短时 bearer 下载链接仍按到期时间有效，不因撤权/停用立即回收。
-
-前端使用 MerchantManagement，沿用单 SPA 与 pathname 导航；商户管理菜单只对特殊账号显示，运费在商户创建和编辑弹窗维护。支付管理页移除 MerchantSettings 运费配置组件及调用，仅维护支付渠道；原 merchant-settings 后端接口保留兼容，本次不调整其授权。成员授权只展示商户允许的公共菜单。登录/退出及跨标签 token 变更重载页面清除旧业务状态，客户和后台仍使用独立 token 存储键。
 
 ## 8. 查询、统计、时间与 CSV
 
@@ -1073,15 +1069,15 @@ app:
 
 URL 统一使用 jdbc:mysql 协议，驱动类为 com.mysql.cj.jdbc.Driver，连接 MySQL 5.6；参数使用 MySQL Connector/J 的名称和值：sslMode=DISABLED、allowLoadLocalInfile=false。显式指定 utf8mb4_unicode_ci，避免采用旧数据库不支持的排序规则；connectionTimeZone=UTC 与连接初始化的 UTC 会话时区配套。示例仅因数据库在同机回环地址而关闭数据库 TLS，禁止将此明文配置照搬到跨机连接；跨机须验证实际 5.6 服务端与 JDK 17 的 TLS 兼容性并配置证书校验，或使用受控加密隧道，不为兼容旧 TLS 放宽 JDK 安全策略，也不直接公开数据库端口。时间读写由 Java Instant 与 UTC LocalDateTime 明确转换，不依赖机器默认时区。
 
-应用不包含 Actuator 管理端口；后端通过 `server.address: 127.0.0.1` 只监听回环，健康检查由部署进程或 Nginx 上游探活负责。不使用任何自动建表或自动变更表结构功能，不把初始化脚本配置为每次启动执行。初始化脚本只在明确授权的空库执行；已有数据库按对应版本的增量迁移说明升级，不重建空库。部署人员负责停写、备份、演练和执行，应用不自动变更表结构；多商户升级见 11.7。
+应用不包含 Actuator 管理端口；后端通过 `server.address: 127.0.0.1` 只监听回环，健康检查由部署进程或 Nginx 上游探活负责。不使用任何自动建表或自动变更表结构功能，不把初始化脚本配置为每次启动执行。初始化脚本只在明确授权的空库执行。当前全新系统不执行历史迁移，应用不自动变更表结构。
 
 `HttpTrafficLoggingFilter` 在认证过滤器外为每个请求生成 UUID requestId，写入 MDC 和 `X-Request-Id` 响应头，并记录方法、路径、查询参数、脱敏后的 JSON 请求/响应体、状态码和耗时；因此鉴权失败和 MVC 错误响应也可按 requestId 关联。未预期 MVC 异常由 `GlobalExceptionHandler` 在 ERROR 级别记录异常类型、方法、路径和完整堆栈；逃逸过滤器链的异常也在过滤器边界记录。客户端响应只返回通用错误及 requestId，不含内部异常细节。Logback 控制台和滚动 `logs/error.log` 显式输出完整堆栈，error 日志按天滚动并保留 30 天。请求体最多捕获 64 KiB，二进制或非 JSON 响应仅记录字节数，不写入内容。字段名含 password、secret、token、Authorization、cookie、签名、密钥、email、电话、地址、姓名、备注、交易号或账号的值统一记为 `***`；异常日志不记录请求体、密码、JWT 或文件签名凭证，日志目录应限制读取权限。后台文件落盘不再占用 MySQL packet；数据库 packet 按文本快照和有界导出配置。
 
 ### 11.4 初始化、备份与恢复
 
-经明确授权后，仅对全新空库执行 [init_mysql56.sql](init_mysql56.sql)，建立全部表、菜单字典和 code 业务约束；脚本不创建商户、可登录默认 seller 用户或业务示例数据。随后在 merchant/user 均为空时，按 [bootstrap_merchant.sql](bootstrap_merchant.sql) 的说明，在同一个 mysql 会话显式设置商户编号、名称、运费、管理员账号、姓名和有效 Argon2id 密码摘要，再执行开通脚本。该脚本原子创建首个商户、指定的商户管理账号及其菜单授权，不读取 YAML 开通账号，也不内置默认密码。已有库按 11.7 执行增量迁移，不能使用初始化或首个商户开通脚本替代升级。
+经明确授权后，仅对全新空库执行 [init_mysql56.sql](init_mysql56.sql)，然后按 [bootstrap_platform.sql](bootstrap_platform.sql) 显式提供平台账号、姓名及 Argon2id 摘要。平台登录后创建商户及其首个卖家管理员。不提供默认密码，不由应用自动初始化。
 
-运营准备公共商品、库存、COA 和各商户的客户、渠道后开放下单。各商户运费存于 merchant.shipping_fee，开通时必填非负 USD 金额，之后由具有 merchant_management 能力的账号在商户管理页维护。保存立即影响本商户的新报价，旧报价提交时须校验运费是否变化，已创建订单始终保留运费快照；修改旧 app.store.shipping-fee 或重启应用不会更新商户运费。
+运营准备公共商品、库存、COA 和各商户的客户、渠道后开放下单。各商户运费存于 merchant.shipping_fee，开通时必填非负 USD 金额，之后由平台管理员在商户管理页维护。保存立即影响本商户的新报价，旧报价提交时须校验运费是否变化，已创建订单始终保留运费快照；修改旧 app.store.shipping-fee 或重启应用不会更新商户运费。
 
 备份分成 MySQL 全量/binlog 与本地上传目录两部分，数据库备份不包含文件。文件采用只新增不覆盖：先取得数据库一致备份点，再复制截至复制时全部最终上传文件（可多于该时点引用集合），并生成文件清单/校验值；结合增量恢复时同步补齐恢复时点引用的文件。不能拿更晚的数据库配更早的文件目录而宣称恢复完整。
 
@@ -1089,34 +1085,23 @@ URL 统一使用 jdbc:mysql 协议，驱动类为 com.mysql.cj.jdbc.Driver，连
 
 前端/JAR 发布目录和 uploads 分离；回滚仅切换应用及静态产物，保留已提交业务和上传资料。数据库恢复使用完整备份；灾难恢复需对账，不能重复执行已登记的线下收款或结算。
 
-### 11.5 分阶段付款部署兼容
+### 11.5 分阶段付款部署与验证
 
-已有库使用 migration_20261007_staged_payment.sql，先停止写入并备份，人工执行只读 preflight 查询；结果非空时先对账，不自动修正历史资金。预检查全部为空后才执行结构和状态迁移。已付订单保留原整单 receipt；旧申报 declared_amount 从 declared_order_total 回填，关联有效收款者 confirmed，其他 pending；取消单保留历史且不开放后续核验。应收状态与非取消订单同步，已收金额不重算或改写。初始化 SQL 仅用于明确授权的新空库。
+全新空库由 init_mysql56.sql 直接建立逐笔付款申报、收款和应收结构，无历史付款回填或迁移步骤。前后端使用同一版本接口，申报和收款显式提交本次金额与订单版本；字段缺失返回对应业务错误，不能默认全额付款。pendingPaymentSubmission 表示当前待核验申报，分页 payments 接口返回逐笔历史。
 
-新接口增加 partially_paid、本次金额和付款版本必填要求，两端应用同步部署；旧客户端缺字段返回稳定错误，不能默认付清。原 paymentSubmission 表示最新申报，paymentReceipt 表示最新收款交易号；新调用通过 pendingPaymentSubmission 识别当前核验记录，通过分页 payments 查看完整历史。测试需已完成结构升级的测试库，不能由测试自动升级现有库。MySQL 5.6 是 SQL 兼容目标；本机 MySQL 8.3 验证不代表已验证 5.6。
+客户 HTTP 集成测试必须同时提供有效 Bearer 令牌和夹具商户域名 Host，以便先通过域名归属校验，再验证金额、版本及付款历史。测试库由部署人员提前准备完整新结构，测试事务只创建最小业务数据，不自动建表或迁移。MySQL 5.6 是 SQL 兼容目标，其他版本的验证不代表已验证 5.6。
 
-### 11.6 多包履约迁移和发布
+### 11.6 多包履约部署与验证
 
-已有库使用 [migration_20261008_order_parcels.sql](migration_20261008_order_parcels.sql)，应用和测试不自动升级。新空库初始化 SQL 已直接使用包裹结构。旧应用访问已删除列会失败，后端与买卖两端必须停写后一起切换。
+全新系统直接使用 order_parcel、order_parcel_item 及带 parcel_id 的事件结构，不存在旧订单物流字段或历史包裹转换步骤。前后端同步发布，验证单包、多包、部分履约、数量守恒、附件归属和搜索/导出。业务失败必须回滚本次事务；发布回滚及备份恢复遵循 11.4，保留已提交业务数据与上传文件。
 
-1. 停止所有业务写入并备份数据库、上传目录及当前应用版本。先核对脚本源数据检查：已履约订单有有效行且数量为正；pending/cancelled 等未履约订单没有异常运单/承运商；旧物流列必须同时存在或同时不存在，source_errors 必须为 0。异常先人工核对，不能通过清空物流字段掩盖来源。
-2. 创建 order_parcel/order_parcel_item，为 order_event 增加 nullable parcel_id。MySQL 5.6 DDL 隐式提交，不宣称整份升级脚本可整体事务回滚。
-3. 独立事务内将历史 packed/shipped/received/completed 订单迁移为 1 号整单包裹；completed 的包裹状态为 received。仅复制有效订单行，忽略软删除行；保留 tracking_no/carrier 和真实事件时间、操作人，将 pack/ship/receive 等历史事件关联到该包裹，附件原 UUID、关联与文件不变。缺失照片、运单或阶段时间不补造，历史读/收货/完成不会追溯要求补旧照片；后续新发货要求运单号，承运商与面单选填。
-4. 校验源数据、逐行数量守恒、包裹/订单/事件/附件归属及旧物流字段逐值一致。无异常后脚本删除 sales_order.tracking_no、carrier；单列旧 idx_order_tracking 随 DROP COLUMN 移除。错误时保留原列并禁止启动新版，排查后重新执行。
-5. 末尾 migration_errors=0 且 legacy_columns_remaining=0 才可发布。脚本可重复执行，旧列删除后跳过历史回填，不重复生成包裹。数据库不留 migrated/source 等历史标记，不留订单物流副本；Repository、DTO 和两端订单物流展示统一读取包裹，仅既有单包 HTTP 请求入口保留有约束适配。
-6. 核对历史金额、支付/收款、库存流水、佣金、已完成 COA、订单及事件时间未被重算。完成发布前验证历史单包、新单多包、部分履约、附件权限和搜索/导出。出现问题保持停写，从备份恢复结构和数据并配套回退应用；不在新版写入后直接启动旧应用。
+CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元格内换行，末列追加包裹数。使用 Java 汇总完整运单列表，避免 GROUP_CONCAT 长度限制截断。
 
-CSV 继续每个订单一行，全部有效包裹运单按包号顺序在运单单元格内换行，末列追加包裹数。使用 Java 汇总完整运单列表，避免 GROUP_CONCAT 长度限制截断。
+### 11.7 多商户发布（V1.8）
 
-### 11.7 多商户迁移与发布（V1.7）
+当前为全新系统，无历史数据迁移或旧接口兼容要求。全新空库使用 init_mysql56.sql 与独立平台引导 SQL；不执行旧商户迁移或首商户引导脚本。前后端及 SQL 按同一版本部署。
 
-已有 V1.6 数据库使用 [migration_20261027_merchants.sql](migration_20261027_merchants.sql)，不重新执行初始化 SQL。先停止写入、备份并在副本演练；本次脚本已按用户确认在开头设置 migration_manager_id = 4233（仍须是已有有效 seller 且有 members）及 migration_shipping_fee = 0（用户确认的原运费，USD），其他环境须核对并修改参数。整个文件须在同一 mysql 会话执行，执行工具必须遇错停止；前置校验失败只会令当前语句报错，不能依赖它阻止配置为“出错继续”的工具执行后续语句。脚本在业务表 DDL 前校验参数，再创建商户模型，将全部历史私有数据归 DEFAULT 商户、授予该商户三个公共菜单，且只给指定账号 merchant_management。保留现有成员菜单、历史金额和公共库存；提升账号认证版本，旧 token 必须重登。
-
-MySQL DDL 隐式提交；脚本不保证失败整体回滚，不使用 --force，不允许在执行一半后盲目重跑。迁移前后核对订单、收款、账单、佣金、库存数量及金额，核对归属检查均为 0。应用和测试不执行自动迁移；测试库也必须准备 V1.7 结构。前后端和 SQL 一起部署，旧应用不兼容必填商户列。
-
-全新空库执行初始化 SQL 后，按 [bootstrap_merchant.sql](bootstrap_merchant.sql) 的显式参数开通首个商户与指定管理账号，不内置密码、不自动创建商户。该脚本只用于 merchant/user 均为空的库，已有库使用上述增量迁移。
-
-订单号保持 YT+MMDD+四位数字，全局唯一；每个相同月日跨年份合计 10,000 个候选的原有限制保留，不因多商户改号。公共文件原存储路径保留，不移动或删除已有 runtime 上传文件。
+订单号及共享商品、价格、库存规则保持既有业务定义。域名、HTTPS 与反向代理配置见文末 V1.8 部署补充。
 
 ## 12. 测试与验收设计
 
@@ -1253,7 +1238,7 @@ mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u ddl_operator -p dailyactiv
 
 2026-10-27 多商户评审修复：补齐 JdbcOrderRepository 的 find、findForUpdate、findAuditOrder、findAuditOrderForUpdate 中 merchantId 的 SQL 参数绑定；同步修正 11.3/11.4 的新库开通、已有库增量升级和商户运费维护说明。新增 JdbcOrderRepositoryTest，以真实 Repository 和 NamedParameterJdbcTemplate 执行参数解析及 PreparedStatement 绑定，仅模拟 JDBC I/O；12 个场景在修复前均复现缺少 merchantId，修复后全部通过，覆盖两个商户 ID、买家/后台查询和审核加锁查询。该测试及相关订单、商户权限和 JWT 单元测试共 61 项通过，git diff --check 通过。本轮未执行数据库初始化或迁移，未重跑受测试库结构阻塞的数据库集成测试；参数绑定测试不能替代真实 MySQL 验证。
 
-2026-10-27 权限管理账号保护：merchant_management 账号在成员列表中标记为只读，禁止本人、其他商户管理者及普通成员编辑或启停；成员接口返回 403，前端禁用操作并提供双语提示。新增 MemberServiceTest 13 项单元测试及指定管理员列表标记、自编辑/自停用数据库集成用例通过，前端只读按钮和交互回归通过，类型检查与生产构建通过。全量后端测试 218 项，209 通过，3 失败、6 错误，涉及日志断言、最后商户管理者测试、成员未知权限错误码、客户佣金率、分阶段付款和推荐佣金测试；未将全量结果视为通过。前端语言测试 15 项、14 通过，剩余顶部用户区域旧断言仍未匹配商户名称展示。本次未执行数据库初始化或迁移。
+历史实施记录（V1.8 已移除该能力与相关只读规则）：2026-10-27 权限管理账号保护：merchant_management 账号在成员列表中标记为只读，禁止本人、其他商户管理者及普通成员编辑或启停；成员接口返回 403，前端禁用操作并提供双语提示。新增 MemberServiceTest 13 项单元测试及指定管理员列表标记、自编辑/自停用数据库集成用例通过，前端只读按钮和交互回归通过，类型检查与生产构建通过。全量后端测试 218 项，209 通过，3 失败、6 错误，涉及日志断言、最后商户管理者测试、成员未知权限错误码、客户佣金率、分阶段付款和推荐佣金测试；未将全量结果视为通过。前端语言测试 15 项、14 通过，剩余顶部用户区域旧断言仍未匹配商户名称展示。本次未执行数据库初始化或迁移。
 
 2026-10-27 成员列表分页修复：dev 库只读核对确认指定商户管理账号位于所属商户成员列表第 11 位，旧前端固定请求 page=1 且缺少分页入口。现已补齐与商品管理一致的分页控件，并将成员搜索独立于其他页面关键词，移除当页二次筛选。前端类型检查、生产构建及 2 项成员相关模板/交互回归通过，覆盖第二页账号可见、只读按钮、搜索回到第一页、清空搜索、重复请求拦截及加载失败保留原页；复用已有窄屏分页样式，未执行浏览器视觉实测。本次未修改后端或数据库数据，未重跑后端测试；前轮全量测试未通过事项仍有效。
 
@@ -1262,3 +1247,35 @@ mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u ddl_operator -p dailyactiv
 2026-10-27 商家搜索刷新入口：8 个管理列表及 6 个弹窗/包裹内搜索框接入统一刷新图标，保留筛选条件并重查第一页，包裹内本地筛选保留草稿。新增 3 项模板/交互测试通过，覆盖各列表图标、加载禁用、非表单提交按钮、关键词及筛选保留、分页重置；前端类型检查和生产构建通过。全量语言回归 22 项、21 通过，顶部用户区域旧断言仍有 1 项失败；未进行浏览器视觉实测，未修改后端或数据库。
 
 2026-10-28 卖家多账号快速切换：新增本机账号列表、首次添加登录、候选 token 验证切换、失效重新登录与本机移除；保留独立退出及账号级撤销语义，增加后台请求身份固定、旧请求/401 清理保护和跨标签刷新。前端类型检查与生产构建通过；14 项账号切换测试及现有语言、数量定价回归共 41 项通过，使用模拟 HTTP 响应验证真实请求封装和 Vue 组件处理函数/模板。当前环境无可用浏览器测试工具，尚未进行真实浏览器多标签联调或窄屏视觉实测。本次未修改后端或数据库，未执行 mvn test、数据库初始化或迁移。
+
+### V1.8 域名、主题与部署补充
+
+merchant 保存 domain（非空、唯一 ASCII 域名）、logo_url、theme；买家、卖家、平台分别保存于 user、seller、admin，admin 无商户字段；买家邮箱唯一索引为 (merchant_id,email)。全新系统直接维护 init_mysql56.sql，不提供或执行历史迁移。测试夹具必须使用新结构。
+
+客户域名、通用管理域名部署同一前端 dist，`/`、`/admin/`、`/platform/` 均回退 index.html，/api/v1/ 反向代理同一后端。每个商户域名单独配置 DNS 和 TLS 证书（通配证书仅覆盖其允许范围）。Nginx 用 `proxy_set_header Host $host;` 保留访问域名；不信任客户端 X-Forwarded-Host，未配置域名由默认虚拟主机拒绝，管理域名不配置为商户买家域名。商城配置接口不能被代理/CDN 跨 Host 缓存。任意同源 logo 路径应由站点静态资源提供，HTTPS logo 地址需能公开访问。
+
+本地开发在平台配置 localhost 为商户域名，即可使用 localhost:5173 的买家入口；多商户联调可用 hosts 文件将不同测试域名指向本机，并在开发代理中保持 Host。首个平台账号由独立受控 SQL 引导，商户与首个 seller 均通过平台页面建立。尚需在配置好新结构的测试库和实际 TLS/网关环境验证端到端流程，构建成功不代表这些部署步骤已完成。
+
+### V1.8 本次验证记录
+
+后端 StorefrontSecurityTest、MerchantAuthorizationTest、MemberServiceTest 共 16 项通过；当前沙箱禁止 Mockito 动态 attach，运行时通过 Maven argLine 显式加载本地 Mockito javaagent。前端 seller-accounts.test.mjs 共 16 项通过（包括平台令牌隔离、买家品牌渲染），vue-tsc 与 Vite 生产构建通过。全量后端测试已尝试，但连接本地 MySQL 时收到 Operation not permitted 后停止，数据库集成验证未完成。未执行初始化或引导 SQL，未修改现有数据库。实际域名/TLS 部署及浏览器端完整交易流程尚需联调；Vite 仍提示单包超过 500 kB。
+
+### V1.8 评审修复验证
+
+本轮修复客户 API 路径带分号参数时的身份和域名校验绕过，补齐付款 HTTP 测试的商户 Host，并同步 PRD、认证设计、部署说明、README 和开发指引。新增真实 MVC 路由回归覆盖 api/v1/customer 各段带分号参数的请求：正确商户允许访问，其他商户及平台身份拒绝。修复前回归测试复现绕过，修复后 StorefrontSecurityTest、MerchantAuthorizationTest、MemberServiceTest 合计 22 项通过，测试运行显式加载 Mockito javaagent。
+
+已尝试 PrdStagedPaymentTest#httpSubmissionRequiresExplicitAmountAndVersion，但创建测试数据时本地 MySQL 连接返回 Operation not permitted，未进入付款业务断言，不能视为集成测试通过。未执行数据库初始化或迁移，也未修改现有数据库。
+
+### 独立账号表与操作者身份
+
+三张账号表允许相同数值 ID，身份始终是 (customer/seller/platform, id)。混合操作者的 order_event 与 merchant_event 保存 actor_type、actor_user_id；通用主表审计列成对保存 created_by_type/created_by_user_id 与 updated_by_type/updated_by_user_id。Actor 类型是服务端身份值，不能由请求体传入。只允许单一身份维护的记录使用对应固定类型，混合身份写入显式保存类型；user 自改资料与商家管理资料、平台创建卖家与卖家维护成员、买家及卖家编辑订单均保持不同类型。列名中的 user_id 在通用审计中表示账号 ID，必须与配套类型联合解释，不能直接 JOIN user。
+
+订单事件按 actor_type 分别 JOIN user、seller 或 admin 获取名称。审核人、收款核验人、COA 绑定人及其快照、文件上传人、结佣操作人均是 seller，相关专属字段仅指向 seller.id；文件私有归属由 seller.merchant_id 确定。订单相关库存流水从已校验订单读取 merchant_id，人工库存调整从卖家读取商户，不能再通过通用账号 ID 查询 user 推断商户。订单事件的历史收款备注匹配同时检查操作者为 seller，避免不同身份的同号账号混淆。
+
+平台引导 SQL 只写 admin；商户开通创建 seller 和 seller_permission。商户停用在同一事务提升该商户 user 与 seller 的 auth_version，admin 不受商户启停影响。账号查询、登录、改密、退出、菜单鉴权和测试夹具均使用对应表；账号拆分直接更新空库初始化 SQL，无历史迁移或旧统一账号表兼容入口。API 路径、JWT userType/audience 与现有前端登录响应结构继续沿用；订单事件可额外返回 actorType。
+
+### 独立账号表验证记录
+
+完成 user/seller/admin、seller_permission 及审计类型字段的空库结构与 Repository 同步，测试夹具同步使用三表。清理旧编译类后，15 个不依赖数据库的相关测试类共 107 项通过（包括同号身份查询、退出版本隔离、SQL 表名白名单、域名隔离、订单、履约和付款服务）；显式加载 Mockito javaagent。前端类型检查与生产构建通过。静态核对 34 张表与主代码、测试夹具的 56 处 INSERT 字段列表，无缺失字段；此检查不代表实际执行过 SQL。
+
+扩大单元回归时，未改动的 HttpTrafficLoggingFilterTest.marksNonJsonResponseWithoutLoggingItsContent 仍有一项失败：期待带字节数的非 JSON 标记，现有实现只输出通用标记，本轮未改动该日志行为。全量 mvn test 已尝试，但数据库测试在创建夹具时收到本地 MySQL 连接 Operation not permitted，因重复相同环境错误而停止。数据库集成验证未完成，未执行初始化或引导 SQL，未修改现有数据库；前端仍有既有 500 kB 分包提示。

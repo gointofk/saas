@@ -24,14 +24,16 @@ public class MerchantService {
     }
     @Transactional(readOnly=true)
     public PageResponse<MerchantView> page(Principal p, Integer page) {
-        accounts.requireMerchantManager(p);
+        accounts.requirePlatformAdmin(p);
         int current=RequestValidation.page(page);
         return PageResponse.of(merchants.page(current).stream().map(this::view).toList(),current,merchants.count());
     }
     @Transactional
     public MerchantView create(Principal p, Create r) {
-        accounts.requireMerchantManager(p);
+        accounts.requirePlatformAdmin(p);
         validate(r.name(),r.shippingFee(),r.permissions());
+        String domain = StorefrontService.normalizeDomain(r.domain());
+        StorefrontService.validateBranding(r.logoUrl(),r.theme());
         if (r.code()==null || !r.code().matches("[A-Za-z0-9_-]{2,32}"))
             throw ApiException.badRequest("INVALID_MERCHANT_CODE","Merchant code must contain 2–32 letters, digits, underscores or hyphens.");
         if (r.adminAccount()==null || r.adminAccount().isBlank() || r.adminAccount().trim().length()>64 || r.adminName()==null || r.adminName().isBlank() || r.adminName().trim().length()>100)
@@ -41,42 +43,29 @@ public class MerchantService {
         if (r.password().length()<12 || r.password().length()>64)
             throw ApiException.badRequest("INVALID_PASSWORD","Password must be 12–64 characters.");
         String hash=PasswordHasher.hash(r.password());
-        long id=merchants.create(r.code().toUpperCase(Locale.ROOT),r.name().trim(),r.shippingFee(),p.userId());
+        long id=merchants.create(r.code().toUpperCase(Locale.ROOT),r.name().trim(),r.shippingFee(),domain,r.logoUrl(),r.theme(),p.userId());
         merchants.replacePermissions(id,new HashSet<>(r.permissions()),p.userId());
         var permissions=new ArrayList<>(List.of("order_audit","orders","commissions","bills","customers","payment_channels","members"));
         permissions.addAll(r.permissions());
-        members.create(id,new MemberRepository.MemberInput(r.adminAccount().trim().toLowerCase(Locale.ROOT),r.adminName().trim(),hash,permissions),p.userId());
-        merchants.audit(id,p.userId(),"merchant_created","Public permissions: "+r.permissions());
+        members.create(id,new MemberRepository.MemberInput(r.adminAccount().trim().toLowerCase(Locale.ROOT),r.adminName().trim(),hash,permissions),p.actor());
+        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+"; public permissions: "+r.permissions());
         return view(merchants.find(id).orElseThrow());
     }
     @Transactional
     public MerchantView update(Principal p,long id,Update r) {
-        accounts.requireMerchantManager(p);
+        accounts.requirePlatformAdmin(p);
         validate(r.name(),r.shippingFee(),r.permissions());
-        merchants.lockManagement();
+        String domain = StorefrontService.normalizeDomain(r.domain());
+        StorefrontService.validateBranding(r.logoUrl(),r.theme());
         var existing=merchants.lock(id);
         checkVersion(existing,r.expectedUpdatedAt());
-        if (!r.active() && existing.active()) merchants.protectManager(null,id);
+
         merchants.update(id,r.name().trim(),r.shippingFee(),r.active(),p.userId());
         var before=merchants.permissions(id);
+        merchants.branding(id,domain,r.logoUrl(),r.theme());
         merchants.replacePermissions(id,new HashSet<>(r.permissions()),p.userId());
-        merchants.audit(id,p.userId(),"merchant_updated","Before: "+existing+", permissions="+before+"; after: name="+r.name()+", active="+r.active()+", shippingFee="+r.shippingFee()+", permissions="+r.permissions());
+        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+", permissions="+before+"; after: name="+r.name()+", active="+r.active()+", shippingFee="+r.shippingFee()+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", permissions="+r.permissions());
         return view(merchants.find(id).orElseThrow());
-    }
-    @Transactional(readOnly=true)
-    public MerchantView settings(Principal p) {
-        accounts.requireMenu(p,"payment_channels");
-        return view(merchants.find(p.merchantId()).orElseThrow());
-    }
-    @Transactional
-    public MerchantView settings(Principal p,Settings r) {
-        accounts.requireMenu(p,"payment_channels");
-        validateFee(r.shippingFee());
-        var m=merchants.lock(p.merchantId());
-        checkVersion(m,r.expectedUpdatedAt());
-        merchants.update(m.id(),m.name(),r.shippingFee(),m.active(),p.userId());
-        merchants.audit(m.id(),p.userId(),"shipping_fee_updated",m.shippingFee()+" -> "+r.shippingFee());
-        return view(merchants.find(m.id()).orElseThrow());
     }
     private void checkVersion(MerchantRepository.Merchant m,Instant version) {
         if (version==null || !version.equals(m.updatedAt())) throw ApiException.conflict("MERCHANT_CHANGED","Merchant settings changed. Refresh and try again.");
@@ -91,10 +80,9 @@ public class MerchantService {
             throw ApiException.badRequest("INVALID_SHIPPING_FEE","Shipping fee must be a non-negative amount with at most two decimals.");
     }
     private MerchantView view(MerchantRepository.Merchant m) {
-        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFee(),m.updatedAt(),merchants.permissions(m.id()).stream().sorted().toList());
+        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFee(),m.updatedAt(),merchants.permissions(m.id()).stream().sorted().toList(),m.domain(),m.logoUrl(),m.theme());
     }
-    public record MerchantView(long id,String code,String name,boolean active,BigDecimal shippingFee,Instant updatedAt,List<String> permissions) {}
-    public record Create(String code,String name,BigDecimal shippingFee,List<String> permissions,String adminAccount,String adminName,String password,String confirmation) {}
-    public record Update(String name,boolean active,BigDecimal shippingFee,List<String> permissions,Instant expectedUpdatedAt) {}
-    public record Settings(BigDecimal shippingFee,Instant expectedUpdatedAt) {}
+    public record MerchantView(long id,String code,String name,boolean active,BigDecimal shippingFee,Instant updatedAt,List<String> permissions,String domain,String logoUrl,String theme) {}
+    public record Create(String code,String name,BigDecimal shippingFee,List<String> permissions,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme) {}
+    public record Update(String name,boolean active,BigDecimal shippingFee,List<String> permissions,Instant expectedUpdatedAt,String domain,String logoUrl,String theme) {}
 }

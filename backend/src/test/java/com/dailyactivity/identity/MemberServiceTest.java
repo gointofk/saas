@@ -3,7 +3,7 @@ package com.dailyactivity.identity;
 import com.dailyactivity.auth.application.AccountService;
 import com.dailyactivity.auth.domain.Account;
 import com.dailyactivity.auth.domain.Principal;
-import com.dailyactivity.auth.domain.port.UserRepository;
+import com.dailyactivity.auth.domain.port.AccountRepository;
 import com.dailyactivity.common.ApiException;
 import com.dailyactivity.identity.application.MemberService;
 import com.dailyactivity.identity.domain.port.MemberRepository;
@@ -25,38 +25,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 class MemberServiceTest {
-    private final UserRepository users = mock(UserRepository.class);
+    private final AccountRepository users = mock(AccountRepository.class);
     private final MerchantRepository merchants = mock(MerchantRepository.class);
     private final MemberRepository members = mock(MemberRepository.class);
     private final AccountService accounts = new AccountService(users, null, null, merchants);
     private final MemberService service = new MemberService(members, accounts, merchants, users);
-
-    @ParameterizedTest
-    @CsvSource({"7,true", "8,true", "9,false"})
-    void designatedAccountCannotBeEditedBySelfAnotherManagerOrOrdinaryMember(long actorId, boolean manager) {
-        Principal actor = actor(actorId, manager);
-        when(users.findByIdForUpdate(7)).thenReturn(Optional.of(account(7, 11, true)));
-        var request = new MemberService.MemberRequest("changed", "Changed", "Replacement123!", "Replacement123!", List.of("orders"));
-
-        assertThatThrownBy(() -> service.update(actor, 7, request))
-                .isInstanceOfSatisfying(ApiException.class, error -> {
-                    assertThat(error.status()).isEqualTo(HttpStatus.FORBIDDEN);
-                    assertThat(error.code()).isEqualTo("FORBIDDEN");
-                });
-        verifyNoInteractions(members);
-    }
-
-    @ParameterizedTest
-    @CsvSource({"7,true,false", "8,true,false", "9,false,false", "7,true,true", "8,true,true", "9,false,true"})
-    void designatedAccountStatusIsReadOnlyForEveryOperator(long actorId, boolean manager, boolean active) {
-        Principal actor = actor(actorId, manager);
-        when(users.findByIdForUpdate(7)).thenReturn(Optional.of(account(7, 11, true)));
-
-        assertThatThrownBy(() -> service.status(actor, 7, active))
-                .isInstanceOfSatisfying(ApiException.class, error ->
-                        assertThat(error.status()).isEqualTo(HttpStatus.FORBIDDEN));
-        verifyNoInteractions(members);
-    }
 
     @Test
     void ordinaryMemberCanStillBeEdited() {
@@ -65,7 +38,7 @@ class MemberServiceTest {
 
         service.update(actor, 10, new MemberService.MemberRequest("member", "Updated", null, null, List.of("orders")));
 
-        verify(members).update(11, 10, new MemberRepository.MemberInput("member", "Updated", null, List.of("orders")), 8);
+        verify(members).update(11, 10, new MemberRepository.MemberInput("member", "Updated", null, List.of("orders")), new com.dailyactivity.auth.domain.Actor("seller",8));
     }
 
     @ParameterizedTest
@@ -76,13 +49,13 @@ class MemberServiceTest {
 
         service.status(actor, 10, active);
 
-        verify(members).setActive(11, 10, active, 8);
+        verify(members).setActive(11, 10, active, new com.dailyactivity.auth.domain.Actor("seller",8));
     }
 
     @Test
     void crossMerchantTargetStillReturnsNotFound() {
         Principal actor = actor(8, true);
-        when(users.findByIdForUpdate(7)).thenReturn(Optional.of(account(7, 12, true)));
+        when(users.findByIdForUpdate("seller",7)).thenReturn(Optional.of(account(7, 12, true)));
 
         assertThatThrownBy(() -> service.status(actor, 7, false))
                 .isInstanceOfSatisfying(ApiException.class, error ->
@@ -91,18 +64,18 @@ class MemberServiceTest {
     }
 
     private Principal actor(long id, boolean manager) {
-        when(users.findActiveById(id)).thenReturn(Optional.of(account(id, 11, manager)));
+        when(users.findActiveById("seller",id)).thenReturn(Optional.of(account(id, 11, manager)));
         when(users.findPermissions(id)).thenReturn(Set.of("members", "orders"));
         when(merchants.find(11)).thenReturn(Optional.of(new MerchantRepository.Merchant(11, "TEST", "Test", true, BigDecimal.ZERO, Instant.EPOCH)));
         return new Principal(id, "seller", 0, 11);
     }
 
     private void ordinaryTarget() {
-        when(users.findByIdForUpdate(10)).thenReturn(Optional.of(account(10, 11, false)));
-        when(members.find(11, 10)).thenReturn(Optional.of(new MemberRepository.Member(10, "member", "Member", true, List.of("orders"), Instant.EPOCH, false)));
+        when(users.findByIdForUpdate("seller",10)).thenReturn(Optional.of(account(10, 11, false)));
+        when(members.find(11, 10)).thenReturn(Optional.of(new MemberRepository.Member(10, "member", "Member", true, List.of("orders"), Instant.EPOCH)));
     }
 
     private Account account(long id, long merchantId, boolean manager) {
-        return new Account(id, "seller", "member-" + id, null, "Member", null, null, null, null, true, null, null, 0, null, merchantId, manager);
+        return new Account(id, "seller", "member-" + id, null, "Member", null, null, null, null, true, null, null, 0, null, merchantId);
     }
 }

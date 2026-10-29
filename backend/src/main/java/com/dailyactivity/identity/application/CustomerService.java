@@ -2,7 +2,7 @@ package com.dailyactivity.identity.application;
 
 import com.dailyactivity.auth.application.AccountService;
 import com.dailyactivity.auth.domain.Principal;
-import com.dailyactivity.auth.domain.port.UserRepository;
+import com.dailyactivity.auth.domain.port.AccountRepository;
 import com.dailyactivity.auth.infrastructure.PasswordHasher;
 import com.dailyactivity.common.ApiException;
 import com.dailyactivity.common.PageResponse;
@@ -23,10 +23,10 @@ public class CustomerService {
     private static final char[] CODE_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
     private final CustomerRepository customers;
     private final AccountService accounts;
-    private final UserRepository users;
+    private final AccountRepository users;
     private final SecureRandom random = new SecureRandom();
 
-    public CustomerService(CustomerRepository customers, AccountService accounts, UserRepository users) {
+    public CustomerService(CustomerRepository customers, AccountService accounts, AccountRepository users) {
         this.customers = customers;
         this.accounts = accounts;
         this.users = users;
@@ -57,7 +57,7 @@ public class CustomerService {
             throw ApiException.badRequest("PASSWORD_CONFIRMATION_MISMATCH", "Password confirmation does not match.");
         validateReferrer(p, r.referrerId(), r.commissionRate(), null);
         String email = r.email().trim().toLowerCase(Locale.ROOT);
-        if (users.findCustomerByEmail(email).isPresent())
+        if (users.findCustomerByEmail(p.merchantId(), email).isPresent())
             throw ApiException.conflict("CUSTOMER_EMAIL_EXISTS", "Email is already in use.");
         for (int attempt = 0; attempt < 10; attempt++) {
             try {
@@ -65,7 +65,7 @@ public class CustomerService {
                 return Map.of("id", id);
             } catch (com.dailyactivity.common.ApiException e) {
                 if (!"CUSTOMER_IDENTIFIER_EXISTS".equals(e.code())) throw e;
-                if (users.findCustomerByEmail(email).isPresent())
+                if (users.findCustomerByEmail(p.merchantId(), email).isPresent())
                     throw ApiException.conflict("CUSTOMER_EMAIL_EXISTS", "Email is already in use.");
             }
         }

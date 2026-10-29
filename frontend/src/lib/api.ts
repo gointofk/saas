@@ -3,7 +3,7 @@ import { invalidateSellerSession, type SellerIdentity } from './seller-sessions'
 const CUSTOMER_TOKEN = 'dailyactivity.customer.token'
 const ADMIN_TOKEN = 'dailyactivity.admin.token'
 
-export type Area = 'customer' | 'admin'
+export type Area = 'customer' | 'admin' | 'platform'
 export type CustomerOrderAction = 'edit' | 'edit_items' | 'cancel' | 'pay'
 
 export type FulfillmentSummary = {
@@ -221,7 +221,7 @@ function lockActiveButton() {
 }
 
 function tokenKey(area: Area) {
-  return area === 'customer' ? CUSTOMER_TOKEN : ADMIN_TOKEN
+  return area === 'platform' ? 'dailyactivity.platform.token' : area === 'customer' ? CUSTOMER_TOKEN : ADMIN_TOKEN
 }
 
 function storedToken(area: Area) {
@@ -333,23 +333,23 @@ export const api = {
 
 export type AdminMember = {
   id: number; account: string; name: string; active: boolean
-  permissions: string[]; updatedAt: string; merchantManagement: boolean
+  permissions: string[]; updatedAt: string
 }
 
 export type PublicMenu = 'products' | 'certificates' | 'categories'
 export type MerchantIdentity = {
   id: number; code: string; name: string; active: boolean
-  shippingFee: number | string; updatedAt: string
+  shippingFee: number | string; updatedAt: string; domain: string; logoUrl: string; theme: string
 }
 export type Merchant = MerchantIdentity & { permissions: PublicMenu[] }
 export type MerchantPage = { items: Merchant[]; page: number; total: number; totalPages: number }
 export type MerchantCreate = {
-  code: string; name: string; shippingFee: string; permissions: PublicMenu[]
+  code: string; name: string; shippingFee: string; permissions: PublicMenu[]; domain: string; logoUrl: string; theme: string
   adminAccount: string; adminName: string; password: string; confirmation: string
 }
 export const merchantApi = {
-  page: (page: number) => request<MerchantPage>(`/admin/merchants?page=${page}`, {}, 'admin'),
-  create: (body: MerchantCreate) => request<Merchant>('/admin/merchants', { method: 'POST', body: JSON.stringify(body) }, 'admin'),
-  update: (id: number, body: { name: string; active: boolean; shippingFee: string; permissions: PublicMenu[]; expectedUpdatedAt: string }) =>
-    request<Merchant>(`/admin/merchants/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'admin'),
+  page: (page: number) => request<MerchantPage>(`/platform/merchants?page=${page}`, {}, 'platform'),
+  create: (body: MerchantCreate) => request<Merchant>('/platform/merchants', { method: 'POST', body: JSON.stringify(body) }, 'platform'),
+  update: (id: number, body: { name: string; active: boolean; shippingFee: string; permissions: PublicMenu[]; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string }) =>
+    request<Merchant>(`/platform/merchants/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'platform'),
 }

@@ -48,30 +48,30 @@ class OrderQuantityPricingTest {
     void reducingQuantityUsesSavedScheduleAndDoesNotReadTodaysProductPrices() {
         when(repository.quantityPrices(11)).thenReturn(List.of(new Band(1, 4, new BigDecimal("95")), new Band(5, null, new BigDecimal("85"))));
         edit(4, new BigDecimal("85"), null, null); // old clients send the previous unit price
-        verify(repository).updateItem(11, 4, new BigDecimal("95"), 3);
-        verify(repository).updateOrderAmounts(1, new BigDecimal("380"), BigDecimal.ZERO, new BigDecimal("380"), 3);
-        verify(repository, never()).markItemManualPrice(anyLong(), anyLong());
+        verify(repository).updateItem(11, 4, new BigDecimal("95"), new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(repository).updateOrderAmounts(1, new BigDecimal("380"), BigDecimal.ZERO, new BigDecimal("380"), new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(repository, never()).markItemManualPrice(anyLong(), any(com.dailyactivity.auth.domain.Actor.class));
         verifyNoInteractions(prices);
     }
     @Test
     void missingSnapshotPreservesLegacyOrManualPrice() {
         when(repository.quantityPrices(11)).thenReturn(List.of());
         edit(4, null, null, null);
-        verify(repository).updateItem(11, 4, new BigDecimal("85"), 3);
+        verify(repository).updateItem(11, 4, new BigDecimal("85"), new com.dailyactivity.auth.domain.Actor("seller",3));
     }
     @Test
     void explicitManualPriceCanRetainPreviousPriceAcrossAQuantityBoundary() {
         when(repository.quantityPrices(11)).thenReturn(List.of(new Band(1, 4, new BigDecimal("95")), new Band(5, null, new BigDecimal("85"))));
         edit(4, new BigDecimal("85"), true, "Agreed fixed price");
-        verify(repository).updateItem(11, 4, new BigDecimal("85"), 3);
-        verify(repository).markItemManualPrice(11, 3);
+        verify(repository).updateItem(11, 4, new BigDecimal("85"), new com.dailyactivity.auth.domain.Actor("seller",3));
+        verify(repository).markItemManualPrice(11, new com.dailyactivity.auth.domain.Actor("seller",3));
     }
     @Test
     void confirmedReceiptLocksQuantityChangesBeforeInventoryOrAmountWrites() {
         when(repository.receivedAmount(1)).thenReturn(BigDecimal.ONE);
         assertThatThrownBy(() -> edit(4, null, null, null)).extracting("code").isEqualTo("ORDER_AMOUNT_LOCKED");
         verifyNoInteractions(inventory);
-        verify(repository, never()).updateItem(anyLong(), anyInt(), any(), anyLong());
+        verify(repository, never()).updateItem(anyLong(), anyInt(), any(), any(com.dailyactivity.auth.domain.Actor.class));
     }
     private void edit(int quantity, BigDecimal price, Boolean manual, String reason) {
         service.updateAudit(SELLER, 1, new OrderService.AuditUpdate(List.of(new OrderService.AuditEditItem(9, BigDecimal.valueOf(quantity), price, manual)), reason, VERSION));

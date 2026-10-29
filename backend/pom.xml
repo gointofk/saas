@@ -12,9 +12,9 @@
     </parent>
 
     <groupId>com.dailyactivity</groupId>
-    <artifactId>dailyactivity-backend</artifactId>
+    <artifactId>saas</artifactId>
     <version>0.2.0</version>
-    <name>dailyactivity-backend</name>
+    <name>saas</name>
     <description>DailyActivity customer commerce and seller operations API</description>
 
     <properties>

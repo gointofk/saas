@@ -22,13 +22,13 @@ public class JdbcCustomerRepository implements CustomerRepository {
     }
 
     private String select() {
-        return "SELECT " + customerColumns() + " FROM `user` u WHERE u.user_type='customer' AND u.deleted=0 AND u.merchant_id=:merchantId";
+        return "SELECT " + customerColumns() + " FROM `user` u WHERE u.deleted=0 AND u.merchant_id=:merchantId";
     }
 
     private String customerColumns() {
         return "u.id,u.code,u.name,u.email,u.customer_type,u.price_tier,u.active,u.referrer_id,u.commission_rate,"
                 + "(SELECT COUNT(*) FROM sales_order o WHERE o.customer_id=u.id) order_count,"
-                + "(SELECT COUNT(*) FROM `user` r WHERE r.user_type='customer' AND r.referrer_id=u.id AND r.deleted=0) referral_count,"
+                + "(SELECT COUNT(*) FROM `user` r WHERE r.r.referrer_id=u.id AND r.deleted=0) referral_count,"
                 + "(SELECT COALESCE(SUM(o.total_amount),0) FROM sales_order o WHERE o.customer_id=u.id AND o.order_status<>'cancelled') total_amount,"
                 + "(SELECT COUNT(*) FROM sales_order o WHERE o.customer_id=u.id AND o.order_status<>'cancelled' AND o.payment_status IN ('unpaid','pending_verification','partially_paid')) unpaid_count,"
                 + "(SELECT COALESCE(SUM(o.total_amount-COALESCE((SELECT SUM(pr.received_amount) FROM payment_receipt pr WHERE pr.order_id=o.id),0)),0) FROM sales_order o WHERE o.customer_id=u.id AND o.order_status<>'cancelled' AND o.payment_status IN ('unpaid','pending_verification','partially_paid')) unpaid_amount,"
@@ -42,7 +42,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
 
     @Override
     public long count(long merchantId, String q, String customerType, boolean unpaidOnly) {
-        return jdbc.queryForObject("SELECT COUNT(*) FROM `user` u WHERE u.user_type='customer' AND u.deleted=0 AND u.merchant_id=:merchantId" + filter(q, customerType, unpaidOnly), params(q, customerType).addValue("merchantId", merchantId), Long.class);
+        return jdbc.queryForObject("SELECT COUNT(*) FROM `user` u WHERE u.deleted=0 AND u.merchant_id=:merchantId" + filter(q, customerType, unpaidOnly), params(q, customerType).addValue("merchantId", merchantId), Long.class);
     }
 
     @Override
@@ -54,7 +54,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
     public long create(long merchantId, CustomerInput i, String code, long actor) {
         try {
             KeyHolder h = new GeneratedKeyHolder();
-            jdbc.update("INSERT INTO `user`(merchant_id,user_type,email,name,password_hash,code,customer_type,price_tier,active,referrer_id,commission_rate,created_by_user_id,updated_by_user_id) VALUES(:merchantId,'customer',:email,:name,:passwordHash,:code,:customerType,:priceTier,1,:referrerId,:commissionRate,:actor,:actor)", params(i, code, actor).addValue("merchantId", merchantId), h, new String[]{"id"});
+            jdbc.update("INSERT INTO `user`(merchant_id,email,name,password_hash,code,customer_type,price_tier,active,referrer_id,commission_rate,created_by_user_id,updated_by_user_id) VALUES(:merchantId,:email,:name,:passwordHash,:code,:customerType,:priceTier,1,:referrerId,:commissionRate,:actor,:actor)", params(i, code, actor).addValue("merchantId", merchantId), h, new String[]{"id"});
             return h.getKey().longValue();
         } catch (DuplicateKeyException e) {
             throw ApiException.conflict("CUSTOMER_IDENTIFIER_EXISTS", "Email or customer code is already in use.");
@@ -64,7 +64,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
     @Override
     public void update(long merchantId, long id, CustomerInput i, long actor) {
         try {
-            int n = jdbc.update("UPDATE `user` SET email=:email,name=:name,customer_type=:customerType,price_tier=:priceTier,referrer_id=:referrerId,commission_rate=:commissionRate,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE merchant_id=:merchantId AND id=:id AND user_type='customer' AND deleted=0", params(i, null, actor).addValue("merchantId", merchantId).addValue("id", id));
+            int n = jdbc.update("UPDATE `user` SET email=:email,name=:name,customer_type=:customerType,price_tier=:priceTier,referrer_id=:referrerId,commission_rate=:commissionRate,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type='seller' WHERE merchant_id=:merchantId AND id=:id AND deleted=0", params(i, null, actor).addValue("merchantId", merchantId).addValue("id", id));
             if (n != 1) throw ApiException.notFound("Customer not found.");
         } catch (DuplicateKeyException e) {
             throw ApiException.conflict("CUSTOMER_EMAIL_EXISTS", "Email is already in use.");
@@ -73,13 +73,13 @@ public class JdbcCustomerRepository implements CustomerRepository {
 
     @Override
     public void setActive(long merchantId, long id, boolean active, long actor) {
-        int n = jdbc.update("UPDATE `user` SET active=:active,auth_version=auth_version+1,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE merchant_id=:merchantId AND id=:id AND user_type='customer' AND deleted=0", new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("id", id).addValue("active", active).addValue("actor", actor));
+        int n = jdbc.update("UPDATE `user` SET active=:active,auth_version=auth_version+1,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type='seller' WHERE merchant_id=:merchantId AND id=:id AND deleted=0", new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("id", id).addValue("active", active).addValue("actor", actor));
         if (n != 1) throw ApiException.notFound("Customer not found.");
     }
 
     @Override
     public void setPassword(long merchantId, long id, String hash, long actor) {
-        int n = jdbc.update("UPDATE `user` SET password_hash=:hash,auth_version=auth_version+1,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE merchant_id=:merchantId AND id=:id AND user_type='customer' AND deleted=0", new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("id", id).addValue("hash", hash).addValue("actor", actor));
+        int n = jdbc.update("UPDATE `user` SET password_hash=:hash,auth_version=auth_version+1,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type='seller' WHERE merchant_id=:merchantId AND id=:id AND deleted=0", new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("id", id).addValue("hash", hash).addValue("actor", actor));
         if (n != 1) throw ApiException.notFound("Customer not found.");
     }
 
@@ -102,7 +102,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
                 + "(SELECT COALESCE(SUM(a.base_amount),0) FROM commission_accrual a WHERE a.referrer_id=:referrerId AND a.referred_customer_id=u.id AND a.status IN ('estimated','payable')) pending_base,"
                 + "(SELECT COALESCE(SUM(a.commission_amount),0) FROM commission_accrual a WHERE a.referrer_id=:referrerId AND a.referred_customer_id=u.id AND a.status IN ('estimated','payable')) pending_commission,"
                 + "(SELECT COALESCE(SUM(s.commission_amount),0) FROM commission_settlement s WHERE s.referrer_id=:referrerId AND s.referred_customer_id=u.id) settled_commission_amount "
-                + "FROM `user` u WHERE u.user_type='customer' AND u.deleted=0 AND u.merchant_id=:merchantId AND ((u.referrer_id=:referrerId AND u.commission_rate>0) "
+                + "FROM `user` u WHERE u.deleted=0 AND u.merchant_id=:merchantId AND ((u.referrer_id=:referrerId AND u.commission_rate>0) "
                 + "OR EXISTS (SELECT 1 FROM commission_accrual a JOIN sales_order o ON o.id=a.order_id WHERE a.referrer_id=:referrerId AND a.referred_customer_id=u.id AND a.rate>0 AND o.audit_status='approved' AND o.order_status<>'cancelled')) "
                 + "ORDER BY current_relation DESC,u.created_at DESC,u.id DESC";
         return jdbc.query(sql, new MapSqlParameterSource("referrerId", referrerId).addValue("merchantId", merchantId), (rs, row) ->
@@ -113,12 +113,12 @@ public class JdbcCustomerRepository implements CustomerRepository {
 
     @Override
     public long directReferralCount(long merchantId, long referrerId) {
-        return jdbc.queryForObject("SELECT COUNT(*) FROM `user` WHERE merchant_id=:merchantId AND user_type='customer' AND referrer_id=:id AND deleted=0", new MapSqlParameterSource("id", referrerId).addValue("merchantId", merchantId), Long.class);
+        return jdbc.queryForObject("SELECT COUNT(*) FROM `user` WHERE merchant_id=:merchantId AND referrer_id=:id AND deleted=0", new MapSqlParameterSource("id", referrerId).addValue("merchantId", merchantId), Long.class);
     }
 
     @Override
     public ReferralSummary referralSummary(long merchantId, long referrerId) {
-        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM `user` WHERE merchant_id=:merchantId AND user_type='customer' AND referrer_id=:id AND deleted=0", new MapSqlParameterSource("id", referrerId).addValue("merchantId", merchantId), Long.class);
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM `user` WHERE merchant_id=:merchantId AND referrer_id=:id AND deleted=0", new MapSqlParameterSource("id", referrerId).addValue("merchantId", merchantId), Long.class);
         var row = jdbc.queryForMap("SELECT "
                         + "COUNT(*) order_count,"
                         + "COALESCE(SUM(a.status='estimated'),0) pending_verification_order_count,"

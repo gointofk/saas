@@ -35,7 +35,7 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
     @Test
     @DisplayName("不存在的客户邮箱不能登录")
     void customerLoginRejectsUnknownEmail() {
-        assertThatThrownBy(() -> accounts.customerLogin("missing-" + data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
+        assertThatThrownBy(() -> accounts.customerLogin(data.customer().merchantId(), "missing-" + data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo("UNAUTHORIZED");
@@ -44,7 +44,7 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
     @Test
     @DisplayName("客户密码错误不能登录")
     void customerLoginRejectsWrongPassword() {
-        assertThatThrownBy(() -> accounts.customerLogin(data.customerEmail(), "WrongPassword123!"))
+        assertThatThrownBy(() -> accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), "WrongPassword123!"))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo("UNAUTHORIZED");
@@ -55,7 +55,7 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
     void disabledCustomerCannotLoginOrUseExistingPrincipal() {
         jdbc.update("UPDATE `user` SET active=0,auth_version=auth_version+1 WHERE id=?", data.customerId());
 
-        assertThatThrownBy(() -> accounts.customerLogin(data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
+        assertThatThrownBy(() -> accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo("UNAUTHORIZED");
@@ -85,11 +85,11 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
     void passwordChangeInvalidatesOldPassword() {
         accounts.changeCustomerPassword(customer(), PrdTestFixture.CUSTOMER_PASSWORD, "NewCustomerPass123!", "NewCustomerPass123!");
 
-        assertThatThrownBy(() -> accounts.customerLogin(data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
+        assertThatThrownBy(() -> accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo("UNAUTHORIZED");
-        assertThat(accounts.customerLogin(data.customerEmail(), "NewCustomerPass123!")).containsKeys("accessToken", "customer");
+        assertThat(accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), "NewCustomerPass123!")).containsKeys("accessToken", "customer");
     }
 
     @Test
@@ -151,11 +151,11 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
                 data.customerEmail(), "Test Customer", replacement, replacement, "regular", "V1",
                 data.referrerId(), new BigDecimal("5.00")));
 
-        assertThatThrownBy(() -> accounts.customerLogin(data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
+        assertThatThrownBy(() -> accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo("UNAUTHORIZED");
-        assertThat(accounts.customerLogin(data.customerEmail(), replacement))
+        assertThat(accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), replacement))
                 .containsKeys("accessToken", "customer")
                 .doesNotContainKey("password");
     }
@@ -170,7 +170,7 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
                 .extracting("code")
                 .isEqualTo("PASSWORD_CONFIRMATION_MISMATCH");
 
-        assertThat(accounts.customerLogin(data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
+        assertThat(accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD))
                 .containsKeys("accessToken", "customer");
     }
 
@@ -218,7 +218,7 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
         // The shared test database may contain an application administrator.
         // Restrict this transaction to the fixture member so the invariant is
         // tested independently of pre-existing rows.
-        jdbc.update("UPDATE `user` SET active=0 WHERE user_type='seller' AND id<>?", data.sellerId());
+        jdbc.update("UPDATE seller SET active=0 WHERE 1=1 AND id<>?", data.sellerId());
         assertThatThrownBy(() -> members.status(seller(), data.sellerId(), false))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
