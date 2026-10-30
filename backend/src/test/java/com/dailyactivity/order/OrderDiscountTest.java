@@ -290,6 +290,6 @@ class OrderDiscountTest {
         return new OrderRepository.OrderRow(1, "TST-20261002-001", 2, "TST", "Test customer", "customer@example.test",
                 "rejected".equals(auditStatus) ? "cancelled" : "pending", paymentStatus, "{}", "Recipient", "City", null, null,
                 new BigDecimal("100.00"), new BigDecimal("0.00"), amount, new BigDecimal("100.00").subtract(amount),
-                null, null, null, VERSION, null, VERSION, null, auditStatus, null, null, null, null, "paid".equals(paymentStatus) ? new BigDecimal("100.00") : BigDecimal.ZERO);
+                null, null, null, VERSION, null, VERSION, null, auditStatus, null, null, null, null, "paid".equals(paymentStatus) ? new BigDecimal("100.00") : BigDecimal.ZERO, false);
     }
 }

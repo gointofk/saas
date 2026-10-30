@@ -21,13 +21,13 @@ public class TestFileServiceConfiguration {
         return new FileService(files, accounts, properties) {
             @Override
             public void validateParcelUploadToken(String uuid, String purpose, long actor, Long orderId,
-                                                   String stage, String parcelUuid, String token) {
+                                                   String stage, String parcelUuid, String token, long merchantId) {
                 // Parcel state tests use synthetic references; production signatures are tested separately.
             }
 
             @Override
             public void validateUploadToken(String uuid, String purpose, long actor, Long orderId,
-                                            String stage, String token) {
+                                            String stage, String token, long merchantId) {
                 // The transition tests model already-uploaded, valid file references.
             }
         };

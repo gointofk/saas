@@ -122,8 +122,8 @@ public interface OrderRepository {
                     String recipientName, String city, String buyerNote, String internalNote, BigDecimal subtotal, BigDecimal shippingFee, BigDecimal discountAmount, BigDecimal total, Long referrerId,
                     String referrerName, BigDecimal commissionRate, Instant createdAt, Instant completedAt,
                     Instant updatedAt, Instant cancelledAt, String auditStatus, Long auditedByUserId,
-                    String auditedByName, Instant auditedAt, String auditRemark, BigDecimal paidAmount) {
-    }
+                    String auditedByName, Instant auditedAt, String auditRemark, BigDecimal paidAmount,
+                    boolean paymentLinkRequested) {}
 
     record ItemRow(long id, long productId, String sku, String name, String productType, int quantity,
                    BigDecimal unitPrice, BigDecimal lineAmount) {

@@ -9,7 +9,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class JdbcMerchantRepository implements MerchantRepository {
@@ -55,21 +56,6 @@ public class JdbcMerchantRepository implements MerchantRepository {
     }
     public void updateRegistrationEnabled(long id, boolean enabled, long actor) {
         jdbc.update("UPDATE merchant SET customer_registration_enabled=:enabled,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE id=:id",new MapSqlParameterSource("id",id).addValue("enabled",enabled).addValue("actor",actor));
-    }
-    public Set<String> permissions(long id) {
-        return new HashSet<>(jdbc.query("SELECT menu_code FROM merchant_permission WHERE merchant_id=:id AND deleted=0",new MapSqlParameterSource("id",id),(r,n)->r.getString(1)));
-    }
-    public void replacePermissions(long id, Set<String> granted, long actor) {
-        var existing = permissions(id);
-        for (String menu : PUBLIC_MENUS) {
-            var p = new MapSqlParameterSource("id",id).addValue("menu",menu).addValue("actor",actor);
-            if (existing.contains(menu) && !granted.contains(menu)) {
-                jdbc.update("UPDATE merchant_permission SET deleted=id WHERE merchant_id=:id AND menu_code=:menu AND deleted=0",p);
-                jdbc.update("UPDATE seller_permission p JOIN seller u ON u.id=p.seller_id SET p.deleted=p.id,p.updated_at=UTC_TIMESTAMP(6),p.updated_by_user_id=:actor,p.updated_by_type='platform' WHERE u.merchant_id=:id AND p.menu_code=:menu AND p.deleted=0",p);
-            } else if (!existing.contains(menu) && granted.contains(menu)) {
-                jdbc.update("INSERT INTO merchant_permission(merchant_id,menu_code,created_by_user_id) VALUES(:id,:menu,:actor)",p);
-            }
-        }
     }
     public void audit(long merchantId,Actor actor,String action,String detail) {
         jdbc.update("INSERT INTO merchant_event(merchant_id,actor_user_id,actor_type,action,detail) VALUES(:merchant,:actor,:actorType,:action,:detail)",new MapSqlParameterSource("merchant",merchantId).addValue("actor",actor.id()).addValue("actorType",actor.type()).addValue("action",action).addValue("detail",detail));

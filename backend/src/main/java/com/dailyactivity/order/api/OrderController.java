@@ -66,6 +66,11 @@ public class OrderController {
         return service.submitPayment(AuthSupport.principal(r, "customer"), id, body);
     }
 
+    @PostMapping("/customer/orders/{id}/payment-link-request")
+    public Map<String, Object> requestPaymentLink(@PathVariable long id, HttpServletRequest r) {
+        return service.requestPaymentLink(AuthSupport.principal(r, "customer"), id);
+    }
+
     @GetMapping("/customer/orders/{id}/payments")
     public PageResponse<Map<String, Object>> customerPayments(@PathVariable long id, @RequestParam(required = false) Integer page, HttpServletRequest r) {
         return service.paymentRecords(AuthSupport.principal(r, "customer"), id, page);
@@ -138,9 +143,9 @@ public class OrderController {
     }
 
     @RequireMenu("orders")
-    @GetMapping("/admin/orders/payment-channels")
-    public java.util.List<Map<String, Object>> sellerPaymentChannels(HttpServletRequest r) {
-        return service.sellerPaymentChannels(AuthSupport.principal(r, "seller"));
+    @GetMapping("/admin/orders/{id}/payment-channels")
+    public java.util.List<Map<String, Object>> sellerPaymentChannels(@PathVariable long id, HttpServletRequest r) {
+        return service.sellerPaymentChannels(AuthSupport.principal(r, "seller"), id);
     }
 
     @RequireMenu("orders")

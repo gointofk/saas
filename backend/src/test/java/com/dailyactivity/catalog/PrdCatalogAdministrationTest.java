@@ -33,9 +33,9 @@ class PrdCatalogAdministrationTest extends PrdDatabaseTest {
                         new CatalogRepository.PriceView("V6", new BigDecimal("6.00")))));
         long id = ((Number) created.get("id")).longValue();
 
-        assertThat(catalogRepository.product(id, "V5", false, true).orElseThrow().price())
+        assertThat(catalogRepository.product(seller().merchantId(), id, "V5", false, true).orElseThrow().price())
                 .isEqualByComparingTo("5.00");
-        assertThat(catalogRepository.product(id, "V6", false, true).orElseThrow().price())
+        assertThat(catalogRepository.product(seller().merchantId(), id, "V6", false, true).orElseThrow().price())
                 .isEqualByComparingTo("6.00");
     }
 

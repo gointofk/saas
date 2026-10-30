@@ -40,7 +40,7 @@ class PrdCatalogAndCartTest extends PrdDatabaseTest {
         assertThat(products).allSatisfy(candidate -> assertThat(candidate)
                 .doesNotContainKeys("page", "productType", "active", "basePrice", "costPrice",
                         "tierPrices", "priceTier", "customerType"));
-        assertThat(catalog.customerCategories()).anySatisfy(category -> assertThat(category)
+        assertThat(catalog.customerCategories(customer())).anySatisfy(category -> assertThat(category)
                 .containsEntry("id", data.categoryId())
                 .containsOnlyKeys("id", "name"));
     }

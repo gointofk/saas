@@ -16,7 +16,7 @@ import java.util.Map;
 public class CatalogController {
     private final CatalogService service;
     public CatalogController(CatalogService service) { this.service = service; }
-    @GetMapping("/customer/categories") public List<Map<String,Object>> categories(HttpServletRequest request) { AuthSupport.principal(request, "customer"); return service.customerCategories(); }
+    @GetMapping("/customer/categories") public List<Map<String,Object>> categories(HttpServletRequest request) { return service.customerCategories(AuthSupport.principal(request, "customer")); }
     @GetMapping("/customer/products") public List<Map<String,Object>> products(HttpServletRequest request) { return service.customerProducts(AuthSupport.principal(request, "customer")); }
     @GetMapping("/admin/categories") public List<Map<String,Object>> adminCategories(HttpServletRequest request) { return service.adminCategories(AuthSupport.principal(request, "seller")); }
     @RequireMenu("categories")

@@ -4,15 +4,15 @@ DailyActivity is a research-supply commerce workspace with three authenticated s
 
 - Customer catalogue, cart, checkout, orders, payment submission, profile and addresses.
 - Seller console for dashboard metrics, order verification/fulfilment, products, customers, finance and payment channels.
-- Platform console for merchant provisioning, domains, branding, themes, shipping fees and shared-data permissions.
+- Platform console for merchant provisioning, domains, branding, themes and shipping fees.
 
 ## Run locally
 
-当前为全新系统 V1.8，买家、商家成员和平台管理员分别使用 user、seller、admin 表，商家权限使用 seller_permission。无历史数据迁移或旧客户端兼容要求。商品、等级价、成本、库存、类目和 COA 共用，其余经营数据按买家/成员所属商户隔离。平台超级管理员独立于商户，负责开通和配置商户，不授予跨商户订单、客户或资金访问权。买家邮箱在商户内唯一，可在不同商户分别建号；商家与平台登录账号分别在 seller、admin 表内唯一，可跨身份同名。
+当前为全新系统 V1.8，买家、商家成员和平台管理员分别使用 user、seller、admin 表，商家权限使用 seller_permission。无历史数据迁移或旧客户端兼容要求。商品、价格、成本、库存、类目、COA、商品绑定及文件均归属单一商户；各商户在同一 SaaS 应用和数据库内逻辑隔离。平台超级管理员独立于商户，只负责开通和配置商户，不管理商品目录，也不访问商户订单、客户或资金。买家邮箱在商户内唯一，可在不同商户分别建号；商家与平台登录账号分别在 seller、admin 表内唯一，可跨身份同名。
 
-全新空库由部署人员执行 [完整初始化 SQL](doc/init_mysql56.sql)，随后按 [平台账号引导 SQL](doc/bootstrap_platform.sql) 设置账号、姓名和 Argon2id 摘要并显式执行。没有默认密码。通过通用域名 `/platform/` 登录平台，开通商户及首个管理员；商家使用 `/admin/`，买家通过商户唯一域名访问 `/`。平台配置名称、logo 地址、CSS 主题、运费及公共菜单授权。DNS、HTTPS 及保留 Host 的反向代理配置见技术设计 V1.8 部署补充。
+全新空库由部署人员执行 [完整初始化 SQL](doc/init_mysql56.sql)，随后按 [平台账号引导 SQL](doc/bootstrap_platform.sql) 设置账号、姓名和 Argon2id 摘要并显式执行。没有默认密码。通过通用域名 `/platform/` 登录平台，开通商户及首个管理员；商家使用 `/admin/`，买家通过商户唯一域名访问 `/`。平台配置商户名称、logo 地址、CSS 主题和运费；商户成员按自己的菜单权限维护本商户目录。DNS、HTTPS 及保留 Host 的反向代理配置见技术设计 V1.8 部署补充。
 
-初始化结构直接包含阶梯价、订单优惠、审核、分阶段付款和多包履约，不执行旧迁移脚本，应用和测试也不自动初始化或升级数据库。测试库须提前准备完整 V1.8 结构；测试在事务中创建最小业务数据，客户 HTTP 请求同时提供令牌和所属商户 Host。
+初始化结构直接包含商户独立目录、阶梯价、订单优惠、审核、分阶段付款和多包履约。系统尚未部署，不存在旧业务库或迁移步骤；只需对新建空测试库执行当前完整初始化 SQL。应用和测试不自动初始化或升级数据库；测试在事务中创建最小业务数据，客户 HTTP 请求同时提供令牌和所属商户 Host。
 
 卖家按 V1～V6 配置数量档，买家只看到自己适用的价格，详见 [数量阶梯价设计](doc/quantity_pricing_design.md)。付款请求显式提交本次金额及订单版本；包裹与付款记录通过各自接口维护，前后端和 SQL 使用同一版本发布。
 

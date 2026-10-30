@@ -18,34 +18,34 @@ public class JdbcInventoryRepository implements InventoryRepository {
     }
 
     @Override
-    public boolean adjust(long productId, int targetStock, String reason, String operationId, Actor actorId) {
-        MapSqlParameterSource p = new MapSqlParameterSource("id", productId);
-        Integer before = jdbc.query("SELECT stock_available FROM product WHERE id=:id AND deleted=0 FOR UPDATE", p, rows -> rows.next() ? rows.getInt(1) : null);
+    public boolean adjust(long merchantId, long productId, int targetStock, String reason, String operationId, Actor actorId) {
+        MapSqlParameterSource p = new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("id", productId);
+        Integer before = jdbc.query("SELECT stock_available FROM product WHERE merchant_id=:merchantId AND id=:id AND deleted=0 FOR UPDATE", p, rows -> rows.next() ? rows.getInt(1) : null);
         if (before == null) throw ApiException.notFound("Product not found.");
         int delta = targetStock - before;
         if (delta == 0) return true;
-        jdbc.update("UPDATE product SET stock_available=:target,updated_by_user_id=:actor,updated_by_type=:actorType,updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0", p.addValue("target", targetStock).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
-        jdbc.update("INSERT INTO stock_movement(merchant_id,product_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,operation_id,created_by_user_id,created_by_type) VALUES((SELECT merchant_id FROM seller WHERE id=:actor),:id,'manual_adjust',:delta,:before,:after,:reason,:operationId,:actor,:actorType)", p.addValue("delta", delta).addValue("before", before).addValue("after", targetStock).addValue("reason", reason).addValue("operationId", operationId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("UPDATE product SET stock_available=:target,updated_by_user_id=:actor,updated_by_type=:actorType,updated_at=UTC_TIMESTAMP(6) WHERE merchant_id=:merchantId AND id=:id AND deleted=0", p.addValue("target", targetStock).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("INSERT INTO stock_movement(merchant_id,product_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,operation_id,created_by_user_id,created_by_type) VALUES(:merchantId,:id,'manual_adjust',:delta,:before,:after,:reason,:operationId,:actor,:actorType)", p.addValue("delta", delta).addValue("before", before).addValue("after", targetStock).addValue("reason", reason).addValue("operationId", operationId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
         return true;
     }
 
     @Override
-    public boolean decrement(long productId, int quantity, Actor actorId, String operationId, long orderId) {
-        MapSqlParameterSource p = new MapSqlParameterSource("id", productId);
-        Integer before = jdbc.query("SELECT stock_available FROM product WHERE id=:id AND deleted=0 FOR UPDATE", p, rows -> rows.next() ? rows.getInt(1) : null);
+    public boolean decrement(long merchantId, long productId, int quantity, Actor actorId, String operationId, long orderId) {
+        MapSqlParameterSource p = new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("id", productId).addValue("orderId", orderId);
+        Integer before = jdbc.query("SELECT p.stock_available FROM product p JOIN sales_order o ON o.id=:orderId AND o.merchant_id=:merchantId WHERE p.merchant_id=:merchantId AND p.id=:id AND p.deleted=0 FOR UPDATE", p, rows -> rows.next() ? rows.getInt(1) : null);
         if (before == null || before < quantity) return false;
-        jdbc.update("UPDATE product SET stock_available=stock_available-:quantity,updated_by_user_id=:actor,updated_by_type=:actorType,updated_at=UTC_TIMESTAMP(6) WHERE id=:id AND deleted=0", p.addValue("quantity", quantity).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
-        jdbc.update("INSERT INTO stock_movement(merchant_id,product_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,operation_id,created_by_user_id,created_by_type) VALUES((SELECT merchant_id FROM sales_order WHERE id=:orderId),:id,:orderId,'order_create',:delta,:before,:after,:operationId,:actor,:actorType)", p.addValue("orderId", orderId).addValue("delta", -quantity).addValue("before", before).addValue("after", before - quantity).addValue("operationId", operationId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("UPDATE product SET stock_available=stock_available-:quantity,updated_by_user_id=:actor,updated_by_type=:actorType,updated_at=UTC_TIMESTAMP(6) WHERE merchant_id=:merchantId AND id=:id AND deleted=0", p.addValue("quantity", quantity).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("INSERT INTO stock_movement(merchant_id,product_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,operation_id,created_by_user_id,created_by_type) VALUES(:merchantId,:id,:orderId,'order_create',:delta,:before,:after,:operationId,:actor,:actorType)", p.addValue("delta", -quantity).addValue("before", before).addValue("after", before - quantity).addValue("operationId", operationId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
         return true;
     }
 
     @Override
-    public void restore(long productId, int quantity, String reason, String operationId, long orderId, Actor actorId) {
-        MapSqlParameterSource p = new MapSqlParameterSource("id", productId);
-        Integer before = jdbc.query("SELECT stock_available FROM product WHERE id=:id FOR UPDATE", p, rows -> rows.next() ? rows.getInt(1) : null);
+    public void restore(long merchantId, long productId, int quantity, String reason, String operationId, long orderId, Actor actorId) {
+        MapSqlParameterSource p = new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("id", productId).addValue("orderId", orderId);
+        Integer before = jdbc.query("SELECT p.stock_available FROM product p JOIN sales_order o ON o.id=:orderId AND o.merchant_id=:merchantId WHERE p.merchant_id=:merchantId AND p.id=:id FOR UPDATE", p, rows -> rows.next() ? rows.getInt(1) : null);
         if (before == null) throw ApiException.notFound("Product not found.");
-        jdbc.update("UPDATE product SET stock_available=stock_available+:quantity,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type=:actorType WHERE id=:id", p.addValue("quantity", quantity).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
-        jdbc.update("INSERT INTO stock_movement(merchant_id,product_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,operation_id,created_by_user_id,created_by_type) VALUES((SELECT merchant_id FROM sales_order WHERE id=:orderId),:id,:orderId,'order_cancel',:quantity,:before,:after,:reason,:operationId,:actor,:actorType)", p.addValue("orderId", orderId).addValue("before", before).addValue("after", before + quantity).addValue("reason", reason).addValue("operationId", operationId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("UPDATE product SET stock_available=stock_available+:quantity,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type=:actorType WHERE merchant_id=:merchantId AND id=:id", p.addValue("quantity", quantity).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("INSERT INTO stock_movement(merchant_id,product_id,order_id,movement_type,quantity_delta,quantity_before,quantity_after,reason,operation_id,created_by_user_id,created_by_type) VALUES(:merchantId,:id,:orderId,'order_cancel',:quantity,:before,:after,:reason,:operationId,:actor,:actorType)", p.addValue("before", before).addValue("after", before + quantity).addValue("reason", reason).addValue("operationId", operationId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
     }
 
     @Override

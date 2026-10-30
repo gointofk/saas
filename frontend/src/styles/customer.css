@@ -89,6 +89,30 @@
 .demo-customer-shell .no-payment-channels { display: grid; gap: 14px; }
 .demo-customer-shell .no-payment-channels .empty-state { min-height: 90px; border: 0; color: var(--color-muted); }
 .demo-customer-shell .no-payment-channels .back-btn { min-height: 44px; border: 1px solid var(--color-line-strong); border-radius: 8px; background: transparent; color: var(--color-ink); font-weight: 700; }
+.demo-customer-shell .payment-method-picker { display: grid; gap: 12px; margin: 16px 0; }
+.demo-customer-shell .payment-method-options { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.demo-customer-shell .payment-method-options legend { margin-bottom: 8px; color: var(--color-muted); font-size: 12px; font-weight: 700; }
+.demo-customer-shell .payment-method-option { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 13px 14px; border: 1px solid var(--color-line); border-radius: 8px; background: #fff; cursor: pointer; }
+.demo-customer-shell .payment-method-option.selected { border-color: var(--color-ink); background: var(--color-surface-soft); }
+.demo-customer-shell .payment-method-option.unavailable { color: var(--color-muted); cursor: default; }
+.demo-customer-shell .payment-method-option input { flex: 0 0 auto; accent-color: var(--color-ink); }
+.demo-customer-shell .payment-method-option-copy { display: grid; gap: 3px; min-width: 0; }
+.demo-customer-shell .payment-method-option-copy strong { color: var(--color-ink); font-size: 13px; }
+.demo-customer-shell .payment-method-option-copy small { color: var(--color-muted); font-size: 11px; line-height: 1.4; }
+.demo-customer-shell .payment-method-requested-tag { flex: 0 0 auto; margin-left: auto; color: #356046; font-size: 11px; font-weight: 700; }
+.demo-customer-shell .payment-link-request-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface-soft); }
+.demo-customer-shell .payment-link-request-card strong { color: var(--color-ink); font-size: 13px; }
+.demo-customer-shell .payment-link-request-card p { margin: 5px 0 0; color: var(--color-muted); font-size: 12px; line-height: 1.5; }
+.demo-customer-shell .payment-link-request-card button { flex: 0 0 auto; min-height: 40px; padding: 0 14px; border: 1px solid var(--color-ink); border-radius: 7px; background: var(--color-ink); color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.demo-customer-shell .payment-link-request-card button:disabled { opacity: .58; cursor: default; }
+.demo-customer-shell .payment-link-request-card.requested { border-color: #c9ddce; background: #f1f7f2; }
+.demo-customer-shell .payment-link-request-badge { display: inline-flex; width: fit-content; align-items: center; padding: 4px 8px; border: 1px solid #cfdfd3; border-radius: 999px; background: #f0f6f1; color: #356046; font-size: 11px; font-weight: 700; }
+.demo-customer-shell .detail-payment-link-requested { margin: 0 0 12px; }
+
+@media (max-width: 620px) {
+  .demo-customer-shell .payment-link-request-card { align-items: stretch; flex-direction: column; }
+  .demo-customer-shell .payment-link-request-card button { align-self: flex-start; }
+}
 .demo-customer-shell .payment-submitted-state { padding: 16px; border: 1px solid #d4e3d9; border-radius: 9px; background: #eef6f0; color: var(--color-ink); }
 .demo-customer-shell .payment-submitted-state p { margin: 6px 0 12px; color: var(--color-muted); }
 .demo-customer-shell .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); }

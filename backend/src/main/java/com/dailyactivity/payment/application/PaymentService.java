@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.math.BigDecimal;
+import com.dailyactivity.auth.domain.Actor;
 
 @Service
 public class PaymentService {
@@ -26,9 +27,36 @@ public class PaymentService {
     }
 
     @Transactional(readOnly = true)
-    public java.util.List<Map<String, Object>> customerChannels(Principal p) {
+    public Map<String, Object> customerPaymentOptions(Principal p) {
         accounts.customer(p);
-        return payments.find(p.merchantId(), true).stream().map(this::view).toList();
+        var methods = payments.paymentMethods(p.merchantId());
+        var channels = methods.cryptoEnabled()
+                ? payments.find(p.merchantId(), true).stream().map(this::view).toList()
+                : java.util.List.<Map<String, Object>>of();
+        return Map.of("cryptoEnabled", methods.cryptoEnabled(),
+                "onlinePaymentLinkEnabled", methods.onlinePaymentLinkEnabled(),
+                "channels", channels);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> adminPaymentMethods(Principal p) {
+        accounts.requireMenu(p, "payment_channels");
+        return methodView(payments.paymentMethods(p.merchantId()));
+    }
+
+    @Transactional
+    public Map<String, Object> updatePaymentMethods(Principal p, PaymentMethodsRequest request) {
+        accounts.requireMenu(p, "payment_channels");
+        if (request == null || request.cryptoEnabled() == null || request.onlinePaymentLinkEnabled() == null)
+            throw ApiException.badRequest("INVALID_PAYMENT_METHODS", "Choose whether cryptocurrency and online payment links are available.");
+        var methods = new PaymentRepository.PaymentMethods(request.cryptoEnabled(), request.onlinePaymentLinkEnabled());
+        payments.updatePaymentMethods(p.merchantId(), methods, new Actor("seller", p.userId()));
+        return methodView(methods);
+    }
+
+    private Map<String, Object> methodView(PaymentRepository.PaymentMethods methods) {
+        return Map.of("cryptoEnabled", methods.cryptoEnabled(),
+                "onlinePaymentLinkEnabled", methods.onlinePaymentLinkEnabled());
     }
 
     @Transactional(readOnly = true)
@@ -94,4 +122,6 @@ public class PaymentService {
             return new PaymentRepository.ChannelInput(name.trim(), currencyCode.trim().toUpperCase(), network.trim(), receivingAddress.trim(), instructions, additionalRate == null ? null : additionalRate.setScale(2), qrFileUuid.trim(), active, sortNo);
         }
     }
+
+    public record PaymentMethodsRequest(Boolean cryptoEnabled, Boolean onlinePaymentLinkEnabled) {}
 }

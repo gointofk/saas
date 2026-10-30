@@ -45,6 +45,7 @@ class StagedPaymentServiceTest {
         payments = mock(PaymentRepository.class);
         accounts = mock(AccountService.class);
         inventory = mock(InventoryRepository.class);
+        when(payments.paymentMethods(1L)).thenReturn(new PaymentRepository.PaymentMethods(true, true));
         service = new OrderService(accounts, null, null, null, orders, null, payments, inventory, null, null, null, new ObjectMapper(), mock(com.dailyactivity.order.application.OrderParcelService.class), mock(com.dailyactivity.catalog.domain.port.QuantityPriceRepository.class));
         var before = row("pending_verification", "30.00");
         when(orders.findForUpdate(1L, 1, null)).thenReturn(Optional.of(before));
@@ -163,6 +164,6 @@ class StagedPaymentServiceTest {
         return new OrderRepository.OrderRow(1, "TST-20261007-001", 2, "TST", "Test customer", "customer@example.test",
                 "pending", paymentStatus, "{}", "Recipient", "City", null, null,
                 new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("100.00"),
-                null, null, null, VERSION, null, VERSION, null, "approved", null, null, null, null, new BigDecimal(paidAmount));
+                null, null, null, VERSION, null, VERSION, null, "approved", null, null, null, null, new BigDecimal(paidAmount), false);
     }
 }

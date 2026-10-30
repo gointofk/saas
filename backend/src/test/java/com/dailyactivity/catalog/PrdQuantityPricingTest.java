@@ -58,10 +58,10 @@ class PrdQuantityPricingTest extends PrdDatabaseTest {
         var legacy = new CatalogService.ProductRequest(data.categoryId(), data.productSku(), "Legacy edit", "", "regular", true,
                 new BigDecimal("100"), null, 10, null);
         catalog.updateProduct(seller(), data.productId(), legacy);
-        assertThat(prices.allPrices(data.productId())).hasSize(2);
+        assertThat(prices.allPrices(seller().merchantId(), data.productId())).hasSize(2);
         catalog.updateProduct(seller(), data.productId(), new CatalogService.ProductRequest(data.categoryId(), data.productSku(), "Clear", "", "regular", true,
                 new BigDecimal("100"), null, 10, null, null, null, List.of()));
-        assertThat(prices.allPrices(data.productId())).isEmpty();
+        assertThat(prices.allPrices(seller().merchantId(), data.productId())).isEmpty();
     }
     @Test
     void legacyOrderDoesNotAdoptProductQuantityPrices() {

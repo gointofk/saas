@@ -40,7 +40,7 @@ public class MerchantService {
     @Transactional
     public MerchantView create(Principal p, Create r) {
         accounts.requirePlatformAdmin(p);
-        validate(r.name(),r.shippingFee(),r.permissions());
+        validate(r.name(),r.shippingFee());
         String domain = StorefrontService.normalizeDomain(r.domain());
         StorefrontService.validateBranding(r.logoUrl(),r.theme());
         boolean registrationEnabled=Boolean.TRUE.equals(r.registrationEnabled());
@@ -57,17 +57,15 @@ public class MerchantService {
         String hash=PasswordHasher.hash(r.password());
         long id=merchants.create(r.code().toUpperCase(Locale.ROOT),r.name().trim(),r.shippingFee(),domain,r.logoUrl(),r.theme(),p.userId(),registrationEnabled);
         if(mail!=null) emailSettings.save(id,mail.settings(),mail.encryptedPassword());
-        merchants.replacePermissions(id,new HashSet<>(r.permissions()),p.userId());
-        var permissions=new ArrayList<>(List.of("order_audit","orders","commissions","bills","customers","payment_channels","members"));
-        permissions.addAll(r.permissions());
+        var permissions=List.of("order_audit","orders","commissions","bills","customers","products","certificates","categories","payment_channels","members");
         members.create(id,new MemberRepository.MemberInput(r.adminAccount().trim().toLowerCase(Locale.ROOT),r.adminName().trim(),hash,permissions),p.actor());
-        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", emailSettingsUpdated="+(mail!=null)+"; public permissions: "+r.permissions());
+        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", emailSettingsUpdated="+(mail!=null));
         return view(merchants.find(id).orElseThrow());
     }
     @Transactional
     public MerchantView update(Principal p,long id,Update r) {
         accounts.requirePlatformAdmin(p);
-        validate(r.name(),r.shippingFee(),r.permissions());
+        validate(r.name(),r.shippingFee());
         String domain = StorefrontService.normalizeDomain(r.domain());
         StorefrontService.validateBranding(r.logoUrl(),r.theme());
         var existing=merchants.lock(id);
@@ -82,18 +80,16 @@ public class MerchantService {
         if(registrationEnabled!=existing.registrationEnabled()) merchants.updateRegistrationEnabled(id,registrationEnabled,p.userId());
         else if(r.registrationEnabled()!=null) merchants.updateRegistrationEnabled(id,registrationEnabled,p.userId());
         if(mail!=null) emailSettings.save(id,mail.settings(),mail.encryptedPassword());
-        var before=merchants.permissions(id);
         merchants.branding(id,domain,r.logoUrl(),r.theme());
-        merchants.replacePermissions(id,new HashSet<>(r.permissions()),p.userId());
-        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+", permissions="+before+"; after: name="+r.name()+", active="+r.active()+", shippingFee="+r.shippingFee()+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", emailSettingsUpdated="+(mail!=null)+", permissions="+r.permissions());
+        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+"; after: name="+r.name()+", active="+r.active()+", shippingFee="+r.shippingFee()+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", emailSettingsUpdated="+(mail!=null));
         return view(merchants.find(id).orElseThrow());
     }
     private void checkVersion(MerchantRepository.Merchant m,Instant version) {
         if (version==null || !version.equals(m.updatedAt())) throw ApiException.conflict("MERCHANT_CHANGED","Merchant settings changed. Refresh and try again.");
     }
-    private void validate(String name,BigDecimal fee,List<String> permissions) {
-        if (name==null || name.isBlank() || name.trim().length()>100 || permissions==null || new HashSet<>(permissions).size()!=permissions.size() || permissions.stream().anyMatch(menu -> menu==null || !MerchantRepository.PUBLIC_MENUS.contains(menu)))
-            throw ApiException.badRequest("INVALID_MERCHANT","Check the merchant name and public permissions.");
+    private void validate(String name,BigDecimal fee) {
+        if (name==null || name.isBlank() || name.trim().length()>100)
+            throw ApiException.badRequest("INVALID_MERCHANT","Check the merchant name.");
         validateFee(fee);
     }
     private void validateFee(BigDecimal fee) {
@@ -101,7 +97,7 @@ public class MerchantService {
             throw ApiException.badRequest("INVALID_SHIPPING_FEE","Shipping fee must be a non-negative amount with at most two decimals.");
     }
     private MerchantView view(MerchantRepository.Merchant m) {
-        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFee(),m.updatedAt(),merchants.permissions(m.id()).stream().sorted().toList(),m.domain(),m.logoUrl(),m.theme(),m.registrationEnabled(),emailSettings.find(m.id()).map(this::emailView).orElse(null));
+        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFee(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme(),m.registrationEnabled(),emailSettings.find(m.id()).map(this::emailView).orElse(null));
     }
     private MerchantEmailSettingsView emailView(MerchantEmailSettingsRepository.StoredSettings s) {
         return new MerchantEmailSettingsView(s.smtpHost(),s.smtpPort(),s.smtpUsername(),s.tlsMode(),s.senderEmail(),s.senderName(),s.configured());
@@ -151,16 +147,13 @@ public class MerchantService {
     private record PreparedEmailSettings(MerchantEmailSettingsRepository.Settings settings,String encryptedPassword) {}
     public record TestEmailRequest(String recipient) {}
     public record MerchantEmailSettingsView(String smtpHost,int smtpPort,String smtpUsername,String tlsMode,String senderEmail,String senderName,boolean passwordConfigured) {}
-    public record MerchantView(long id,String code,String name,boolean active,BigDecimal shippingFee,Instant updatedAt,List<String> permissions,String domain,String logoUrl,String theme,boolean registrationEnabled,MerchantEmailSettingsView mailSettings) {}
+    public record MerchantView(long id,String code,String name,boolean active,BigDecimal shippingFee,Instant updatedAt,String domain,String logoUrl,String theme,boolean registrationEnabled,MerchantEmailSettingsView mailSettings) {}
     public record MailSettingsInput(String smtpHost,Integer smtpPort,String smtpUsername,String smtpPassword,String tlsMode,String senderEmail,String senderName) {}
-    public record Create(String code,String name,BigDecimal shippingFee,List<String> permissions,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
-        public Create(String code,String name,BigDecimal shippingFee,List<String> permissions,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme) {
-            this(code,name,shippingFee,permissions,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,false,null);
-        }
+    public record Create(String code,String name,BigDecimal shippingFee,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
     }
-    public record Update(String name,boolean active,BigDecimal shippingFee,List<String> permissions,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
-        public Update(String name,boolean active,BigDecimal shippingFee,List<String> permissions,Instant expectedUpdatedAt,String domain,String logoUrl,String theme) {
-            this(name,active,shippingFee,permissions,expectedUpdatedAt,domain,logoUrl,theme,null,null);
+    public record Update(String name,boolean active,BigDecimal shippingFee,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
+        public Update(String name,boolean active,BigDecimal shippingFee,Instant expectedUpdatedAt,String domain,String logoUrl,String theme) {
+            this(name,active,shippingFee,expectedUpdatedAt,domain,logoUrl,theme,null,null);
         }
     }
 }

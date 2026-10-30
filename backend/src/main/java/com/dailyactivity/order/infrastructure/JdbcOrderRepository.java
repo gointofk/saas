@@ -396,7 +396,13 @@ public class JdbcOrderRepository implements OrderRepository {
 
     @Override
     public void captureCoaSnapshots(long orderId, Actor actorId) {
-        jdbc.update("INSERT INTO order_item_coa_snapshot(order_id,order_item_id,product_id,coa_id,source_link_id,name_snapshot,lot_snapshot,purity_snapshot,fill_snapshot,test_date_snapshot,file_uuid,linked_by_user_id_snapshot,linked_at_snapshot,captured_at) SELECT oi.order_id,oi.id,oi.product_id,c.id,pcl.id,c.name,c.lot,c.purity,c.fill,c.test_date,c.current_file_uuid,pcl.linked_by_user_id,pcl.linked_at,UTC_TIMESTAMP(6) FROM order_item oi JOIN product_coa_link pcl ON pcl.product_id=oi.product_id AND pcl.deleted=0 JOIN coa_certificate c ON c.id=pcl.coa_id AND c.deleted=0 WHERE oi.order_id=:orderId AND oi.deleted=0", new MapSqlParameterSource("orderId", orderId));
+        jdbc.update("INSERT INTO order_item_coa_snapshot(order_id,order_item_id,product_id,coa_id,source_link_id,name_snapshot,lot_snapshot,purity_snapshot,fill_snapshot,test_date_snapshot,file_uuid,linked_by_user_id_snapshot,linked_at_snapshot,captured_at) "
+                        + "SELECT oi.order_id,oi.id,oi.product_id,c.id,pcl.id,c.name,c.lot,c.purity,c.fill,c.test_date,c.current_file_uuid,pcl.linked_by_user_id,pcl.linked_at,UTC_TIMESTAMP(6) "
+                        + "FROM order_item oi JOIN sales_order o ON o.id=oi.order_id "
+                        + "JOIN product p ON p.id=oi.product_id AND p.merchant_id=o.merchant_id "
+                        + "JOIN product_coa_link pcl ON pcl.product_id=oi.product_id AND pcl.merchant_id=o.merchant_id AND pcl.deleted=0 "
+                        + "JOIN coa_certificate c ON c.id=pcl.coa_id AND c.merchant_id=o.merchant_id AND c.deleted=0 "
+                        + "WHERE oi.order_id=:orderId AND oi.deleted=0", new MapSqlParameterSource("orderId", orderId));
         jdbc.update("UPDATE sales_order SET coa_captured_at=UTC_TIMESTAMP(6),updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type=:actorType WHERE id=:orderId", new MapSqlParameterSource().addValue("orderId", orderId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
     }
 
@@ -410,7 +416,7 @@ public class JdbcOrderRepository implements OrderRepository {
     }
 
     private String orderSql() {
-        return "SELECT o.id,o.order_no,o.customer_id,o.customer_code_snapshot,o.customer_name_snapshot,o.customer_email_snapshot,o.order_status,o.payment_status,o.address_snapshot,o.recipient_name,o.city,o.buyer_note,o.internal_note,o.subtotal,o.shipping_fee,o.discount_amount,o.total_amount,o.referrer_id_snapshot,o.referrer_name_snapshot,o.commission_rate_snapshot,o.created_at,o.updated_at,o.completed_at,o.cancelled_at,o.audit_status,o.audited_by_user_id,(SELECT u.name FROM seller u WHERE u.id=o.audited_by_user_id) audited_by_name,o.audited_at,o.audit_remark,COALESCE((SELECT SUM(pr.received_amount) FROM payment_receipt pr WHERE pr.order_id=o.id),0) paid_amount FROM sales_order o WHERE o.merchant_id=:merchantId";
+        return "SELECT o.id,o.order_no,o.customer_id,o.customer_code_snapshot,o.customer_name_snapshot,o.customer_email_snapshot,o.order_status,o.payment_status,o.address_snapshot,o.recipient_name,o.city,o.buyer_note,o.internal_note,o.subtotal,o.shipping_fee,o.discount_amount,o.total_amount,o.referrer_id_snapshot,o.referrer_name_snapshot,o.commission_rate_snapshot,o.created_at,o.updated_at,o.completed_at,o.cancelled_at,o.audit_status,o.audited_by_user_id,(SELECT u.name FROM seller u WHERE u.id=o.audited_by_user_id) audited_by_name,o.audited_at,o.audit_remark,COALESCE((SELECT SUM(pr.received_amount) FROM payment_receipt pr WHERE pr.order_id=o.id),0) paid_amount,EXISTS(SELECT 1 FROM order_event oe WHERE oe.order_id=o.id AND oe.action='payment_link_requested') payment_link_requested FROM sales_order o WHERE o.merchant_id=:merchantId";
     }
 
     private String filters(Long customerId, String status, String paymentStatus, String query, java.time.Instant from, java.time.Instant to) {
@@ -459,7 +465,7 @@ public class JdbcOrderRepository implements OrderRepository {
         Timestamp c = r.getTimestamp("created_at"), updated = r.getTimestamp("updated_at"), done = r.getTimestamp("completed_at"), cancel = r.getTimestamp("cancelled_at"), audited = r.getTimestamp("audited_at");
         long auditor = r.getLong("audited_by_user_id");
         Long auditorId = r.wasNull() ? null : auditor;
-        return new OrderRow(r.getLong("id"), r.getString("order_no"), r.getLong("customer_id"), r.getString("customer_code_snapshot"), r.getString("customer_name_snapshot"), r.getString("customer_email_snapshot"), r.getString("order_status"), r.getString("payment_status"), r.getString("address_snapshot"), r.getString("recipient_name"), r.getString("city"), r.getString("buyer_note"), r.getString("internal_note"), r.getBigDecimal("subtotal"), r.getBigDecimal("shipping_fee"), r.getBigDecimal("discount_amount"), r.getBigDecimal("total_amount"), (Long) r.getObject("referrer_id_snapshot"), r.getString("referrer_name_snapshot"), r.getBigDecimal("commission_rate_snapshot"), c.toInstant(), done == null ? null : done.toInstant(), updated.toInstant(), cancel == null ? null : cancel.toInstant(), r.getString("audit_status"), auditorId, r.getString("audited_by_name"), audited == null ? null : audited.toInstant(), r.getString("audit_remark"), r.getBigDecimal("paid_amount"));
+        return new OrderRow(r.getLong("id"), r.getString("order_no"), r.getLong("customer_id"), r.getString("customer_code_snapshot"), r.getString("customer_name_snapshot"), r.getString("customer_email_snapshot"), r.getString("order_status"), r.getString("payment_status"), r.getString("address_snapshot"), r.getString("recipient_name"), r.getString("city"), r.getString("buyer_note"), r.getString("internal_note"), r.getBigDecimal("subtotal"), r.getBigDecimal("shipping_fee"), r.getBigDecimal("discount_amount"), r.getBigDecimal("total_amount"), (Long) r.getObject("referrer_id_snapshot"), r.getString("referrer_name_snapshot"), r.getBigDecimal("commission_rate_snapshot"), c.toInstant(), done == null ? null : done.toInstant(), updated.toInstant(), cancel == null ? null : cancel.toInstant(), r.getString("audit_status"), auditorId, r.getString("audited_by_name"), audited == null ? null : audited.toInstant(), r.getString("audit_remark"), r.getBigDecimal("paid_amount"), r.getBoolean("payment_link_requested"));
     }
 
     private void requireApproved(OrderRow order) {

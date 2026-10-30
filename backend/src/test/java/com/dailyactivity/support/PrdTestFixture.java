@@ -30,8 +30,6 @@ public final class PrdTestFixture {
         if (!ids.isEmpty()) return ids.get(0);
         jdbc.update("INSERT INTO merchant(code,name,shipping_fee,domain) VALUES(?, 'Test Merchant',20.00,?)", code,code.toLowerCase()+".test");
         long id = jdbc.queryForObject("SELECT id FROM merchant WHERE code=?",Long.class,code);
-        for (String menu : List.of("products","certificates","categories"))
-            jdbc.update("INSERT INTO merchant_permission(merchant_id,menu_code) VALUES(?,?)",id,menu);
         return id;
     }
 
@@ -80,20 +78,20 @@ public final class PrdTestFixture {
                 customerId, "Test Recipient", "1 Test Street", "Unit 1", "Shanghai", "Shanghai", "200000", "13800000000", customerId, customerId);
         long addressId = jdbc.queryForObject("SELECT id FROM customer_address WHERE customer_id=?", Long.class, customerId);
 
-        jdbc.update("INSERT INTO category(name,sort_no,active,created_by_user_id,updated_by_user_id) VALUES(?,1,1,?,?)",
-                categoryName, sellerId, sellerId);
+        jdbc.update("INSERT INTO category(merchant_id,name,sort_no,active,created_by_user_id,updated_by_user_id) VALUES(?,?,1,1,?,?)",
+                merchantId, categoryName, sellerId, sellerId);
         long categoryId = jdbc.queryForObject("SELECT id FROM category WHERE name=?", Long.class, categoryName);
 
-        jdbc.update("INSERT INTO product(category_id,sku,name,description,product_type,active,base_price,cost_price,stock_available,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(?,?,?,?, 'regular',1,100.00,40.00,10,?,?)",
-                categoryId, sku, "Test Regular Product", "PRD catalog search", sellerId, sellerId);
+        jdbc.update("INSERT INTO product(merchant_id,category_id,sku,name,description,product_type,active,base_price,cost_price,stock_available,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,?,'regular',1,100.00,40.00,10,?,?)",
+                merchantId, categoryId, sku, "Test Regular Product", "PRD catalog search", sellerId, sellerId);
         long productId = jdbc.queryForObject("SELECT id FROM product WHERE sku=?", Long.class, sku);
         jdbc.update("INSERT INTO product_tier_price(product_id,tier,price,created_by_user_id,updated_by_user_id) VALUES(?,'V1',90.00,?,?)",
                 productId, sellerId, sellerId);
 
-        jdbc.update("INSERT INTO product(category_id,sku,name,description,product_type,active,base_price,cost_price,stock_available,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(?,?,?,'Test gift','gift',1,0.00,0.00,10,?,?)",
-                categoryId, giftSku, "Test Gift Product", sellerId, sellerId);
+        jdbc.update("INSERT INTO product(merchant_id,category_id,sku,name,description,product_type,active,base_price,cost_price,stock_available,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,'Test gift','gift',1,0.00,0.00,10,?,?)",
+                merchantId, categoryId, giftSku, "Test Gift Product", sellerId, sellerId);
         long giftProductId = jdbc.queryForObject("SELECT id FROM product WHERE sku=?", Long.class, giftSku);
 
         String qrUuid = UUID.randomUUID().toString();

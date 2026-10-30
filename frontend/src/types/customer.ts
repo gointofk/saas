@@ -110,6 +110,12 @@ export type CustomerPaymentChannel = {
   qrFileUuid: string
 }
 
+export type CustomerPaymentOptions = {
+  cryptoEnabled: boolean
+  onlinePaymentLinkEnabled: boolean
+  channels: CustomerPaymentChannel[]
+}
+
 export type CustomerOrderQuote = {
   quoteToken: string
   items: Array<{
@@ -153,6 +159,7 @@ export type CustomerOrder = {
   subtotal?: number | string
   shippingFee?: number | string
   buyerNote?: string
+  paymentLinkRequested?: boolean
   items?: CustomerOrderItem[]
   updatedAt?: string
   address?: { id?: number; name?: string; street?: string; city?: string }

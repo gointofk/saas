@@ -29,14 +29,16 @@ public class CertificateService {
     }
 
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> customer() {
-        return certificates.allCustomer().stream().map(this::view).toList();
+    public List<Map<String, Object>> customer(Principal principal) {
+        long merchantId = accounts.customer(principal).merchantId();
+        return certificates.allCustomer(merchantId).stream().map(this::view).toList();
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<Map<String, Object>> customer(String query, int page) {
+    public PageResponse<Map<String, Object>> customer(Principal principal, String query, int page) {
+        long merchantId = accounts.customer(principal).merchantId();
         String keyword = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
-        List<Map<String, Object>> matches = certificates.allCustomer().stream()
+        List<Map<String, Object>> matches = certificates.allCustomer(merchantId).stream()
                 .filter(coa -> keyword.isEmpty()
                         || contains(coa.name(), keyword) || contains(coa.lot(), keyword)
                         || contains(coa.sku(), keyword) || contains(coa.productName(), keyword)
@@ -57,7 +59,7 @@ public class CertificateService {
     public PageResponse<Map<String, Object>> admin(Principal p, String q, Integer page) {
         accounts.seller(p);
         int current = RequestValidation.page(page);
-        return PageResponse.of(certificates.adminPage(q, current).stream().map(this::view).toList(), current, certificates.adminCount(q));
+        return PageResponse.of(certificates.adminPage(p.merchantId(), q, current).stream().map(this::view).toList(), current, certificates.adminCount(p.merchantId(), q));
     }
 
     @Transactional
@@ -65,7 +67,7 @@ public class CertificateService {
         accounts.requireMenu(p, "certificates");
         validate(r);
         validateNewFile(p, r);
-        long id = certificates.create(r.input(), p.userId());
+        long id = certificates.create(p.merchantId(), r.input(), p.userId());
         audit.audit(p.merchantId(), p.actor(), "coa.create", "id=" + id);
         return Map.of("id", id);
     }
@@ -74,43 +76,43 @@ public class CertificateService {
     public void update(Principal p, long id, CertificateRequest r) {
         accounts.requireMenu(p, "certificates");
         validate(r);
-        var existing = certificates.find(id).orElseThrow(() -> ApiException.notFound("Certificate not found."));
+        var existing = certificates.find(p.merchantId(), id).orElseThrow(() -> ApiException.notFound("Certificate not found."));
         if (!existing.fileUuid().equals(r.fileUuid().trim())) validateNewFile(p, r);
-        certificates.update(id, r.input(), p.userId(), r.expectedUpdatedAt());
+        certificates.update(p.merchantId(), id, r.input(), p.userId(), r.expectedUpdatedAt());
         audit.audit(p.merchantId(), p.actor(), "coa.update", "id=" + id);
     }
 
     @Transactional
     public void remove(Principal p, long id) {
         accounts.requireMenu(p, "certificates");
-        certificates.softDelete(id, p.userId());
+        certificates.softDelete(p.merchantId(), id, p.userId());
         audit.audit(p.merchantId(), p.actor(), "coa.remove", "id=" + id);
     }
 
     @Transactional
     public void bind(Principal p, long id, Long productId) {
         accounts.requireMenu(p, "certificates");
-        certificates.bindProduct(id, productId, p.userId());
+        certificates.bindProduct(p.merchantId(), id, productId, p.userId());
         audit.audit(p.merchantId(), p.actor(), "coa.bind", "id=" + id);
     }
 
     @Transactional
     public void bindFromProduct(Principal p, long id, Long productId) {
         accounts.requireMenu(p, "certificates");
-        certificates.bindProduct(id, productId, p.userId());
+        certificates.bindProduct(p.merchantId(), id, productId, p.userId());
         audit.audit(p.merchantId(), p.actor(), "coa.bindFromProduct", "id=" + id);
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> productCertificates(Principal p, long productId) {
         accounts.requireMenu(p, "products");
-        return certificates.productCertificates(productId).stream().map(this::view).toList();
+        return certificates.productCertificates(p.merchantId(), productId).stream().map(this::view).toList();
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> productCoaOptions(Principal p, String query) {
         accounts.requireMenu(p, "products");
-        return certificates.adminPage(query, 1).stream().map(this::view).toList();
+        return certificates.adminPage(p.merchantId(), query, 1).stream().map(this::view).toList();
     }
 
     @Transactional
@@ -119,7 +121,7 @@ public class CertificateService {
         List<Long> ids = coaIds == null ? List.of() : coaIds.stream().distinct().toList();
         if (coaIds != null && ids.size() != coaIds.size())
             throw com.dailyactivity.common.ApiException.badRequest("INVALID_COA_BINDING", "COA selections must be unique.");
-        certificates.replaceProductCertificates(productId, ids, p.userId());
+        certificates.replaceProductCertificates(p.merchantId(), productId, ids, p.userId());
         audit.audit(p.merchantId(), p.actor(), "coa.replaceProductCertificates", "id=" + productId);
     }
 
@@ -142,7 +144,7 @@ public class CertificateService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> productOptions(Principal p, Long id, String query) {
         accounts.requireMenu(p, "certificates");
-        return certificates.productOptions(id, query).stream().map(x -> {
+        return certificates.productOptions(p.merchantId(), id, query).stream().map(x -> {
             Map<String, Object> v = new LinkedHashMap<>();
             v.put("id", x.id());
             v.put("sku", x.sku());
@@ -154,7 +156,7 @@ public class CertificateService {
     @Transactional(readOnly = true)
     public Map<String, Object> productDetail(Principal p, long id) {
         accounts.requireMenu(p, "certificates");
-        var product = certificates.productDetail(id).orElseThrow(() -> ApiException.notFound("Associated product not found."));
+        var product = certificates.productDetail(p.merchantId(), id).orElseThrow(() -> ApiException.notFound("Associated product not found."));
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", product.id());
         view.put("sku", product.sku());
@@ -191,7 +193,7 @@ public class CertificateService {
     }
 
     private void validateNewFile(Principal p, CertificateRequest r) {
-        fileService.validateUploadToken(r.fileUuid().trim(), "coa", p.userId(), null, "coa", r.uploadToken());
+        fileService.validateUploadToken(r.fileUuid().trim(), "coa", p.userId(), null, "coa", r.uploadToken(), p.merchantId());
     }
 
     public record CertificateRequest(String name, String lot, String purity, String fill, java.time.LocalDate testDate,

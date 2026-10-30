@@ -21,8 +21,7 @@ public class CertificateController {
 
     @GetMapping("/customer/certificates")
     public List<Map<String, Object>> customer(HttpServletRequest r) {
-        AuthSupport.principal(r, "customer");
-        return service.customer();
+        return service.customer(AuthSupport.principal(r, "customer"));
     }
 
     @RequireMenu("certificates")

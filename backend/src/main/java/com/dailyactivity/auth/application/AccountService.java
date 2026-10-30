@@ -92,7 +92,6 @@ public class AccountService {
         if (!"platform".equals(account.userType())) result.put("merchant", merchants.find(account.merchantId()).orElseThrow());
         if (account.customer()) result.put("customer", customerView(account));
         else if (account.seller()) {
-            result.put("merchantPermissions", merchants.permissions(account.merchantId()));
             result.put("member", sellerView(account));
             result.put("permissions", effectivePermissions(account));
         }
@@ -204,10 +203,7 @@ public class AccountService {
     }
 
     public Set<String> effectivePermissions(Account account) {
-        var permissions = new java.util.HashSet<>(users.findPermissions(account.id()));
-        var granted = merchants.permissions(account.merchantId());
-        permissions.removeIf(menu -> com.dailyactivity.merchant.domain.port.MerchantRepository.PUBLIC_MENUS.contains(menu) && !granted.contains(menu));
-        return permissions;
+        return users.findPermissions(account.id());
     }
 
     public void requirePlatformAdmin(Principal p) {
@@ -216,10 +212,8 @@ public class AccountService {
     }
 
     public void validateMemberPermissions(Principal p, java.util.List<String> permissions) {
-        var allowed = merchants.permissions(p.merchantId());
         var menus = Set.of("order_audit", "orders", "commissions", "bills", "customers", "products", "certificates", "categories", "payment_channels", "members");
-        if (permissions == null || permissions.stream().anyMatch(menu -> menu == null || !menus.contains(menu)
-                || com.dailyactivity.merchant.domain.port.MerchantRepository.PUBLIC_MENUS.contains(menu) && !allowed.contains(menu)))
+        if (permissions == null || permissions.stream().anyMatch(menu -> menu == null || !menus.contains(menu)))
             throw ApiException.forbidden("A permission exceeds this merchant's authorization.");
     }
 

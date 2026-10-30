@@ -4,11 +4,11 @@ import com.dailyactivity.auth.domain.Actor;
 import java.util.List;
 
 public interface InventoryRepository {
-    boolean adjust(long productId, int targetStock, String reason, String operationId, Actor actorId);
+    boolean adjust(long merchantId, long productId, int targetStock, String reason, String operationId, Actor actorId);
 
-    boolean decrement(long productId, int quantity, Actor actorId, String operationId, long orderId);
+    boolean decrement(long merchantId, long productId, int quantity, Actor actorId, String operationId, long orderId);
 
-    void restore(long productId, int quantity, String reason, String operationId, long orderId, Actor actorId);
+    void restore(long merchantId, long productId, int quantity, String reason, String operationId, long orderId, Actor actorId);
 
     List<StockMovement> movements(long merchantId, long productId, int page);
 

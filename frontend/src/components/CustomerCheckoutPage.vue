@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import AppModal from './AppModal.vue'
 import CustomerPaymentAmount from './CustomerPaymentAmount.vue'
+import CustomerPaymentMethodPicker from './CustomerPaymentMethodPicker.vue'
 import { request } from '../lib/api'
 import { paymentAmountWithRate, validPaymentAmount } from '../lib/payment-amount'
 import type { CustomerAddress, CustomerCart, CustomerCartItem, CustomerOrderQuote, CustomerPaymentChannel } from '../types/customer'
@@ -24,6 +25,10 @@ const props = defineProps<{
   orderPaymentStatus?: string
   checkoutQuote?: CustomerOrderQuote | null
   paymentChannel: number | null
+  cryptoEnabled: boolean
+  onlinePaymentLinkEnabled: boolean
+  paymentMethod: 'crypto' | 'link'
+  paymentLinkRequested: boolean
   channels: CustomerPaymentChannel[]
   selectedChannel?: CustomerPaymentChannel
   paymentAmount: string
@@ -35,6 +40,7 @@ const props = defineProps<{
   cartPending: boolean
   checkoutPending: boolean
   paymentPending: boolean
+  paymentLinkPending: boolean
 }>()
 
 const emit = defineEmits<{
@@ -43,6 +49,7 @@ const emit = defineEmits<{
   'update:addressPickerOpen': [open: boolean]
   'update:orderNote': [note: string]
   'update:paymentChannel': [channelId: number]
+  'update:paymentMethod': [method: 'crypto' | 'link']
   'update:paymentAmount': [amount: string]
   'update:transactionNo': [transactionNo: string]
   'close-payment-success': []
@@ -52,6 +59,7 @@ const emit = defineEmits<{
   removeFromCart: [productId: number]
   openAddressForm: []
   submitPayment: []
+  requestPaymentLink: []
   navigate: [page: string]
 }>()
 
@@ -292,7 +300,19 @@ function openOrderHistory() {
           <button class="action-button" type="button" @click="emit('navigate', 'orders')">{{ t('View Order History') }}</button>
         </div>
 
-        <template v-else-if="channels.length">
+        <template v-else-if="channels.length || onlinePaymentLinkEnabled || paymentLinkRequested">
+          <CustomerPaymentMethodPicker
+            :model-value="paymentMethod"
+            :crypto-enabled="cryptoEnabled"
+            :crypto-available="channels.length > 0"
+            :online-payment-link-enabled="onlinePaymentLinkEnabled"
+            :request-sent="paymentLinkRequested"
+            :busy="paymentPending || paymentLinkPending"
+            :t="t"
+            @update:model-value="emit('update:paymentMethod', $event)"
+            @request="emit('requestPaymentLink')"
+          />
+          <template v-if="paymentMethod === 'crypto' && channels.length">
           <p v-if="['pending_verification', 'partially_paid'].includes(orderPaymentStatus || '')">{{ t('Amount paid') }} {{ money(orderPaidAmount) }} · {{ t('Remaining to pay') }} {{ money(orderRemainingAmount) }}</p>
           <fieldset class="payment-channel-list">
             <legend class="sr-only">{{ t('Choose a payment channel') }}</legend>
@@ -342,6 +362,10 @@ function openOrderHistory() {
           </div>
           <div class="payment-actions">
             <button class="next-btn" type="button" :disabled="paymentPending || !paymentChannel || !transactionNo.trim() || !validPaymentAmount(paymentAmount, orderRemainingAmount ?? '0')" :aria-busy="paymentPending" @click="emit('submitPayment')"><span>{{ t(paymentPending ? 'Submitting…' : 'Verify payment') }}</span><strong v-if="orderTotal != null" class="payment-submit-total">{{ paymentAmountDue }}</strong></button>
+            <button class="back-btn payment-later-btn" type="button" @click="emit('navigate', 'orders')">{{ t('Pay later / view order history') }}</button>
+          </div>
+          </template>
+          <div v-if="paymentMethod === 'link'" class="payment-actions">
             <button class="back-btn payment-later-btn" type="button" @click="emit('navigate', 'orders')">{{ t('Pay later / view order history') }}</button>
           </div>
         </template>

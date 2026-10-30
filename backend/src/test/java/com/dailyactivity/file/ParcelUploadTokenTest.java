@@ -27,6 +27,7 @@ class ParcelUploadTokenTest {
     @DisplayName("真实签名不能跨订单、包裹、成员、阶段或绕过包裹绑定")
     void uploadTokenCannotChangeScope() throws java.io.IOException {
         var repository = mock(FileRepository.class);
+        when(repository.belongsToMerchant(anyString(), eq(1L))).thenReturn(true);
         when(repository.orderBelongsToMerchant(1L, 1L)).thenReturn(true);
         Map<String, FileRepository.FileAsset> assets = new HashMap<>();
         doAnswer(call -> { FileRepository.FileAsset asset = call.getArgument(0); assets.put(asset.uuid(), asset); return null; }).when(repository).insert(any(), anyLong());
@@ -35,14 +36,15 @@ class ParcelUploadTokenTest {
         String parcel = UUID.randomUUID().toString();
         var upload = files.upload(new Principal(3, "seller", 0, 1L), new MockMultipartFile("file", "photo.png", "image/png", PNG), "order_fulfillment", 1L, "packed", parcel);
         String uuid = (String) upload.get("fileUuid"), token = (String) upload.get("uploadToken");
-        assertThatCode(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", parcel, token)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 2L, "packed", parcel, token)).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", UUID.randomUUID().toString(), token)).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 4, 1L, "packed", parcel, token)).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "shipped", parcel, token)).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> files.validateUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", token)).isInstanceOf(ApiException.class);
+        assertThatCode(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", parcel, token, 1L)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", parcel, token, 2L)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 2L, "packed", parcel, token, 1L)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", UUID.randomUUID().toString(), token, 1L)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 4, 1L, "packed", parcel, token, 1L)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "shipped", parcel, token, 1L)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> files.validateUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", token, 1L)).isInstanceOf(ApiException.class);
         java.nio.file.Files.delete(root.resolve(assets.get(uuid).storedName()));
-        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", parcel, token))
+        assertThatThrownBy(() -> files.validateParcelUploadToken(uuid, "order_fulfillment", 3, 1L, "packed", parcel, token, 1L))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("FILE_NOT_AVAILABLE");
     }
 

@@ -5,33 +5,31 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CertificateRepository {
-    List<Certificate> adminPage(String query, int page);
+    List<Certificate> adminPage(long merchantId, String query, int page);
 
-    List<Certificate> allCustomer();
+    List<Certificate> allCustomer(long merchantId);
 
-    long adminCount(String query);
+    long adminCount(long merchantId, String query);
 
-    Optional<Certificate> find(long id);
+    Optional<Certificate> find(long merchantId, long id);
 
-    long create(Input input, long actorId);
+    long create(long merchantId, Input input, long actorId);
 
-    void update(long id, Input input, long actorId, java.time.Instant expectedUpdatedAt);
+    void update(long merchantId, long id, Input input, long actorId, java.time.Instant expectedUpdatedAt);
 
-    void softDelete(long id, long actorId);
+    void softDelete(long merchantId, long id, long actorId);
 
-    void bindProduct(long coaId, Long productId, long actorId);
+    void bindProduct(long merchantId, long coaId, Long productId, long actorId);
 
-    List<Certificate> productCertificates(long productId);
+    List<Certificate> productCertificates(long merchantId, long productId);
 
-    void replaceProductCertificates(long productId, List<Long> coaIds, long actorId);
+    void replaceProductCertificates(long merchantId, long productId, List<Long> coaIds, long actorId);
 
-    List<ProductBinding> productOptions(long coaId);
+    List<ProductBinding> productOptions(long merchantId, Long coaId, String query);
 
-    List<ProductBinding> productOptions(Long coaId, String query);
+    Optional<ProductDetail> productDetail(long merchantId, long coaId);
 
-    Optional<ProductDetail> productDetail(long coaId);
-
-    boolean fileAvailable(String fileUuid);
+    boolean fileAvailable(long merchantId, String fileUuid);
 
     record Certificate(long id, String name, String lot, String purity, String fill, LocalDate testDate,
                        String fileUuid, Long productId, String productName, String sku, String fileName, java.time.Instant updatedAt) {

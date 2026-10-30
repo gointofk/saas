@@ -25,18 +25,17 @@ class MerchantAuthorizationTest {
         when(users.findActiveById("seller",7)).thenReturn(Optional.of(account));
         when(merchants.find(11)).thenReturn(Optional.of(new MerchantRepository.Merchant(11,"TEST","Test",true,BigDecimal.TEN,Instant.EPOCH)));
         when(users.findPermissions(7)).thenReturn(Set.of("products","orders","members"));
-        when(merchants.permissions(11)).thenReturn(Set.of("products"));
     }
     @Test
-    void publicMenuRequiresBothGrantsAndRevocationAffectsExistingPrincipal() {
+    void catalogMenusAreControlledByTheMerchantMemberPermission() {
         assertThatCode(()->accounts.requireMenu(seller,"products")).doesNotThrowAnyException();
-        when(merchants.permissions(11)).thenReturn(Set.of());
+        when(users.findPermissions(7)).thenReturn(Set.of("orders", "members"));
         assertThatThrownBy(()->accounts.requireMenu(seller,"products")).isInstanceOf(ApiException.class);
         assertThatCode(()->accounts.requireMenu(seller,"orders")).doesNotThrowAnyException();
     }
     @Test
-    void memberCannotGrantPublicPermissionOutsideMerchantScope() {
-        assertThatThrownBy(()->accounts.validateMemberPermissions(seller,List.of("certificates"))).isInstanceOf(ApiException.class);
+    void memberCanManageItsOwnCatalogMenusButCannotGrantUnknownPermission() {
+        assertThatCode(()->accounts.validateMemberPermissions(seller,List.of("products","certificates","categories"))).doesNotThrowAnyException();
         assertThatThrownBy(()->accounts.validateMemberPermissions(seller,List.of("merchant_management"))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->accounts.requirePlatformAdmin(seller)).isInstanceOf(ApiException.class);
     }
@@ -50,8 +49,7 @@ class MerchantAuthorizationTest {
         assertThatThrownBy(()->accounts.assertValid(seller)).isInstanceOf(ApiException.class);
     }
     @Test
-    void merchantGrantDoesNotGiveMembersAdditionalMenus() {
-        when(merchants.permissions(11)).thenReturn(Set.of("products","certificates","categories"));
+    void effectivePermissionsComeOnlyFromTheMerchantMemberRecord() {
         assertThat(accounts.effectivePermissions(account)).containsExactlyInAnyOrder("products","orders","members");
         assertThatThrownBy(()->accounts.requireMenu(seller,"certificates")).isInstanceOf(ApiException.class);
     }

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import AppModal from './AppModal.vue'
 import CustomerPaymentAmount from './CustomerPaymentAmount.vue'
+import CustomerPaymentMethodPicker from './CustomerPaymentMethodPicker.vue'
 import { request } from '../lib/api'
 import { paymentAmountWithRate, validPaymentAmount } from '../lib/payment-amount'
 import type { CustomerOrder, CustomerPaymentChannel } from '../types/customer'
@@ -9,6 +10,10 @@ import type { CustomerOrder, CustomerPaymentChannel } from '../types/customer'
 const props = defineProps<{
   order: CustomerOrder
   channels: CustomerPaymentChannel[]
+  cryptoEnabled: boolean
+  onlinePaymentLinkEnabled: boolean
+  paymentMethod: 'crypto' | 'link'
+  paymentLinkPending: boolean
   paymentChannel: number | null
   paymentAmount: string
   transactionNo: string
@@ -19,6 +24,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  requestPaymentLink: []
+  'update:paymentMethod': [value: 'crypto' | 'link']
   'update:paymentChannel': [id: number]
   'update:paymentAmount': [amount: string]
   'update:transactionNo': [value: string]
@@ -124,6 +131,19 @@ async function copyReceivingAddress() {
     <section class="payment-modal-section payment-step-panel">
       <h2 class="address-title">{{ t('Pay for your order') }}</h2>
       <p class="panel-intro">{{ t('Choose a payment channel for this order. Payment is recorded separately for each order.') }}</p>
+      <CustomerPaymentMethodPicker
+        :model-value="paymentMethod"
+        :crypto-enabled="cryptoEnabled"
+        :crypto-available="channels.length > 0"
+        :online-payment-link-enabled="onlinePaymentLinkEnabled"
+        :request-sent="Boolean(order.paymentLinkRequested)"
+        :busy="pending || paymentLinkPending"
+        :t="t"
+        @update:model-value="emit('update:paymentMethod', $event)"
+        @request="emit('requestPaymentLink')"
+      />
+
+      <template v-if="paymentMethod === 'crypto' && channels.length">
       <fieldset class="payment-channel-list">
         <legend class="sr-only">{{ t('Choose a payment channel') }}</legend>
         <label v-for="(channel, index) in channels" :key="channel.id" class="payment-channel-option" :class="{ selected: paymentChannel === channel.id }">
@@ -174,11 +194,12 @@ async function copyReceivingAddress() {
           <small>{{ t('Paste the transaction ID after sending payment. The seller will verify this payment.') }}</small>
         </label>
       </div>
+      </template>
     </section>
 
     <footer class="payment-modal-footer">
-      <button class="payment-modal-close" type="button" :disabled="pending" @click="emit('close')">{{ t('Close') }}</button>
-      <button class="modal-save" type="button" :disabled="pending || !paymentChannel || !transactionNo.trim() || !validPaymentAmount(paymentAmount, order.remainingAmount)" :aria-busy="pending" @click="emit('submit')"><span>{{ t(pending ? 'Submitting…' : 'Verify payment') }}</span><strong class="payment-submit-total">{{ paymentAmountDue }}</strong></button>
+      <button class="payment-modal-close" type="button" :disabled="pending || paymentLinkPending" @click="emit('close')">{{ t('Close') }}</button>
+      <button v-if="paymentMethod === 'crypto' && channels.length" class="modal-save" type="button" :disabled="pending || !paymentChannel || !transactionNo.trim() || !validPaymentAmount(paymentAmount, order.remainingAmount)" :aria-busy="pending" @click="emit('submit')"><span>{{ t(pending ? 'Submitting…' : 'Verify payment') }}</span><strong class="payment-submit-total">{{ paymentAmountDue }}</strong></button>
     </footer>
   </AppModal>
 

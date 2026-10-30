@@ -33,6 +33,8 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 public class OrderService {
     private static final int ORDER_NUMBER_SUFFIX_COUNT = 10_000;
+    private static final long ONLINE_PAYMENT_LINK_CHANNEL_ID = 0L;
+    private static final String ONLINE_PAYMENT_LINK_CHANNEL_SNAPSHOT = "{\"id\":0,\"name\":\"Online payment link\",\"currencyCode\":\"USD\",\"network\":\"External\",\"receivingAddress\":\"\",\"additionalRate\":null,\"qrFileUuid\":\"\"}";
     private static final ZoneId ORDER_NUMBER_ZONE = ZoneId.of("Asia/Shanghai");
     private static final DateTimeFormatter ORDER_NUMBER_DATE_FORMAT = DateTimeFormatter.ofPattern("MMdd", Locale.ROOT);
 
@@ -68,12 +70,12 @@ public class OrderService {
         this.parcels = parcels;
     }
 
-    private List<QuantityPricing.Band> productBands(long productId, String tier) {
-        return quantityPrices.pricesForUpdate(productId, tier);
+    private List<QuantityPricing.Band> productBands(long merchantId, long productId, String tier) {
+        return quantityPrices.pricesForUpdate(merchantId, productId, tier);
     }
 
-    private BigDecimal currentPrice(CatalogRepository.ProductView product, String tier, int quantity) {
-        return QuantityPricing.price(productBands(product.id(), tier), quantity, product.price());
+    private BigDecimal currentPrice(long merchantId, CatalogRepository.ProductView product, String tier, int quantity) {
+        return QuantityPricing.price(productBands(merchantId, product.id(), tier), quantity, product.price());
     }
 
     @Transactional
@@ -86,10 +88,10 @@ public class OrderService {
         List<QuoteTokenService.QuoteLine> lines = new ArrayList<>();
         BigDecimal subtotal = BigDecimal.ZERO;
         for (CartRequest item : request.cartItems().stream().sorted(Comparator.comparingLong(CartRequest::productId)).toList()) {
-            var p = catalog.product(item.productId(), customer.priceTier(), true, true).orElseThrow(() -> ApiException.notFound("Product not found."));
+            var p = catalog.product(principal.merchantId(), item.productId(), customer.priceTier(), true, true).orElseThrow(() -> ApiException.notFound("Product not found."));
             if (item.quantity() < 1 || item.quantity() > p.stock())
                 throw ApiException.conflict("INVALID_QUANTITY", "Requested quantity is not available.");
-            BigDecimal unitPrice = currentPrice(p, customer.priceTier(), item.quantity());
+            BigDecimal unitPrice = currentPrice(principal.merchantId(), p, customer.priceTier(), item.quantity());
             BigDecimal line = unitPrice.multiply(BigDecimal.valueOf(item.quantity()));
             validateEditAmount(line);
             subtotal = subtotal.add(line);
@@ -127,8 +129,8 @@ public class OrderService {
         var address = addresses.findByIdForUpdate(customer.id(), q.addressId()).orElseThrow(() -> ApiException.notFound("Address not found."));
         Map<Long, CatalogRepository.ProductView> quotedProducts = new HashMap<>();
         for (var line : orderedLines) {
-            var p = catalog.product(line.productId(), customer.priceTier(), true, true).orElseThrow(() -> ApiException.notFound("Product not found."));
-            if (p.priceRevision() != line.priceRevision() || currentPrice(p, customer.priceTier(), line.quantity()).compareTo(line.unitPrice()) != 0)
+            var p = catalog.product(principal.merchantId(), line.productId(), customer.priceTier(), true, true).orElseThrow(() -> ApiException.notFound("Product not found."));
+            if (p.priceRevision() != line.priceRevision() || currentPrice(principal.merchantId(), p, customer.priceTier(), line.quantity()).compareTo(line.unitPrice()) != 0)
                 throw ApiException.conflict("QUOTE_CHANGED", "Product pricing changed; request a new quote.");
             if (p.stock() < line.quantity())
                 throw ApiException.conflict("INSUFFICIENT_STOCK", "Stock changed; request a new quote.");
@@ -155,12 +157,12 @@ public class OrderService {
         if (orderId < 0)
             throw ApiException.conflict("ORDER_NUMBER_EXHAUSTED", "No unique order number is available for this date.");
         for (var line : orderedLines) {
-            if (!inventory.decrement(line.productId(), line.quantity(), principal.actor(), operationId, orderId))
+            if (!inventory.decrement(principal.merchantId(), line.productId(), line.quantity(), principal.actor(), operationId, orderId))
                 throw ApiException.conflict("INSUFFICIENT_STOCK", "Stock changed while creating the order.");
             var product = quotedProducts.get(line.productId());
             String priceSource = product.price().compareTo(product.basePrice()) == 0 ? "base_price" : "tier_price";
             orders.insertItem(orderId, new OrderRepository.ItemCreate(line.productId(), line.sku(), line.name(), line.productType(), line.quantity(), line.unitPrice(), product.costPrice(), priceSource, customer.priceTier()), principal.actor());
-            orders.saveQuantityPrices(orderId, line.productId(), productBands(line.productId(), customer.priceTier()));
+            orders.saveQuantityPrices(orderId, line.productId(), productBands(principal.merchantId(), line.productId(), customer.priceTier()));
         }
         orders.deleteCart(customer.id(), orderedLines.stream().map(QuoteTokenService.QuoteLine::productId).toList());
         var row = orders.findForUpdate(principal.merchantId(), orderId, customer.id()).orElseThrow(() -> ApiException.notFound("Order was not created."));
@@ -243,8 +245,8 @@ public class OrderService {
         String tier = customers.find(p.merchantId(), row.customerId()).orElseThrow(() -> ApiException.notFound("Customer not found.")).priceTier();
         int current = RequestValidation.page(page);
         boolean locked = orders.receivedAmount(id).signum() > 0;
-        var products = catalog.orderEditProducts(query, tier, locked, current);
-        var schedules = quantityPrices.prices(products.items().stream().map(CatalogRepository.ProductView::id).toList(), tier);
+        var products = catalog.orderEditProducts(p.merchantId(), query, tier, locked, current);
+        var schedules = quantityPrices.prices(p.merchantId(), products.items().stream().map(CatalogRepository.ProductView::id).toList(), tier);
         return PageResponse.of(products.items().stream().map(product -> new EditProduct(product.id(), product.sku(),
                 product.name(), product.productType(), "gift".equals(product.productType()) ? BigDecimal.ZERO : QuantityPricing.price(schedules.getOrDefault(product.id(), List.of()), 1, product.price()), product.stock(), schedules.getOrDefault(product.id(), List.of()))).toList(), current, products.total());
     }
@@ -289,14 +291,14 @@ public class OrderService {
         List<AuditItemChange> changes = new ArrayList<>();
         for (var item : requested.values()) {
             var old = existing.get(item.productId());
-            var product = old == null ? catalog.orderEditProduct(item.productId(), tier)
+            var product = old == null ? catalog.orderEditProduct(p.merchantId(), item.productId(), tier)
                     .orElseThrow(() -> ApiException.conflict("PRODUCT_NOT_AVAILABLE", "新增商品必须上架且类目启用。")) : null;
             String type = old == null ? product.productType() : old.productType();
-            BigDecimal defaultPrice = old == null ? ("gift".equals(type) ? BigDecimal.ZERO : currentPrice(product, tier, item.quantity()))
+            BigDecimal defaultPrice = old == null ? ("gift".equals(type) ? BigDecimal.ZERO : currentPrice(p.merchantId(), product, tier, item.quantity()))
                     : QuantityPricing.price(orders.quantityPrices(old.id()), item.quantity(), old.unitPrice());
             if (Boolean.TRUE.equals(item.manualPrice()) && item.unitPrice() == null)
                 throw ApiException.badRequest("INVALID_ORDER_PRICE", "An explicit manual price is required.");
-            BigDecimal previousPrice = old == null ? ("gift".equals(type) ? BigDecimal.ZERO : currentPrice(product, tier, 1)) : old.unitPrice();
+            BigDecimal previousPrice = old == null ? ("gift".equals(type) ? BigDecimal.ZERO : currentPrice(p.merchantId(), product, tier, 1)) : old.unitPrice();
             BigDecimal price = item.unitPrice() == null || (!Boolean.TRUE.equals(item.manualPrice()) && item.unitPrice().compareTo(previousPrice) == 0)
                     ? defaultPrice : item.unitPrice();
             if (price.scale() > 2 || ("gift".equals(type) ? price.signum() != 0 : price.signum() <= 0))
@@ -311,7 +313,7 @@ public class OrderService {
             validateEditAmount(amount);
             int increase = item.quantity() - (old == null ? 0 : old.quantity());
             if (increase > 0) {
-                var stockProduct = old == null ? product : catalog.product(old.productId(), tier, false, true)
+                var stockProduct = old == null ? product : catalog.product(p.merchantId(), old.productId(), tier, false, true)
                         .orElseThrow(() -> ApiException.conflict("PRODUCT_NOT_AVAILABLE", "商品已不可用。"));
                 if (stockProduct.stock() < increase)
                     throw ApiException.conflict("INSUFFICIENT_STOCK", "商品库存不足，订单未保存。");
@@ -333,9 +335,9 @@ public class OrderService {
             var old = existing.get(productId);
             var change = byProduct.get(productId);
             int delta = (change == null ? 0 : change.quantity()) - (old == null ? 0 : old.quantity());
-            if (delta > 0 && !inventory.decrement(productId, delta, p.actor(), operationId, id))
+            if (delta > 0 && !inventory.decrement(p.merchantId(), productId, delta, p.actor(), operationId, id))
                 throw ApiException.conflict("INSUFFICIENT_STOCK", "商品库存不足，订单未保存。");
-            if (delta < 0) inventory.restore(productId, -delta, "Order review edit", operationId, id, p.actor());
+            if (delta < 0) inventory.restore(p.merchantId(), productId, -delta, "Order review edit", operationId, id, p.actor());
             if (change == null) {
                 orders.removeItem(old.id(), p.actor());
             } else if (old != null) {
@@ -343,7 +345,7 @@ public class OrderService {
                 if (change.manualPrice()) orders.markItemManualPrice(old.id(), p.actor());
             } else {
                 var product = change.product();
-                var bands = productBands(product.id(), tier);
+                var bands = productBands(p.merchantId(), product.id(), tier);
                 String source = change.manualPrice() ? "manual" : !bands.isEmpty() ? "quantity_price" : product.price().compareTo(product.basePrice()) == 0 ? "base_price" : "tier_price";
                 orders.insertItem(id, new OrderRepository.ItemCreate(product.id(), product.sku(), product.name(), product.productType(),
                         change.quantity(), change.price(), product.costPrice(), source, ("tier_price".equals(source) || "quantity_price".equals(source)) ? tier : null), p.actor());
@@ -441,7 +443,7 @@ public class OrderService {
             orders.updateBillingPayable(id, p.actor());
         } else {
             for (var item : orders.items(id))
-                inventory.restore(item.productId(), item.quantity(), "Order review rejected", operationId, id, p.actor());
+                inventory.restore(p.merchantId(), item.productId(), item.quantity(), "Order review rejected", operationId, id, p.actor());
             orders.updateStatus(id, "cancelled", null, null, p.actor());
             orders.addEvent(id, operationId, "cancelled", "pending", "cancelled", null, null, null, p.actor());
         }
@@ -452,16 +454,25 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> sellerPaymentChannels(Principal p) {
+    public List<Map<String, Object>> sellerPaymentChannels(Principal p, long orderId) {
         accounts.requireMenu(p, "orders");
-        return payments.find(p.merchantId(), true).stream().map(channel -> {
-            Map<String, Object> value = new LinkedHashMap<>();
-            value.put("id", channel.id());
-            value.put("name", channel.name());
-            value.put("currencyCode", channel.currencyCode());
-            value.put("network", channel.network());
-            return value;
-        }).toList();
+        var order = orders.find(p.merchantId(), orderId, null).orElseThrow(() -> ApiException.notFound("Order not found."));
+        var methods = payments.paymentMethods(p.merchantId());
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (methods.cryptoEnabled()) {
+            result.addAll(payments.find(p.merchantId(), true).stream().map(channel -> {
+                Map<String, Object> value = new LinkedHashMap<>();
+                value.put("id", channel.id());
+                value.put("name", channel.name());
+                value.put("currencyCode", channel.currencyCode());
+                value.put("network", channel.network());
+                return value;
+            }).toList());
+        }
+        if (methods.onlinePaymentLinkEnabled() || order.paymentLinkRequested()) {
+            result.add(Map.of("id", ONLINE_PAYMENT_LINK_CHANNEL_ID, "name", "Online payment link", "currencyCode", "USD", "network", "External"));
+        }
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -539,7 +550,7 @@ public class OrderService {
             throw ApiException.conflict("ORDER_NOT_EDITABLE", "Only unpaid pending orders can be edited.");
         var address = addresses.findByIdForUpdate(customer.id(), request.addressId()).orElseThrow(() -> ApiException.notFound("Address not found."));
         String operationId = UUID.randomUUID().toString();
-        BigDecimal subtotal = applyItems(row, request.items(), customer.priceTier(), p.actor(), operationId, false);
+        BigDecimal subtotal = applyItems(p.merchantId(), row, request.items(), customer.priceTier(), p.actor(), operationId, false);
         orders.updateCustomerDetails(id, json(address), address.name(), address.city(), request.buyerNote(), p.actor());
         if (!"approved".equals(row.auditStatus()))
             orders.updateOrderAmounts(id, subtotal, row.discountAmount(), discountedTotal(subtotal, row.shippingFee(), row.discountAmount()), p.actor());
@@ -555,7 +566,7 @@ public class OrderService {
         if (!"pending".equals(row.status()) || !"unpaid".equals(row.paymentStatus()) || parcels.hasParcels(id))
             throw ApiException.conflict("ORDER_NOT_EDITABLE", "Only unpaid pending orders can be edited.");
         String operationId = UUID.randomUUID().toString();
-        BigDecimal subtotal = applyItems(row, request.items(), null, p.actor(), operationId, true);
+        BigDecimal subtotal = applyItems(p.merchantId(), row, request.items(), null, p.actor(), operationId, true);
         orders.updateSellerDetails(id, request.addressSnapshot(), request.recipientName(), request.city(), request.buyerNote(), request.internalNote(), p.actor());
         if (!"approved".equals(row.auditStatus()))
             orders.updateOrderAmounts(id, subtotal, row.discountAmount(), discountedTotal(subtotal, row.shippingFee(), row.discountAmount()), p.actor());
@@ -563,7 +574,7 @@ public class OrderService {
         return detail(orders.find(p.merchantId(), id, null).orElseThrow(), true, p);
     }
 
-    private BigDecimal applyItems(OrderRepository.OrderRow row, List<OrderEditItem> requested, String tier, com.dailyactivity.auth.domain.Actor actor, String operationId, boolean allowPriceChange) {
+    private BigDecimal applyItems(long merchantId, OrderRepository.OrderRow row, List<OrderEditItem> requested, String tier, com.dailyactivity.auth.domain.Actor actor, String operationId, boolean allowPriceChange) {
         if (requested == null) throw ApiException.badRequest("ORDER_ITEMS_REQUIRED", "Order item quantities are required.");
         Map<Long, OrderEditItem> requestedByProduct = new HashMap<>();
         for (var item : requested) {
@@ -614,11 +625,11 @@ public class OrderService {
                 // An unpaid order remains editable after a product is taken offline.  The
                 // edit changes an already accepted order; it must not be blocked by the
                 // current storefront visibility of that product.
-                var product = catalog.product(current.productId(), tier, false, true).orElseThrow(() -> ApiException.conflict("PRODUCT_NOT_AVAILABLE", "Product is no longer available."));
-                if (product.stock() < delta || !inventory.decrement(current.productId(), delta, actor, operationId, row.id()))
+                var product = catalog.product(merchantId, current.productId(), tier, false, true).orElseThrow(() -> ApiException.conflict("PRODUCT_NOT_AVAILABLE", "Product is no longer available."));
+                if (product.stock() < delta || !inventory.decrement(merchantId, current.productId(), delta, actor, operationId, row.id()))
                     throw ApiException.conflict("INSUFFICIENT_STOCK", "Stock changed while updating the order.");
             } else if (delta < 0) {
-                inventory.restore(current.productId(), -delta, "Order quantity reduced", operationId, row.id(), actor);
+                inventory.restore(merchantId, current.productId(), -delta, "Order quantity reduced", operationId, row.id(), actor);
             }
             orders.updateItem(current.id(), change.quantity(), change.price(), actor);
             var requestedItem = requested.stream().filter(i -> i.productId() == current.productId()).findFirst().orElseThrow();
@@ -642,7 +653,7 @@ public class OrderService {
             throw ApiException.conflict("ORDER_COMMISSION_SETTLED", "An order cannot be cancelled after its commission has been settled.");
         String operationId = UUID.randomUUID().toString();
         for (var item : orders.items(id))
-            inventory.restore(item.productId(), item.quantity(), "Customer cancelled order", operationId, id, p.actor());
+            inventory.restore(p.merchantId(), item.productId(), item.quantity(), "Customer cancelled order", operationId, id, p.actor());
         orders.updateStatus(id, "cancelled", null, reason, p.actor());
         orders.updateBillingVoid(id, p.actor());
         orders.updateCommissionVoid(id, p.actor());
@@ -661,12 +672,28 @@ public class OrderService {
             throw ApiException.conflict("PAYMENT_NOT_ALLOWED", "Payment cannot be submitted for this order.");
         if (request.expectedTotalAmount() == null || request.expectedTotalAmount().compareTo(row.total()) != 0)
             throw ApiException.conflict("TOTAL_MISMATCH", "Expected total does not match the order.");
+        if (!payments.paymentMethods(p.merchantId()).cryptoEnabled())
+            throw ApiException.conflict("PAYMENT_METHOD_NOT_AVAILABLE", "Cryptocurrency payments are not available for this merchant.");
         validatePaymentAmount(request.declaredAmount(), row.total().subtract(orders.receivedAmount(id)));
         validateTransactionNo(request.transactionNo());
         var channel = payments.channel(p.merchantId(), request.channelId(), true).orElseThrow(() -> ApiException.notFound("Payment channel not found."));
         orders.savePaymentSubmission(new OrderRepository.PaymentSubmissionInput(id, customer.id(), request.channelId(), request.transactionNo().trim(), row.total(), request.declaredAmount()), channel.snapshot(), p.actor());
         orders.updatePaymentTotals(id, "pending_verification", orders.receivedAmount(id), p.actor());
         orders.addEvent(id, UUID.randomUUID().toString(), "payment_submitted", row.paymentStatus(), "pending_verification", null, null, null, p.actor());
+        return detail(orders.find(p.merchantId(), id, customer.id()).orElseThrow(), false, p);
+    }
+
+    @Transactional
+    public Map<String, Object> requestPaymentLink(Principal p, long id) {
+        var customer = accounts.customer(p);
+        var row = orders.findForUpdate(p.merchantId(), id, customer.id()).orElseThrow(() -> ApiException.notFound("Order not found."));
+        if ((!"unpaid".equals(row.paymentStatus()) && !"partially_paid".equals(row.paymentStatus())) || "cancelled".equals(row.status()))
+            throw ApiException.conflict("PAYMENT_NOT_ALLOWED", "Payment cannot be requested for this order.");
+        if (!row.paymentLinkRequested()) {
+            if (!payments.paymentMethods(p.merchantId()).onlinePaymentLinkEnabled())
+                throw ApiException.conflict("PAYMENT_METHOD_NOT_AVAILABLE", "Online payment links are not available for this merchant.");
+            orders.addEvent(id, UUID.randomUUID().toString(), "payment_link_requested", null, null, null, null, null, p.actor());
+        }
         return detail(orders.find(p.merchantId(), id, customer.id()).orElseThrow(), false, p);
     }
 
@@ -703,9 +730,18 @@ public class OrderService {
                 } else {
                     if (request.channelId() == null)
                         throw ApiException.badRequest("PAYMENT_CHANNEL_REQUIRED", "请选择有效的收款渠道。");
-                    var channel = payments.channel(p.merchantId(), request.channelId(), true).orElseThrow(() -> ApiException.notFound("Payment channel not found."));
-                    channelId = channel.id();
-                    snapshot = channel.snapshot();
+                    if (request.channelId() == ONLINE_PAYMENT_LINK_CHANNEL_ID) {
+                        if (!payments.paymentMethods(p.merchantId()).onlinePaymentLinkEnabled() && !row.paymentLinkRequested())
+                            throw ApiException.notFound("Payment channel not found.");
+                        channelId = ONLINE_PAYMENT_LINK_CHANNEL_ID;
+                        snapshot = ONLINE_PAYMENT_LINK_CHANNEL_SNAPSHOT;
+                    } else {
+                        if (!payments.paymentMethods(p.merchantId()).cryptoEnabled())
+                            throw ApiException.notFound("Payment channel not found.");
+                        var channel = payments.channel(p.merchantId(), request.channelId(), true).orElseThrow(() -> ApiException.notFound("Payment channel not found."));
+                        channelId = channel.id();
+                        snapshot = channel.snapshot();
+                    }
                 }
                 String transactionNo = request.transactionNo() == null || request.transactionNo().isBlank()
                         ? sub.map(OrderRepository.PaymentSubmissionRow::transactionNo).orElse(null) : request.transactionNo().trim();
@@ -844,6 +880,7 @@ public class OrderService {
 
     private Map<String, Object> summaryView(OrderRepository.OrderRow r, boolean seller) {
         Map<String, Object> out = base(r);
+        out.put("paymentLinkRequested", r.paymentLinkRequested());
         var orderItems = orders.items(r.id());
         out.put("fulfillmentSummary", parcels.summary(r.id(), orderItems));
         out.put("items", orderItems.stream().map(i -> Map.of("orderItemId", i.id(), "productId", i.productId(), "sku", i.sku(), "name", i.name(), "productType", i.productType(), "quantity", i.quantity(), "unitPrice", i.unitPrice(), "lineTotal", i.lineAmount(), "quantityPrices", orders.quantityPrices(i.id()))).toList());

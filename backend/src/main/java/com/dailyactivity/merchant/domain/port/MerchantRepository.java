@@ -5,10 +5,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 public interface MerchantRepository {
-    Set<String> PUBLIC_MENUS = Set.of("products", "certificates", "categories");
     Optional<Merchant> find(long id);
     Optional<Merchant> findByDomain(String domain);
     void branding(long id, String domain, String logoUrl, String theme);
@@ -21,8 +19,6 @@ public interface MerchantRepository {
     }
     void update(long id, String name, BigDecimal shippingFee, boolean active, long actor);
     void updateRegistrationEnabled(long id, boolean enabled, long actor);
-    void replacePermissions(long id, Set<String> permissions, long actor);
-    Set<String> permissions(long id);
     void audit(long merchantId, Actor actor, String action, String detail);
     record Merchant(long id, String code, String name, boolean active, BigDecimal shippingFee, Instant updatedAt, String domain, String logoUrl, String theme, boolean registrationEnabled) {
         public Merchant(long id,String code,String name,boolean active,BigDecimal fee,Instant time,String domain,String logoUrl,String theme) {

@@ -33,7 +33,7 @@ public class CartService {
     public Map<String, Object> get(Principal p) {
         var a = accounts.customer(p);
         var lines = carts.find(a.id(), a.priceTier());
-        var schedules = quantityPrices.prices(lines.stream().map(CartRepository.CartLine::productId).toList(), a.priceTier());
+        var schedules = quantityPrices.prices(p.merchantId(), lines.stream().map(CartRepository.CartLine::productId).toList(), a.priceTier());
         List<Map<String, Object>> items = lines.stream().map(line -> {
             var item = view(line);
             var price = QuantityPricing.price(schedules.getOrDefault(line.productId(), List.of()), line.quantity(), line.unitPrice());
@@ -56,7 +56,7 @@ public class CartService {
     public Map<String, Object> set(Principal p, long productId, int quantity) {
         if (quantity < 1) throw ApiException.badRequest("INVALID_QUANTITY", "Quantity must be a positive integer.");
         var a = accounts.customerForUpdate(p);
-        var product = catalog.product(productId, a.priceTier(), false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
+        var product = catalog.product(p.merchantId(), productId, a.priceTier(), false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
         if (!product.active() || !"regular".equals(product.productType()))
             throw ApiException.conflict("PRODUCT_NOT_AVAILABLE", "Product is not currently available.");
         if (quantity > product.stock())

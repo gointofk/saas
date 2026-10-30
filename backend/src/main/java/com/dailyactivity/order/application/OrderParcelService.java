@@ -229,8 +229,8 @@ public class OrderParcelService {
         for (var ref : refs) {
             if (ref == null || ref.fileUuid() == null || ref.uploadToken() == null)
                 throw ApiException.badRequest("INVALID_FILE_REFERENCE", "文件引用及上传凭证必填。");
-            if (uuid == null) files.validateUploadToken(ref.fileUuid(), purpose, actor.userId(), orderId, stage, ref.uploadToken());
-            else files.validateParcelUploadToken(ref.fileUuid(), purpose, actor.userId(), orderId, stage, uuid, ref.uploadToken());
+            if (uuid == null) files.validateUploadToken(ref.fileUuid(), purpose, actor.userId(), orderId, stage, ref.uploadToken(), actor.merchantId());
+            else files.validateParcelUploadToken(ref.fileUuid(), purpose, actor.userId(), orderId, stage, uuid, ref.uploadToken(), actor.merchantId());
         }
     }
 

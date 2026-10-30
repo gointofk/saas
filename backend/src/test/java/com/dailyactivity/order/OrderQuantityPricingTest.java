@@ -34,7 +34,7 @@ class OrderQuantityPricingTest {
         var customers = mock(CustomerRepository.class);
         var row = new OrderRepository.OrderRow(1, "TEST-QTY", 2, "TST", "Customer", "test@example.test", "pending", "unpaid", "{}",
                 "Recipient", "City", null, null, new BigDecimal("425"), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("425"),
-                null, null, null, VERSION, null, VERSION, null, "pending", null, null, null, null, BigDecimal.ZERO);
+                null, null, null, VERSION, null, VERSION, null, "pending", null, null, null, null, BigDecimal.ZERO, false);
         when(repository.findAuditOrderForUpdate(1, 1)).thenReturn(Optional.of(row));
         when(repository.findAuditOrder(1, 1)).thenReturn(Optional.of(row));
         when(repository.items(1)).thenReturn(List.of(new OrderRepository.ItemRow(11, 9, "SKU", "Product", "regular", 5, new BigDecimal("85"), new BigDecimal("425"))));

@@ -119,11 +119,11 @@ class OrderParcelServiceTest {
     void parcelTransitionsAndUploadScope() {
         var draft = pack(10, 1);
         service.pack(SELLER, 1, request(draft));
-        verify(files).validateParcelUploadToken(anyString(), eq("order_fulfillment"), eq(3L), eq(1L), eq("packed"), eq(draft.parcelUuid()), anyString());
+        verify(files).validateParcelUploadToken(anyString(), eq("order_fulfillment"), eq(3L), eq(1L), eq("packed"), eq(draft.parcelUuid()), anyString(), eq(1L));
         assertThatThrownBy(() -> service.ship(SELLER, 1, shipment(99, "X"))).isInstanceOf(ApiException.class).extracting("code").isEqualTo("NOT_FOUND");
         assertThatThrownBy(() -> service.ship(SELLER, 1, shipment(1, " "))).isInstanceOf(ApiException.class).extracting("code").isEqualTo("TRACKING_REQUIRED");
         service.ship(SELLER, 1, shipment(1, "X"));
-        verify(files).validateParcelUploadToken(anyString(), eq("order_shipping_label"), eq(3L), eq(1L), eq("shipped"), eq(draft.parcelUuid()), anyString());
+        verify(files).validateParcelUploadToken(anyString(), eq("order_shipping_label"), eq(3L), eq(1L), eq("shipped"), eq(draft.parcelUuid()), anyString(), eq(1L));
         service.receive(SELLER, 1, new OrderParcelService.ReceiveRequest(List.of(1L), true, null, VERSION));
         assertThatThrownBy(() -> service.receive(SELLER, 1, new OrderParcelService.ReceiveRequest(List.of(1L), true, null, VERSION))).isInstanceOf(ApiException.class).extracting("code").isEqualTo("INVALID_PARCEL_TRANSITION");
     }

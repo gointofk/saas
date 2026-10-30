@@ -6,33 +6,33 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CatalogRepository {
-    List<CategoryView> categories(boolean activeOnly);
+    List<CategoryView> categories(long merchantId, boolean activeOnly);
 
-    List<CustomerProductView> customerProducts(String priceTier);
+    List<CustomerProductView> customerProducts(long merchantId, String priceTier);
 
-    Page<ProductView> adminProducts(String query, Long categoryId, String productType, Boolean active, String sortBy, String sortDirection, int page);
+    Page<ProductView> adminProducts(long merchantId, String query, Long categoryId, String productType, Boolean active, String sortBy, String sortDirection, int page);
 
-    Optional<ProductView> product(long productId, String priceTier, boolean activeOnly, boolean lock);
+    Optional<ProductView> product(long merchantId, long productId, String priceTier, boolean activeOnly, boolean lock);
 
-    Page<ProductView> orderEditProducts(String query, String priceTier, boolean giftsOnly, int page);
+    Page<ProductView> orderEditProducts(long merchantId, String query, String priceTier, boolean giftsOnly, int page);
 
-    Optional<ProductView> orderEditProduct(long productId, String priceTier);
+    Optional<ProductView> orderEditProduct(long merchantId, long productId, String priceTier);
 
-    List<PriceView> prices(long productId);
+    List<PriceView> prices(long merchantId, long productId);
 
-    long createCategory(String name, int sortNo, long actorId);
+    long createCategory(long merchantId, String name, int sortNo, long actorId);
 
-    void updateCategory(long id, String name, int sortNo, boolean active, long actorId, Instant expectedUpdatedAt);
+    void updateCategory(long merchantId, long id, String name, int sortNo, boolean active, long actorId, Instant expectedUpdatedAt);
 
-    void softDeleteCategory(long id, long actorId);
+    void softDeleteCategory(long merchantId, long id, long actorId);
 
-    long createProduct(ProductCommand command, long actorId);
+    long createProduct(long merchantId, ProductCommand command, long actorId);
 
-    void updateProduct(long id, ProductCommand command, long actorId);
+    void updateProduct(long merchantId, long id, ProductCommand command, long actorId);
 
-    void setProductActive(long id, boolean active, long actorId);
+    void setProductActive(long merchantId, long id, boolean active, long actorId);
 
-    void softDeleteProduct(long id, long actorId);
+    void softDeleteProduct(long merchantId, long id, long actorId);
 
     record CategoryView(long id, String name, int sortNo, boolean active, long productCount,
                         String updatedBy, Instant updatedAt) {

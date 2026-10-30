@@ -18,7 +18,7 @@ public class JdbcCartRepository implements CartRepository {
     }
 
     private String select() {
-        return "SELECT ci.id,ci.product_id,p.sku,p.name,c.name category,p.product_type,p.active,COALESCE(c.active,0) category_active,p.stock_available,ci.quantity,COALESCE(tp.price,p.base_price) unit_price,COALESCE(tp.price,p.base_price)*ci.quantity line_total FROM cart_item ci JOIN product p ON p.id=ci.product_id LEFT JOIN category c ON c.id=p.category_id LEFT JOIN product_tier_price tp ON tp.product_id=p.id AND tp.tier=:tier WHERE ci.customer_id=:customerId";
+        return "SELECT ci.id,ci.product_id,p.sku,p.name,c.name category,p.product_type,p.active,COALESCE(c.active,0) category_active,p.stock_available,ci.quantity,COALESCE(tp.price,p.base_price) unit_price,COALESCE(tp.price,p.base_price)*ci.quantity line_total FROM cart_item ci JOIN product p ON p.id=ci.product_id JOIN `user` cu ON cu.id=ci.customer_id AND cu.merchant_id=p.merchant_id LEFT JOIN category c ON c.id=p.category_id AND c.merchant_id=p.merchant_id LEFT JOIN product_tier_price tp ON tp.product_id=p.id AND tp.tier=:tier WHERE ci.customer_id=:customerId";
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.dailyactivity.auth.application.AccountService;
 import com.dailyactivity.order.application.OrderService;
 import com.dailyactivity.billing.application.BillingService;
 import com.dailyactivity.identity.domain.port.CustomerRepository;
+import com.dailyactivity.payment.application.PaymentService;
 import com.dailyactivity.support.PrdDatabaseTest;
 import com.dailyactivity.support.PrdTestFixture;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class PrdStagedPaymentTest extends PrdDatabaseTest {
     @Autowired private BillingService bills;
     @Autowired private CustomerRepository customers;
+    @Autowired private PaymentService payments;
     @Autowired private MockMvc http;
     @Autowired private AccountService accounts;
 
@@ -68,6 +70,69 @@ class PrdStagedPaymentTest extends PrdDatabaseTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM payment_receipt WHERE order_id=?", Long.class, id)).isEqualTo(3);
         assertThat(jdbc.queryForObject("SELECT settled_amount FROM billing_entry WHERE order_id=? AND bill_type='order_receivable'", BigDecimal.class, id)).isEqualByComparingTo("110.00");
         assertThat(orders.paymentRecords(customer(), id, 1).items()).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("线上支付链接申请只记录一次，站外收款使用固定虚拟渠道快照")
+    void requestsOnlinePaymentLinkAndRecordsExternalReceipt() throws Exception {
+        var order = createOrder("online-link", 1);
+        long id = orderId(order);
+        assertThatThrownBy(() -> orders.requestPaymentLink(customer(), id))
+                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("PAYMENT_METHOD_NOT_AVAILABLE");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM order_event WHERE order_id=? AND action='payment_link_requested'", Long.class, id)).isZero();
+        payments.updatePaymentMethods(seller(), new PaymentService.PaymentMethodsRequest(true, true));
+
+        String token = (String) accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD).get("accessToken");
+        String domain = jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?", String.class, data.customer().merchantId());
+        var response = http.perform(post("/api/v1/customer/orders/{id}/payment-link-request", id)
+                .header(HttpHeaders.HOST, domain)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+                .andReturn().getResponse();
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getContentAsString()).contains("\"paymentLinkRequested\":true");
+
+        var requested = orders.detail(customer(), id);
+        assertThat(requested).containsEntry("paymentStatus", "unpaid").containsEntry("paymentLinkRequested", true);
+        assertThat(orders.sellerPaymentChannels(seller(), id))
+                .anySatisfy(channel -> assertThat(channel).containsEntry("id", 0L).containsEntry("name", "Online payment link"));
+
+        var repeated = orders.requestPaymentLink(customer(), id);
+        assertThat(repeated).containsEntry("paymentStatus", "unpaid").containsEntry("paymentLinkRequested", true);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM order_event WHERE order_id=? AND action='payment_link_requested'", Long.class, id)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM payment_submission WHERE order_id=?", Long.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM payment_receipt WHERE order_id=?", Long.class, id)).isZero();
+
+        var paid = orders.sellerAction(seller(), id, "confirm-payment", new OrderService.SellerAction(
+                (BigDecimal) repeated.get("total"), "external-reference", 0L, null, null, null, null, null,
+                false, version(repeated), new BigDecimal("110.00"), null));
+
+        assertThat(paid).containsEntry("paymentStatus", "paid").containsEntry("paymentLinkRequested", true);
+        assertThat(jdbc.queryForObject("SELECT channel_id FROM payment_receipt WHERE order_id=?", Long.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT channel_snapshot FROM payment_receipt WHERE order_id=?", String.class, id))
+                .contains("Online payment link");
+        assertThat(orders.paymentRecords(seller(), id, 1).items()).singleElement()
+                .satisfies(record -> assertThat(record.get("transactionNo")).isEqualTo("external-reference"));
+    }
+
+    @Test
+    @DisplayName("停用加密货币后拒绝新的加密货币付款申报")
+    void disabledCryptoPaymentCannotBeSubmitted() {
+        var order = createOrder("crypto-disabled", 1);
+        payments.updatePaymentMethods(seller(), new PaymentService.PaymentMethodsRequest(false, true));
+
+        assertThatThrownBy(() -> orders.submitPayment(customer(), orderId(order), new OrderService.PaymentRequest(
+                data.channelId(), "crypto-disabled-reference", (BigDecimal) order.get("total"), version(order), new BigDecimal("30.00"))))
+                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("PAYMENT_METHOD_NOT_AVAILABLE");
+        assertThat(orders.sellerPaymentChannels(seller(), orderId(order)))
+                .noneMatch(channel -> ((Number) channel.get("id")).longValue() == data.channelId());
+        assertThatThrownBy(() -> orders.sellerAction(seller(), orderId(order), "confirm-payment", new OrderService.SellerAction(
+                (BigDecimal) order.get("total"), "crypto-disabled-reference", data.channelId(), null, null, null, null,
+                null, false, version(order), new BigDecimal("30.00"), null)))
+                .isInstanceOf(ApiException.class);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM payment_submission WHERE order_id=?", Long.class, orderId(order))).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM payment_receipt WHERE order_id=?", Long.class, orderId(order))).isZero();
     }
 
     @Test

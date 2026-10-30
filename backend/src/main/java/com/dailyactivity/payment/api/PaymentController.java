@@ -8,7 +8,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -20,10 +19,21 @@ public class PaymentController {
         this.service = service;
     }
 
-    @GetMapping("/customer/payment-channels")
-    public List<Map<String, Object>> customer(HttpServletRequest r) {
-        AuthSupport.principal(r, "customer");
-        return service.customerChannels(AuthSupport.principal(r, "customer"));
+    @GetMapping("/customer/payment-options")
+    public Map<String, Object> customer(HttpServletRequest r) {
+        return service.customerPaymentOptions(AuthSupport.principal(r, "customer"));
+    }
+
+    @RequireMenu("payment_channels")
+    @GetMapping("/admin/payment-options")
+    public Map<String, Object> paymentMethods(HttpServletRequest r) {
+        return service.adminPaymentMethods(AuthSupport.principal(r, "seller"));
+    }
+
+    @RequireMenu("payment_channels")
+    @PutMapping("/admin/payment-options")
+    public Map<String, Object> updatePaymentMethods(@RequestBody PaymentService.PaymentMethodsRequest body, HttpServletRequest r) {
+        return service.updatePaymentMethods(AuthSupport.principal(r, "seller"), body);
     }
 
     @RequireMenu("payment_channels")

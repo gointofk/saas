@@ -1,4 +1,4 @@
--- DailyActivity V1.8: 全量 MySQL 5.6.51 初始化
+-- DailyActivity V1.9: 全量 MySQL 5.6.51 初始化
 -- 仅在预先创建的空业务库执行。数据库由 mysql 命令参数选择。
 -- 不含 CREATE DATABASE/USE，不修改用户账户，不导入 Demo 或默认密码。
 -- 36 张 InnoDB 实体表；无视图、外键、触发器、存储过程、会话表。
@@ -15,7 +15,7 @@ SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 SET SESSION time_zone = '+00:00';
 SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 
--- 商户资料及公共菜单授权，由独立平台管理员管理。
+-- 商户配置由独立平台管理员管理；商户目录由各商户自行维护。
 CREATE TABLE merchant (
   id BIGINT NOT NULL AUTO_INCREMENT,
   code VARCHAR(32) NOT NULL,
@@ -25,6 +25,8 @@ CREATE TABLE merchant (
   theme VARCHAR(32) NOT NULL DEFAULT 'classic',
   active TINYINT NOT NULL DEFAULT 1,
   customer_registration_enabled TINYINT NOT NULL DEFAULT 0,
+  crypto_payment_enabled TINYINT NOT NULL DEFAULT 1,
+  online_payment_link_enabled TINYINT NOT NULL DEFAULT 0,
   shipping_fee DECIMAL(18,2) NOT NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -33,16 +35,6 @@ CREATE TABLE merchant (
   updated_by_user_id BIGINT NULL,
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'platform',
   PRIMARY KEY (id), UNIQUE KEY uk_merchant_code (code), UNIQUE KEY uk_merchant_domain (domain)
-) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE merchant_permission (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  merchant_id BIGINT NOT NULL,
-  menu_code VARCHAR(32) NOT NULL,
-  created_by_user_id BIGINT NULL,
-  created_by_type VARCHAR(16) NOT NULL DEFAULT 'platform',
-  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  deleted BIGINT NOT NULL DEFAULT 0,
-  PRIMARY KEY (id), UNIQUE KEY uk_merchant_permission (merchant_id,menu_code,deleted)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE merchant_event (
   id BIGINT NOT NULL AUTO_INCREMENT,
@@ -68,12 +60,6 @@ CREATE TABLE merchant_email_settings (
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (merchant_id)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE coa_binding_lock (
-  id BIGINT NOT NULL,
-  PRIMARY KEY (id)
-) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-INSERT INTO coa_binding_lock(id) VALUES(1);
-
 -- 固定菜单定义；members 是 seller 用户可被授予的菜单权限
 CREATE TABLE `permission_menu` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -206,6 +192,7 @@ CREATE TABLE `customer_address` (
 -- 商品类目
 CREATE TABLE `category` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_id` BIGINT NOT NULL COMMENT '所属商户ID',
   `name` VARCHAR(100) NOT NULL COMMENT '名称',
   `sort_no` INT NOT NULL COMMENT '排序序号',
   `active` TINYINT NOT NULL DEFAULT 1 COMMENT '启用状态：1启用，0停用',
@@ -217,13 +204,14 @@ CREATE TABLE `category` (
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_category_name` (`name`),
-  KEY `idx_category_catalog` (`deleted`,`active`,`sort_no`,`id`)
+  UNIQUE KEY `uk_category_merchant_name` (`merchant_id`,`name`),
+  KEY `idx_category_catalog` (`merchant_id`,`deleted`,`active`,`sort_no`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商品类目';
 
 -- 商品与当前可售库存，历史库存身份保留
 CREATE TABLE `product` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_id` BIGINT NOT NULL COMMENT '所属商户ID',
   `category_id` BIGINT NOT NULL COMMENT '商品类目ID',
   `sku` VARCHAR(64) NOT NULL COMMENT '商品SKU',
   `name` VARCHAR(200) NOT NULL COMMENT '名称',
@@ -242,9 +230,9 @@ CREATE TABLE `product` (
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_product_sku` (`sku`),
-  KEY `idx_product_catalog` (`category_id`,`deleted`,`active`,`product_type`,`id`),
-  KEY `idx_product_stock` (`deleted`,`stock_available`,`id`)
+  UNIQUE KEY `uk_product_merchant_sku` (`merchant_id`,`sku`),
+  KEY `idx_product_catalog` (`merchant_id`,`category_id`,`deleted`,`active`,`product_type`,`id`),
+  KEY `idx_product_stock` (`merchant_id`,`deleted`,`stock_available`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商品与当前可售库存，历史库存身份保留';
 
 -- V1至V6等级价，正品NULL表示回默认价；替换时物理删除旧行
@@ -431,7 +419,7 @@ CREATE TABLE `order_event` (
   `order_id` BIGINT NOT NULL COMMENT '订单ID',
   `parcel_id` BIGINT NULL COMMENT '包裹履约事件关联，其余事件为空',
   `operation_id` VARCHAR(64) NOT NULL COMMENT '服务端单次操作审计ID，用于关联库存流水和订单事件',
-  `action` VARCHAR(32) NOT NULL COMMENT '订单动作：submitted、customer_updated、seller_updated、cancelled、payment_submitted、payment_confirmed、packed、shipped、received、completed',
+  `action` VARCHAR(32) NOT NULL COMMENT '订单动作：submitted、customer_updated、seller_updated、cancelled、payment_submitted、payment_confirmed、payment_link_requested、packed、shipped、received、completed',
   `from_status` VARCHAR(32) NULL COMMENT '变更前状态：订单状态或支付状态，取值见order_status/payment_status',
   `to_status` VARCHAR(32) NULL COMMENT '变更后状态：订单状态或支付状态，取值见order_status/payment_status',
   `before_data` LONGTEXT NULL COMMENT '操作前数据JSON',
@@ -442,12 +430,13 @@ CREATE TABLE `order_event` (
   actor_type VARCHAR(16) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_order_operation_action` (`order_id`,`operation_id`,`action`),
-  KEY `idx_event_order_time` (`order_id`,`occurred_at`,`id`)
+  KEY `idx_event_order_time` (`order_id`,`occurred_at`,`id`),
+  KEY `idx_event_order_action` (`order_id`,`action`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单事件与前后值，仅追加';
 
 -- 文件清单，文件内容仍在本地磁盘；file_uuid 是外部引用的稳定身份
 CREATE TABLE `file_asset` (
-  `merchant_id` BIGINT NULL COMMENT '私有文件所属商户；公共COA文件为NULL，不能作为跳过鉴权的依据',
+  `merchant_id` BIGINT NOT NULL COMMENT '所属商户ID；包括COA文件在内的全部文件均为商户私有',
   `file_uuid` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '文件UUID；由应用生成并永久不复用',
   `stored_file_name` VARCHAR(64) NOT NULL COMMENT '服务端存储文件名',
   `original_file_name` VARCHAR(255) NOT NULL COMMENT '原始文件名',
@@ -536,7 +525,7 @@ CREATE TABLE `payment_submission` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `order_id` BIGINT NOT NULL COMMENT '订单ID',
   `customer_id` BIGINT NOT NULL COMMENT '客户用户ID',
-  `channel_id` BIGINT NOT NULL COMMENT '收款渠道ID',
+  `channel_id` BIGINT NOT NULL COMMENT '收款渠道ID；0 为站外线上支付链接虚拟渠道',
   `channel_snapshot` VARCHAR(256) NOT NULL COMMENT '收款渠道快照JSON',
   `original_transaction_no` VARCHAR(256) NOT NULL COMMENT '客户原始交易号',
   `declared_order_total` DECIMAL(18,2) NOT NULL COMMENT '申报时订单总额快照',
@@ -574,6 +563,7 @@ CREATE TABLE `payment_receipt` (
 -- 当前COA元数据及当前文件 UUID，无证书版本实体
 CREATE TABLE `coa_certificate` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_id` BIGINT NOT NULL COMMENT '所属商户ID',
   `name` VARCHAR(200) NOT NULL COMMENT '名称',
   `lot` VARCHAR(100) NULL COMMENT 'COA批次号',
   `purity` VARCHAR(32) NULL COMMENT 'COA纯度信息',
@@ -589,12 +579,13 @@ CREATE TABLE `coa_certificate` (
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
-  KEY `idx_coa_created` (`deleted`,`created_at`,`id`)
-) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='当前COA元数据及文件UUID，无证书版本实体';
+  KEY `idx_coa_merchant_created` (`merchant_id`,`deleted`,`created_at`,`id`)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商户私有COA元数据及当前文件UUID，无证书版本实体';
 
 -- COA当前和历史绑定，一证最多一有效绑定
 CREATE TABLE `product_coa_link` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_id` BIGINT NOT NULL COMMENT '所属商户ID；必须与商品和COA一致',
   `product_id` BIGINT NOT NULL COMMENT '商品ID',
   `coa_id` BIGINT NOT NULL COMMENT 'COA证书ID',
   `linked_by_user_id` BIGINT NOT NULL COMMENT 'COA绑定人seller.id',
@@ -608,9 +599,9 @@ CREATE TABLE `product_coa_link` (
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_coa_active` (`coa_id`,`deleted`),
-  KEY `idx_product_coa_active` (`product_id`,`deleted`,`coa_id`)
-) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='COA当前和历史绑定，一证最多一有效绑定';
+  UNIQUE KEY `uk_coa_merchant_active` (`merchant_id`,`coa_id`,`deleted`),
+  KEY `idx_product_coa_active` (`merchant_id`,`product_id`,`deleted`,`coa_id`)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商户内COA当前和历史绑定，一证最多一有效绑定';
 
 -- 订单完成时证书及绑定快照，只存 file_uuid
 CREATE TABLE `order_item_coa_snapshot` (

@@ -3,8 +3,13 @@ package com.dailyactivity.payment.domain.port;
 import java.util.List;
 import java.util.Optional;
 import java.math.BigDecimal;
+import com.dailyactivity.auth.domain.Actor;
 
 public interface PaymentRepository {
+    PaymentMethods paymentMethods(long merchantId);
+
+    void updatePaymentMethods(long merchantId, PaymentMethods methods, Actor actor);
+
     List<Channel> find(long merchantId, boolean activeOnly);
 
     List<Channel> page(long merchantId, boolean activeOnly, int page);
@@ -18,6 +23,8 @@ public interface PaymentRepository {
     void update(long merchantId, long id, ChannelInput input, long actorId);
 
     void softDelete(long merchantId, long id, long actorId);
+
+    record PaymentMethods(boolean cryptoEnabled, boolean onlinePaymentLinkEnabled) {}
 
     record Channel(long id, String name, String currencyCode, String network, String receivingAddress,
                    String instructions, BigDecimal additionalRate, String qrFileUuid, boolean active, int sortNo) {

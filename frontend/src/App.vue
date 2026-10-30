@@ -32,7 +32,7 @@ import { fulfillmentStageState, partialFulfillmentStage, type FulfillmentStageKe
 import CustomerProductCatalog from './components/CustomerProductCatalog.vue'
 import SellerQuantityPriceEditor from './components/SellerQuantityPriceEditor.vue'
 import { quantityPriceError, type TierQuantityPrices, type PriceTier } from './lib/quantity-pricing'
-import type { CustomerAddress, CustomerCart, CustomerCartItem, CustomerCategory, CustomerCertificate, CustomerOrder, CustomerOrderItem, CustomerOrderQuote, CustomerOrderSummary, CustomerPaymentChannel, CustomerProduct, CustomerProfile, CustomerReferral, CustomerReferralSummary } from './types/customer'
+import type { CustomerAddress, CustomerCart, CustomerCartItem, CustomerCategory, CustomerCertificate, CustomerOrder, CustomerOrderItem, CustomerOrderQuote, CustomerOrderSummary, CustomerPaymentChannel, CustomerPaymentOptions, CustomerProduct, CustomerProfile, CustomerReferral, CustomerReferralSummary } from './types/customer'
 
 type AnyRecord = Record<string, any>
 type AdminOrderListItem = CustomerOrder & { customer?: { name?: string; email?: string } }
@@ -134,6 +134,9 @@ const selectedAddressId = ref<number | null>(null)
 const orderNote = ref('')
 const paymentSuccessOpen = ref(false)
 const customerPaymentOpen = ref(false)
+const cryptoEnabled = ref(false)
+const onlinePaymentLinkEnabled = ref(false)
+const paymentMethod = ref<'crypto' | 'link'>('crypto')
 const orders = ref<Page<CustomerOrder>>({ items: [], total: 0, page: 1, totalPages: 1 })
 const selectedOrder = ref<AnyRecord>({}) as any
 const orderEditOpen = ref(false)
@@ -164,7 +167,6 @@ const passwordConfirmation = ref('')
 const adminPage = ref('orders')
 const adminMode = ref('')
 const currentMerchant = ref<MerchantIdentity | null>(null)
-const merchantPermissions = ref<string[]>([])
 const canManageCoa = computed(() => adminPermissions.value.includes('certificates'))
 const adminMember = ref<AnyRecord>({})
 const adminPermissions = ref<string[]>([])
@@ -219,6 +221,8 @@ const adminBillDateFilter = ref('all')
 const adminBillDateFrom = ref('')
 const adminBillDateTo = ref('')
 const adminChannels = ref<Page>({ items: [], total: 0, page: 1, totalPages: 1 })
+const adminPaymentMethods = reactive({ cryptoEnabled: true, onlinePaymentLinkEnabled: false })
+const paymentMethodsSaving = ref(false)
 const adminCertificates = ref<Page>({ items: [], total: 0, page: 1, totalPages: 1 })
 const adminCategories = ref<AnyRecord[]>([])
 const adminCategoriesCache = createRequestCache()
@@ -264,7 +268,7 @@ const memberPermissionOptions = [
   { code: 'payment_channels', name: '收款渠道', description: '配置收款渠道', symbol: '＋' },
   { code: 'members', name: '成员与权限', description: '管理后台成员及其菜单权限', symbol: '◌' },
 ]
-const availableMemberPermissionOptions = computed(() => memberPermissionOptions.filter(option => !['products', 'certificates', 'categories'].includes(option.code) || merchantPermissions.value.includes(option.code)))
+const availableMemberPermissionOptions = computed(() => memberPermissionOptions)
 const memberPermissionNames = Object.fromEntries(memberPermissionOptions.map(({ code, name }) => [code, name])) as Record<string, string>
 const selectedMemberPermissions = computed(() => memberPermissionOptions.filter(permission => memberDraft.permissions.includes(permission.code)))
 function memberPermissionName(code: string) { return memberPermissionNames[code] || code }
@@ -1187,6 +1191,9 @@ function goCustomer(page: string) {
     invalidateCustomerOrderSummary()
     channels.value = []
     paymentChannel.value = null
+    cryptoEnabled.value = false
+    onlinePaymentLinkEnabled.value = false
+    paymentMethod.value = 'crypto'
     transactionNo.value = ''
   }
   if (page === 'referrals' || page === 'security') {
@@ -1209,6 +1216,8 @@ function closePaymentModal() {
   customerPaymentOpen.value = false
   channels.value = []
   transactionNo.value = ''
+  cryptoEnabled.value = false
+  onlinePaymentLinkEnabled.value = false
 }
 
 function goAdmin(page: string) {
@@ -1446,14 +1455,18 @@ async function checkout() {
       orderNote.value = ''
       try { cart.value = await request<CustomerCart>('/customer/cart') } catch { /* the created order remains available below */ }
       try {
-        const availableChannels = await request<CustomerPaymentChannel[]>('/customer/payment-channels')
+        const paymentOptions = await request<CustomerPaymentOptions>('/customer/payment-options')
         if (customerPage.value === 'cart' && checkoutStep.value === 3 && selectedOrder.value?.id === order.id) {
-          channels.value = availableChannels
-          paymentChannel.value = channels.value[0]?.id || null
+          applyCustomerPaymentOptions(paymentOptions, order)
           transactionNo.value = ''
         }
       } catch {
-        if (customerPage.value === 'cart' && checkoutStep.value === 3 && selectedOrder.value?.id === order.id) channels.value = []
+        if (customerPage.value === 'cart' && checkoutStep.value === 3 && selectedOrder.value?.id === order.id) {
+          cryptoEnabled.value = false
+          onlinePaymentLinkEnabled.value = false
+          channels.value = []
+          paymentChannel.value = null
+        }
       }
     } catch (error) {
       if (error instanceof ApiRequestError && ['QUOTE_CHANGED', 'QUOTE_EXPIRED', 'CART_CHANGED', 'INSUFFICIENT_STOCK'].includes(error.code)) {
@@ -1555,9 +1568,9 @@ async function openPayment(order: CustomerOrder) {
   await runPending('payment-channel-load', async () => {
     try {
       selectedOrder.value = order
-      const [detail, availableChannels] = await Promise.all([
+      const [detail, paymentOptions] = await Promise.all([
         request<CustomerOrder>(`/customer/orders/${order.id}`),
-        request<CustomerPaymentChannel[]>('/customer/payment-channels'),
+        request<CustomerPaymentOptions>('/customer/payment-options'),
       ])
       if (customerPage.value !== 'orders' || selectedOrder.value?.id !== order.id) return
       if (detail.status === 'cancelled' || !['unpaid', 'partially_paid'].includes(detail.paymentStatus)) {
@@ -1567,17 +1580,43 @@ async function openPayment(order: CustomerOrder) {
       }
       selectedOrder.value = detail
       paymentAmount.value = String(detail.remainingAmount)
-      channels.value = availableChannels
-      if (!channels.value.length) { showNotice(t('No active payment channels are available. You can submit payment later from Order History.'), 'error'); return }
-      paymentChannel.value = channels.value[0]?.id || null
+      applyCustomerPaymentOptions(paymentOptions, detail)
+      if (!channels.value.length && !onlinePaymentLinkEnabled.value && !detail.paymentLinkRequested) {
+        showNotice(t('No active payment methods are available. You can pay later from Order History.'), 'error')
+        return
+      }
       transactionNo.value = ''
       customerPaymentOpen.value = true
     } catch (error) { showFailure(error) }
   })
 }
 
+function applyCustomerPaymentOptions(options: CustomerPaymentOptions, order: Pick<CustomerOrder, 'paymentLinkRequested'>) {
+  cryptoEnabled.value = options.cryptoEnabled
+  onlinePaymentLinkEnabled.value = options.onlinePaymentLinkEnabled
+  channels.value = options.channels
+  paymentChannel.value = channels.value[0]?.id || null
+  paymentMethod.value = Boolean(order.paymentLinkRequested)
+    || (onlinePaymentLinkEnabled.value && !channels.value.length)
+    ? 'link'
+    : 'crypto'
+}
+
+async function requestPaymentLink() {
+  if (!selectedOrder.value?.id || selectedOrder.value.status === 'cancelled' || !onlinePaymentLinkEnabled.value) return
+  await runPending('payment-link-request', async () => {
+    try {
+      selectedOrder.value = await orderPaymentApi.requestLink<AnyRecord>(selectedOrder.value.id)
+      paymentMethod.value = 'link'
+      invalidateCustomerOrderSummary()
+      if (customerPage.value === 'orders') await loadCustomerPage()
+    } catch (error) { showFailure(error) }
+  })
+}
+
 async function submitPayment() {
   if (selectedOrder.value?.status === 'cancelled') { showNotice('Payment is not available for a cancelled order.', 'error'); return }
+  if (paymentMethod.value !== 'crypto') return
   if (!selectedOrder.value || !paymentChannel.value || !transactionNo.value.trim()) { showNotice('Choose a channel and enter the transaction ID.', 'error', 'Choose a payment channel and enter the transaction ID or transaction hash.'); return }
   if (!validPaymentAmount(paymentAmount.value.trim(), selectedOrder.value.remainingAmount)) { showNotice(t('Enter a positive amount with at most two decimals, within the remaining balance.'), 'error'); return }
   await runPending('payment-submit', async () => {
@@ -1755,7 +1794,6 @@ async function loadAdminSession() {
   const token = getToken('admin')
   if (token) rememberSellerSession(result as SellerIdentity, token)
   currentMerchant.value = result.merchant as MerchantIdentity
-  merchantPermissions.value = Array.isArray(result.merchantPermissions) ? result.merchantPermissions.map(String) : []
   adminMember.value = result.member as AnyRecord
   adminPermissions.value = Array.isArray(result.permissions) ? result.permissions.map(String) : []
   if (!adminNavItems.value.some(item => item.key === adminPageKey.value)) {
@@ -1850,7 +1888,14 @@ async function loadAdminPage() {
       ])
       commissions.value = commissionPage
     }
-    if (adminPage.value === 'settings') adminChannels.value = await request<Page>('/admin/payment-channels', {}, 'admin')
+    if (adminPage.value === 'settings') {
+      const [channelsPage, methods] = await Promise.all([
+        request<Page>('/admin/payment-channels', {}, 'admin'),
+        request<{ cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean }>('/admin/payment-options', {}, 'admin'),
+      ])
+      adminChannels.value = channelsPage
+      Object.assign(adminPaymentMethods, methods)
+    }
     if (adminPage.value === 'certificates') {
       const query = new URLSearchParams({ page: String(adminCertificatePage.value) })
       if (adminSearch.value.trim()) query.set('q', adminSearch.value.trim())
@@ -1885,8 +1930,10 @@ async function confirmPayment(order: { id: number }) {
     paymentConfirmChannelId.value = detail.pendingPaymentSubmission?.channelId || null
     paymentConfirmChannels.value = []
     if (!detail.pendingPaymentSubmission) {
-      paymentConfirmChannels.value = await request<Array<{ id: number; name: string; network: string }>>('/admin/orders/payment-channels', {}, 'admin')
-      paymentConfirmChannelId.value = paymentConfirmChannels.value[0]?.id || null
+      paymentConfirmChannels.value = await request<Array<{ id: number; name: string; network: string }>>(`/admin/orders/${detail.id}/payment-channels`, {}, 'admin')
+      paymentConfirmChannelId.value = detail.paymentLinkRequested && paymentConfirmChannels.value.some(channel => channel.id === 0)
+        ? 0
+        : paymentConfirmChannels.value[0]?.id ?? null
     }
     paymentConfirmOpen.value = true
   } catch (error) { showNotice(errorText(error), 'error') }
@@ -2668,7 +2715,7 @@ function orderEventLabel(event: AnyRecord) {
   if (event.type === 'parcels_repacked') return '重新分包'
   if (event.type === 'audit_discounted') return '订单优惠'
   if (event.toStatus && event.fromStatus !== event.toStatus) return sellerStatusLabel(event.toStatus)
-  return ({ submitted: '订单提交', audit_approved: '审核通过', audit_rejected: '审核不通过', audit_updated: '审核前修改订单', customer_updated: '客户修改订单', seller_updated: '商家修改订单', cancelled: '订单取消', payment_submitted: '提交付款申报', payment_confirmed: '确认收款' } as Record<string, string>)[event.type] || sellerStatusLabel(event.toStatus || event.type || '')
+  return ({ submitted: '订单提交', audit_approved: '审核通过', audit_rejected: '审核不通过', audit_updated: '审核前修改订单', customer_updated: '客户修改订单', seller_updated: '商家修改订单', cancelled: '订单取消', payment_submitted: '提交付款申报', payment_confirmed: '确认收款', payment_link_requested: '申请线上支付链接' } as Record<string, string>)[event.type] || sellerStatusLabel(event.toStatus || event.type || '')
 }
 
 function resetOrderCompletion() {
@@ -2789,6 +2836,24 @@ async function savePaymentChannel() {
   } catch (error) { showNotice(errorText(error), 'error') }
 }
 
+async function savePaymentMethods() {
+  if (paymentMethodsSaving.value) return
+  paymentMethodsSaving.value = true
+  try {
+    const saved = await request<{ cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean }>('/admin/payment-options', {
+      method: 'PUT', body: JSON.stringify(adminPaymentMethods),
+    }, 'admin')
+    Object.assign(adminPaymentMethods, saved)
+    showNotice('Payment methods updated.')
+  } catch (error) {
+    showNotice(errorText(error), 'error')
+    try {
+      const latest = await request<{ cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean }>('/admin/payment-options', {}, 'admin')
+      Object.assign(adminPaymentMethods, latest)
+    } catch { /* Keep the server error visible if refreshing also fails. */ }
+  } finally { paymentMethodsSaving.value = false }
+}
+
 function changeLanguage() {
   localStorage.setItem(area.value === 'admin' ? 'dailyactivity.admin.language' : 'dailyactivity.language', language.value)
 }
@@ -2800,7 +2865,7 @@ async function deletePaymentChannel(channel: AnyRecord) {
 
 const adminPageKey = computed(() => adminMode.value === 'billing' ? 'billing' : adminMode.value === 'finance' ? 'commissions' : ({ certificates: 'coas', customers: 'users', settings: 'payments', members: 'permissions' } as Record<string, string>)[adminPage.value] || adminPage.value)
 function navLabel(page: string) { return ({ merchants: '商户管理', dashboard: '概览', 'order-audit': '订单审核', orders: '订单管理', products: '商品管理', customers: '客户管理', users: '客户管理', finance: '佣金管理', commissions: '佣金管理', billing: '账单管理', certificates: 'COA 管理', coas: 'COA 管理', categories: '类目管理', members: '权限管理', permissions: '权限管理', settings: '支付管理', payments: '支付管理' }[page] || page) }
-function adminDescription(page: string) { return ({ merchants: '开通商户并管理公共资料权限', dashboard: '查看商家运营概览', 'order-audit': '审核客户新提交的订单', orders: '查看并处理已审核订单', products: '管理商品、库存和上架状态', customers: '查看客户账户和采购记录', users: '查看客户账户和采购记录', finance: '查看佣金记录和结算状态', commissions: '查看佣金记录和结算状态', billing: '查看账单和收款状态', certificates: '维护商品分析证书', coas: '维护商品分析证书', categories: '维护商品类目结构', members: '管理后台成员和权限', permissions: '管理后台成员和权限', settings: '配置收款渠道', payments: '配置收款渠道' }[page] || 'YTPEPS 商家管理后台') }
+function adminDescription(page: string) { return ({ merchants: '开通商户并管理商城配置', dashboard: '查看商家运营概览', 'order-audit': '审核客户新提交的订单', orders: '查看并处理已审核订单', products: '管理本商户商品、库存和上架状态', customers: '查看客户账户和采购记录', users: '查看客户账户和采购记录', finance: '查看佣金记录和结算状态', commissions: '查看佣金记录和结算状态', billing: '查看账单和收款状态', certificates: '维护本商户 COA 证书', coas: '维护本商户 COA 证书', categories: '维护本商户商品类目', members: '管理后台成员和权限', permissions: '管理后台成员和权限', settings: '配置收款渠道', payments: '配置收款渠道' }[page] || 'YTPEPS 商家管理后台') }
 const adminHeaderTitle = computed(() => navLabel(adminPageKey.value))
 const adminHeaderDescription = computed(() => adminDescription(adminPageKey.value))
 const adminNavItems = computed(() => [
@@ -2959,6 +3024,10 @@ watch(adminSearch, () => {
       :order-remaining-amount="selectedOrder?.remainingAmount"
       :checkout-quote="checkoutQuote"
       :payment-channel="paymentChannel"
+      :crypto-enabled="cryptoEnabled"
+      :online-payment-link-enabled="onlinePaymentLinkEnabled"
+      :payment-method="paymentMethod"
+      :payment-link-requested="Boolean(selectedOrder?.paymentLinkRequested)"
       :channels="channels"
       :selected-channel="selectedChannel"
       :transaction-no="transactionNo"
@@ -2970,11 +3039,13 @@ watch(adminSearch, () => {
       :cart-pending="pendingActions.has('cart')"
       :checkout-pending="pendingActions.has('checkout')"
       :payment-pending="pendingActions.has('payment-submit')"
+      :payment-link-pending="pendingActions.has('payment-link-request')"
       @update:checkout-step="checkoutStep = $event"
       @update:selected-address-id="selectCheckoutAddress"
       @update:address-picker-open="addressPickerOpen = $event"
       @update:order-note="orderNote = $event"
       @update:payment-channel="paymentChannel = $event"
+      @update:payment-method="paymentMethod = $event"
       @update:transaction-no="transactionNo = $event"
       @update:payment-amount="paymentAmount = $event"
       @continue="continueCheckout"
@@ -2983,6 +3054,7 @@ watch(adminSearch, () => {
       @remove-from-cart="removeFromCart"
       @open-address-form="openCheckoutAddressForm"
       @submit-payment="submitPayment"
+      @request-payment-link="requestPaymentLink"
       @close-payment-success="paymentSuccessOpen = false"
       @navigate="goCustomer"
     />
@@ -3119,9 +3191,13 @@ watch(adminSearch, () => {
       </div>
     </AppModal>
     <CustomerPaymentModal
-      v-if="customerPaymentOpen && !(customerPage === 'cart' && checkoutStep === 3) && !orderEditOpen && !orderDetailOpen && selectedOrder && ['unpaid', 'partially_paid'].includes(selectedOrder.paymentStatus) && channels.length"
+      v-if="customerPaymentOpen && !(customerPage === 'cart' && checkoutStep === 3) && !orderEditOpen && !orderDetailOpen && selectedOrder && ['unpaid', 'partially_paid'].includes(selectedOrder.paymentStatus) && (channels.length || onlinePaymentLinkEnabled || selectedOrder.paymentLinkRequested)"
       :order="selectedOrder"
       :channels="channels"
+      :crypto-enabled="cryptoEnabled"
+      :online-payment-link-enabled="onlinePaymentLinkEnabled"
+      :payment-method="paymentMethod"
+      :payment-link-pending="pendingActions.has('payment-link-request')"
       :payment-channel="paymentChannel"
       :transaction-no="transactionNo"
       :payment-amount="paymentAmount"
@@ -3129,9 +3205,11 @@ watch(adminSearch, () => {
       :t="t"
       :money="money"
       @update:payment-channel="paymentChannel = $event"
+      @update:payment-method="paymentMethod = $event"
       @update:transaction-no="transactionNo = $event"
       @update:payment-amount="paymentAmount = $event"
       @submit="submitPayment"
+      @request-payment-link="requestPaymentLink"
       @close="closePaymentModal"
     />
   </div>
@@ -3179,7 +3257,7 @@ watch(adminSearch, () => {
           </div>
         </section>
 
-        <section v-else-if="adminPage === 'orders'" class="panel active" id="panel-orders"><div class="stat-grid"><article class="stat-card"><span>{{ t('订单总数') }}</span><strong>{{ adminOrderSummary.allOrders || 0 }}</strong></article><article class="stat-card"><span>{{ t('待支付订单') }}</span><strong>{{ adminOrderSummary.pendingPaymentOrders || 0 }}</strong></article><article class="stat-card"><span>{{ t('待发货') }}</span><strong>{{ adminOrderSummary.notShippedOrders || 0 }}</strong></article><article class="stat-card"><span>{{ t('应付总额') }}</span><strong>{{ money(adminOrderSummary.grossOrderValue || 0) }}</strong></article><article class="stat-card"><span>{{ t('待收金额') }}</span><strong>{{ money(adminOrderSummary.pendingReceivableAmount || 0) }}</strong></article><article class="stat-card"><span>{{ t('已完成') }}</span><strong>{{ adminOrderSummary.completedOrders || 0 }}</strong></article><article class="stat-card"><span>{{ t('累计实收') }}</span><strong>{{ money(adminOrderSummary.paidAmount || 0) }}</strong></article></div><div class="filter-card seller-filter-card"><div class="filter-row"><div class="filter-group"><span class="fg-label">{{ t('日期') }}</span><div class="seg"><button v-for="item in [['all',t('全部时间')],['week',t('本周')],['lastweek',t('上周')],['month',t('本月')],['lastmonth',t('上月')]]" :key="item[0]" :class="{ active: adminDateFilter === item[0] }" @click="adminDateFilter = item[0]; adminDateFrom = ''; adminDateTo = ''; adminOrderPage = 1; loadAdminPage()">{{ t(item[1]) }}</button></div></div><div class="filter-group"><span class="fg-label">{{ t('区间') }}</span><CustomerDatePicker v-model="adminDateFrom" class="seller-date-control" :locale="language" :label="t('Start date')" :disabled="busy" :t="t" @apply="applyAdminDateRange('orders')" /><span>{{ t('至') }}</span><CustomerDatePicker v-model="adminDateTo" class="seller-date-control calendar-align-end" :locale="language" :label="t('End date')" :disabled="busy" :t="t" @apply="applyAdminDateRange('orders')" /></div></div><div class="filter-row"><div class="filter-group"><span class="fg-label">{{ t('付款') }}</span><div class="seg"><button v-for="item in [['all',t('全部')],['unpaid',t('待支付')],['pending_verification',t('待验证')],['partially_paid',t('部分支付')],['paid',t('已付清')]]" :key="item[0]" :class="{ active: adminPaymentFilter === item[0] }" @click="adminPaymentFilter = item[0]; adminOrderPage = 1; loadAdminPage()">{{ t(item[1]) }}</button></div></div><div class="filter-group"><span class="fg-label">{{ t('发货') }}</span><div class="seg"><button v-for="item in [['all',t('全部')],['not',t('待发货')],['partial',t('部分发货')],['shipped',t('全部已发货')]]" :key="item[0]" :class="{ active: adminShippingFilter === item[0] }" @click="adminShippingFilter = item[0]; adminOrderPage = 1; loadAdminPage()">{{ t(item[1]) }}</button></div></div><SellerSearchField class="seller-search" :loading="busy" @refresh="refreshAdminSearch"><input autocomplete="off" v-model="adminSearch" :placeholder="t('订单号 / 用户名 / 邮箱 / tracking number / 商品名 / 商品 SKU…')" @keyup.enter="adminOrderPage = 1; loadAdminPage()"></SellerSearchField><button class="btn btn-outline" :disabled="exportPreviewLoading || exportSubmitting" @click="startExport('orders')">{{ t('导出') }}</button></div></div><div class="card"><div class="card-body table-wrap"><table class="admin-table order-table"><thead><tr><th>{{ t('订单号') }}</th><th>{{ t('收货人') }}</th><th>{{ t('商品数') }}</th><th>{{ t('商品金额') }}</th><th>{{ t('运费') }}</th><th>{{ t('优惠额') }}</th><th>{{ t('应付') }}</th><th>{{ t('已付') }}</th><th>{{ t('待付') }}</th><th class="payment-status-heading">{{ t('支付状态') }}</th><th class="fulfillment-status-heading">{{ t('订单状态') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="order in visibleAdminOrders" :key="order.id"><td><button class="link-button" type="button" :disabled="pendingActions.has('admin-order-detail')" :aria-label="t('查看订单 {0} 的详情', [order.orderNo])" aria-haspopup="dialog" @click="openAdminOrderDetail(order)">{{ order.orderNo }}</button></td><td>{{ order.customer?.name || order.customer?.email || '—' }}</td><td>{{ order.items?.length || 0 }}</td><td>{{ money(order.subtotal) }}</td><td>{{ money(order.shippingFee) }}</td><td>{{ money(order.discountAmount || 0) }}</td><td>{{ money(order.total) }}</td><td>{{ money(order.paidAmount) }}</td><td>{{ money(order.remainingAmount) }}</td><td class="payment-status-cell"><span v-if="order.status === 'cancelled'">—</span><span v-else :class="['status-badge', 'payment-status-badge', statusClass(order.paymentStatus)]"><span v-if="order.paymentStatus === 'pending_verification'" class="status-attention-icon" aria-hidden="true">!</span>{{ sellerStatusLabel(order.paymentStatus) }}</span></td><td class="fulfillment-status-cell"><span :class="['status-badge', 'fulfillment-status-badge', statusClass(order.status)]">{{ sellerFulfillmentLabel(order.status, order.fulfillmentSummary) }}</span><small v-if="order.fulfillmentSummary?.started && !['received', 'completed'].includes(order.status)" class="seller-parcel-count">{{ order.fulfillmentSummary.parcelCount }} {{ t('包 · 已发') }} {{ order.fulfillmentSummary.shippedParcelCount }} {{ t('· 已收') }} {{ order.fulfillmentSummary.receivedParcelCount }}</small></td><td class="table-actions"><button v-if="order.paymentStatus !== 'paid' && order.status !== 'cancelled'" class="link-button" @click="confirmPayment({ id: order.id })">{{ t('登记收款') }}</button><button v-if="!['completed', 'cancelled'].includes(order.status)" class="link-button" type="button" @click="parcelManagerOrderId = order.id">{{ t('管理包裹') }}</button><button v-if="order.status === 'received' && adminPermissions.includes('orders')" class="link-button" type="button" :disabled="orderCompletionLoading || orderCompletionSaving" @click="beginOrderCompletion(order)">{{ t('完成订单') }}</button></td></tr></tbody></table><div v-if="!visibleAdminOrders.length" class="table-empty">{{ t('暂无订单') }}</div></div><div class="admin-pagination"><span>{{ t('共 {0} 条 · 第 {1} / {2} 页', [adminOrders.total, adminOrders.page, adminOrders.totalPages]) }}</span><div><button :disabled="adminOrders.page <= 1" @click="setAdminOrderPage(adminOrders.page - 1)">‹</button><button v-for="page in adminOrderPageNumbers" :key="page" :class="{ active: adminOrders.page === page }" @click="setAdminOrderPage(page)">{{ page }}</button><button :disabled="adminOrders.page >= adminOrders.totalPages" @click="setAdminOrderPage(adminOrders.page + 1)">›</button></div></div></div></section>
+        <section v-else-if="adminPage === 'orders'" class="panel active" id="panel-orders"><div class="stat-grid"><article class="stat-card"><span>{{ t('订单总数') }}</span><strong>{{ adminOrderSummary.allOrders || 0 }}</strong></article><article class="stat-card"><span>{{ t('待支付订单') }}</span><strong>{{ adminOrderSummary.pendingPaymentOrders || 0 }}</strong></article><article class="stat-card"><span>{{ t('待发货') }}</span><strong>{{ adminOrderSummary.notShippedOrders || 0 }}</strong></article><article class="stat-card"><span>{{ t('应付总额') }}</span><strong>{{ money(adminOrderSummary.grossOrderValue || 0) }}</strong></article><article class="stat-card"><span>{{ t('待收金额') }}</span><strong>{{ money(adminOrderSummary.pendingReceivableAmount || 0) }}</strong></article><article class="stat-card"><span>{{ t('已完成') }}</span><strong>{{ adminOrderSummary.completedOrders || 0 }}</strong></article><article class="stat-card"><span>{{ t('累计实收') }}</span><strong>{{ money(adminOrderSummary.paidAmount || 0) }}</strong></article></div><div class="filter-card seller-filter-card"><div class="filter-row"><div class="filter-group"><span class="fg-label">{{ t('日期') }}</span><div class="seg"><button v-for="item in [['all',t('全部时间')],['week',t('本周')],['lastweek',t('上周')],['month',t('本月')],['lastmonth',t('上月')]]" :key="item[0]" :class="{ active: adminDateFilter === item[0] }" @click="adminDateFilter = item[0]; adminDateFrom = ''; adminDateTo = ''; adminOrderPage = 1; loadAdminPage()">{{ t(item[1]) }}</button></div></div><div class="filter-group"><span class="fg-label">{{ t('区间') }}</span><CustomerDatePicker v-model="adminDateFrom" class="seller-date-control" :locale="language" :label="t('Start date')" :disabled="busy" :t="t" @apply="applyAdminDateRange('orders')" /><span>{{ t('至') }}</span><CustomerDatePicker v-model="adminDateTo" class="seller-date-control calendar-align-end" :locale="language" :label="t('End date')" :disabled="busy" :t="t" @apply="applyAdminDateRange('orders')" /></div></div><div class="filter-row"><div class="filter-group"><span class="fg-label">{{ t('付款') }}</span><div class="seg"><button v-for="item in [['all',t('全部')],['unpaid',t('待支付')],['pending_verification',t('待验证')],['partially_paid',t('部分支付')],['paid',t('已付清')]]" :key="item[0]" :class="{ active: adminPaymentFilter === item[0] }" @click="adminPaymentFilter = item[0]; adminOrderPage = 1; loadAdminPage()">{{ t(item[1]) }}</button></div></div><div class="filter-group"><span class="fg-label">{{ t('发货') }}</span><div class="seg"><button v-for="item in [['all',t('全部')],['not',t('待发货')],['partial',t('部分发货')],['shipped',t('全部已发货')]]" :key="item[0]" :class="{ active: adminShippingFilter === item[0] }" @click="adminShippingFilter = item[0]; adminOrderPage = 1; loadAdminPage()">{{ t(item[1]) }}</button></div></div><SellerSearchField class="seller-search" :loading="busy" @refresh="refreshAdminSearch"><input autocomplete="off" v-model="adminSearch" :placeholder="t('订单号 / 用户名 / 邮箱 / tracking number / 商品名 / 商品 SKU…')" @keyup.enter="adminOrderPage = 1; loadAdminPage()"></SellerSearchField><button class="btn btn-outline" :disabled="exportPreviewLoading || exportSubmitting" @click="startExport('orders')">{{ t('导出') }}</button></div></div><div class="card"><div class="card-body table-wrap"><table class="admin-table order-table"><thead><tr><th>{{ t('订单号') }}</th><th>{{ t('收货人') }}</th><th>{{ t('商品数') }}</th><th>{{ t('商品金额') }}</th><th>{{ t('运费') }}</th><th>{{ t('优惠额') }}</th><th>{{ t('应付') }}</th><th>{{ t('已付') }}</th><th>{{ t('待付') }}</th><th class="payment-status-heading">{{ t('支付状态') }}</th><th class="fulfillment-status-heading">{{ t('订单状态') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="order in visibleAdminOrders" :key="order.id"><td><button class="link-button" type="button" :disabled="pendingActions.has('admin-order-detail')" :aria-label="t('查看订单 {0} 的详情', [order.orderNo])" aria-haspopup="dialog" @click="openAdminOrderDetail(order)">{{ order.orderNo }}</button></td><td>{{ order.customer?.name || order.customer?.email || '—' }}</td><td>{{ order.items?.length || 0 }}</td><td>{{ money(order.subtotal) }}</td><td>{{ money(order.shippingFee) }}</td><td>{{ money(order.discountAmount || 0) }}</td><td>{{ money(order.total) }}</td><td>{{ money(order.paidAmount) }}</td><td>{{ money(order.remainingAmount) }}</td><td class="payment-status-cell"><span v-if="order.status === 'cancelled'">—</span><span v-else :class="['status-badge', 'payment-status-badge', statusClass(order.paymentStatus)]"><span v-if="order.paymentStatus === 'pending_verification'" class="status-attention-icon" aria-hidden="true">!</span>{{ sellerStatusLabel(order.paymentStatus) }}</span><small v-if="order.paymentLinkRequested && order.paymentStatus !== 'paid'" class="payment-link-request-note">{{ t('已申请在线支付链接') }}</small></td><td class="fulfillment-status-cell"><span :class="['status-badge', 'fulfillment-status-badge', statusClass(order.status)]">{{ sellerFulfillmentLabel(order.status, order.fulfillmentSummary) }}</span><small v-if="order.fulfillmentSummary?.started && !['received', 'completed'].includes(order.status)" class="seller-parcel-count">{{ order.fulfillmentSummary.parcelCount }} {{ t('包 · 已发') }} {{ order.fulfillmentSummary.shippedParcelCount }} {{ t('· 已收') }} {{ order.fulfillmentSummary.receivedParcelCount }}</small></td><td class="table-actions"><button v-if="order.paymentStatus !== 'paid' && order.status !== 'cancelled'" class="link-button" @click="confirmPayment({ id: order.id })">{{ t('登记收款') }}</button><button v-if="!['completed', 'cancelled'].includes(order.status)" class="link-button" type="button" @click="parcelManagerOrderId = order.id">{{ t('管理包裹') }}</button><button v-if="order.status === 'received' && adminPermissions.includes('orders')" class="link-button" type="button" :disabled="orderCompletionLoading || orderCompletionSaving" @click="beginOrderCompletion(order)">{{ t('完成订单') }}</button></td></tr></tbody></table><div v-if="!visibleAdminOrders.length" class="table-empty">{{ t('暂无订单') }}</div></div><div class="admin-pagination"><span>{{ t('共 {0} 条 · 第 {1} / {2} 页', [adminOrders.total, adminOrders.page, adminOrders.totalPages]) }}</span><div><button :disabled="adminOrders.page <= 1" @click="setAdminOrderPage(adminOrders.page - 1)">‹</button><button v-for="page in adminOrderPageNumbers" :key="page" :class="{ active: adminOrders.page === page }" @click="setAdminOrderPage(page)">{{ page }}</button><button :disabled="adminOrders.page >= adminOrders.totalPages" @click="setAdminOrderPage(adminOrders.page + 1)">›</button></div></div></div></section>
 
         <section v-else-if="adminPage === 'finance' && adminMode !== 'billing'" class="panel active" id="panel-commissions">
           <div class="stat-grid">
@@ -3338,7 +3416,24 @@ watch(adminSearch, () => {
 
         <section v-else-if="adminPage === 'categories'" class="panel active" id="panel-categories"><div class="card"><div class="card-head"><button class="btn" @click="openCategory()">{{ t('＋ 新增类目') }}</button></div><div class="card-body table-wrap"><table class="admin-table"><thead><tr><th>{{ t('类目名字') }}</th><th>{{ t('排序') }}</th><th>{{ t('商品数') }}</th><th>{{ t('状态') }}</th><th>{{ t('更新人') }}</th><th>{{ t('更新时间') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="item in adminCategories" :key="item.id"><td>{{ item.name }}</td><td>{{ item.sortNo }}</td><td><button class="link-button" type="button" :aria-label="t('查看类目 {0} 的商品列表，共 {1} 件', [item.name, item.productCount || 0])" @click="openCategoryProducts(item)">{{ item.productCount || 0 }}</button></td><td><span :class="['status-badge', item.active ? 'status-paid' : 'status-cancelled']">{{ item.active ? t('启用') : t('停用') }}</span></td><td>{{ item.updatedBy || '—' }}</td><td>{{ formatDateTime(item.updatedAt) }}</td><td><button class="link-button" @click="openCategory(item)">{{ t('编辑') }}</button><button class="link-button" @click="toggleCategory(item)">{{ item.active ? t('停用') : t('启用') }}</button><button class="link-button danger-link" @click="deleteCategory(item)">{{ t('删除') }}</button></td></tr></tbody></table></div></div></section>
 
-        <section v-else-if="adminPage === 'settings'" class="panel active" id="panel-payments"><div class="card"><div class="card-head"><button class="btn" @click="openPaymentChannel()">{{ t('＋ 新增支付渠道') }}</button></div><div class="card-body table-wrap"><table class="admin-table payment-table"><thead><tr><th>{{ t('渠道名') }}</th><th>{{ t('收款二维码') }}</th><th>{{ t('收款地址') }}</th><th>{{ t('附加费率') }}</th><th>{{ t('更新时间') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="item in adminChannels.items" :key="item.id"><td>{{ item.name }}</td><td>{{ item.qrFileUuid || '—' }}</td><td>{{ item.receivingAddress }}</td><td>{{ item.additionalRate == null || Number(item.additionalRate) <= 0 ? '—' : '+' + Number(item.additionalRate).toFixed(2) + '%' }}</td><td>{{ item.updatedAt || '—' }}</td><td><button class="link-button" @click="openPaymentChannel(item)">{{ t('编辑') }}</button><button class="link-button danger-link" @click="deletePaymentChannel(item)">{{ t('删除') }}</button></td></tr></tbody></table></div></div></section>
+        <section v-else-if="adminPage === 'settings'" class="panel active" id="panel-payments">
+          <div class="card payment-method-settings">
+            <div class="card-head"><div><h2>{{ t('客户可用的付款方式') }}</h2><p>{{ t('选择客户可以使用的付款方式。') }}</p></div></div>
+            <div class="card-body payment-method-settings-body">
+              <label class="payment-method-setting">
+                <input v-model="adminPaymentMethods.cryptoEnabled" type="checkbox" :disabled="paymentMethodsSaving">
+                <span><strong>{{ t('加密货币') }}</strong><small>{{ t('启用后，客户可使用下方已启用的加密货币收款渠道。') }}</small></span>
+              </label>
+              <p v-if="adminPaymentMethods.cryptoEnabled && !adminChannels.items.some(channel => channel.active)" class="payment-method-setting-notice" role="status">{{ t('请至少新增并启用一个加密货币收款渠道。') }}</p>
+              <label class="payment-method-setting">
+                <input v-model="adminPaymentMethods.onlinePaymentLinkEnabled" type="checkbox" :disabled="paymentMethodsSaving">
+                <span><strong>{{ t('线上支付链接') }}</strong><small>{{ t('客户可申请链接；商家需在站外制作并联系客户，系统不会生成或发送链接。') }}</small></span>
+              </label>
+              <div class="modal-actions payment-method-settings-actions"><button class="modal-save" type="button" :disabled="paymentMethodsSaving" :aria-busy="paymentMethodsSaving" @click="savePaymentMethods">{{ t(paymentMethodsSaving ? '保存中…' : '保存付款方式') }}</button></div>
+            </div>
+          </div>
+          <div class="card"><div class="card-head"><button class="btn" @click="openPaymentChannel()">{{ t('＋ 新增支付渠道') }}</button></div><div class="card-body table-wrap"><table class="admin-table payment-table"><thead><tr><th>{{ t('渠道名') }}</th><th>{{ t('收款二维码') }}</th><th>{{ t('收款地址') }}</th><th>{{ t('附加费率') }}</th><th>{{ t('更新时间') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="item in adminChannels.items" :key="item.id"><td>{{ item.name }}</td><td>{{ item.qrFileUuid || '—' }}</td><td>{{ item.receivingAddress }}</td><td>{{ item.additionalRate == null || Number(item.additionalRate) <= 0 ? '—' : '+' + Number(item.additionalRate).toFixed(2) + '%' }}</td><td>{{ item.updatedAt || '—' }}</td><td><button class="link-button" @click="openPaymentChannel(item)">{{ t('编辑') }}</button><button class="link-button danger-link" @click="deletePaymentChannel(item)">{{ t('删除') }}</button></td></tr></tbody></table></div></div>
+        </section>
 
         <section v-else-if="adminPage === 'members'" class="panel active" id="panel-permissions"><div class="card"><div class="card-head"><div class="toolbar"><SellerSearchField :loading="adminMembersLoading" @refresh="refreshAdminSearch"><input autocomplete="off" v-model="adminMemberSearch" :placeholder="t('搜索成员 / 账号…')" @keyup.enter="searchAdminMembers"></SellerSearchField><button class="btn" @click="openMember()">{{ t('＋ 新增成员') }}</button></div></div><div class="card-body table-wrap"><table class="admin-table permission-table"><thead><tr><th>{{ t('成员') }}</th><th>{{ t('登录账号') }}</th><th>{{ t('状态') }}</th><th>{{ t('菜单权限') }}</th><th>{{ t('添加人') }}</th><th>{{ t('更新时间') }}</th><th>{{ t('操作') }}</th></tr></thead><tbody><tr v-for="item in visibleAdminMembers" :key="item.id"><td>{{ item.name }}</td><td>{{ item.account }}</td><td><span :class="['status-badge', item.active ? 'status-paid' : 'status-cancelled']">{{ item.active ? t('启用') : t('停用') }}</span></td><td><div class="member-permission-list"><span v-for="permission in item.permissions || []" :key="permission" class="member-permission-tag">{{ t(memberPermissionName(permission)) }}</span></div></td><td>Admin</td><td>{{ formatDateTime(item.updatedAt) }}</td><td><button class="link-button" @click="openMember(item)">{{ t('编辑') }}</button><button class="link-button" @click="toggleMember(item)">{{ item.active ? t('停用') : t('启用') }}</button></td></tr></tbody></table><div v-if="!visibleAdminMembers.length" class="table-empty">{{ t(adminMembersLoading ? '加载中…' : '暂无成员') }}</div></div>
           <div v-if="adminMembers.total" class="admin-pagination" :aria-busy="adminMembersLoading">

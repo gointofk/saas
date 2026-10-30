@@ -4,6 +4,7 @@ import com.dailyactivity.auth.application.AccountService;
 import com.dailyactivity.common.ApiException;
 import com.dailyactivity.commission.application.CommissionService;
 import com.dailyactivity.commission.domain.port.CommissionRepository;
+import com.dailyactivity.catalog.application.CatalogService;
 import com.dailyactivity.export.application.ExportService;
 import com.dailyactivity.file.application.FileService;
 import com.dailyactivity.identity.application.CustomerService;
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.*;
 
 class PrdMerchantIsolationTest extends PrdDatabaseTest {
     @Autowired AccountService accounts;
+    @Autowired CatalogService catalog;
     @Autowired CustomerService customers;
     @Autowired MemberService members;
     @Autowired MerchantService merchants;
@@ -55,14 +57,41 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         assertThat(jdbc.queryForObject("SELECT audit_status FROM sales_order WHERE id=?",String.class,id)).isEqualTo("pending");
     }
     @Test
-    void bothMerchantsConsumeTheSameStockWithoutPublicManagementGrants() {
+    void eachMerchantHasItsOwnCatalogAndStock() {
         var b=other();
-        jdbc.update("UPDATE merchant_permission SET deleted=id WHERE merchant_id=?",b.seller().merchantId());
-        int before=jdbc.queryForObject("SELECT stock_available FROM product WHERE id=?",Integer.class,data.productId());
+        int stockA=jdbc.queryForObject("SELECT stock_available FROM product WHERE id=?",Integer.class,data.productId());
+        int stockB=jdbc.queryForObject("SELECT stock_available FROM product WHERE id=?",Integer.class,b.productId());
         pending(data,data.productId(),2);
-        pending(b,data.productId(),3);
-        assertThat(jdbc.queryForObject("SELECT stock_available FROM product WHERE id=?",Integer.class,data.productId())).isEqualTo(before-5);
-        assertThatThrownBy(()->accounts.requireMenu(b.seller(),"products")).isInstanceOf(ApiException.class);
+        pending(b,b.productId(),3);
+        assertThat(jdbc.queryForObject("SELECT stock_available FROM product WHERE id=?",Integer.class,data.productId())).isEqualTo(stockA-2);
+        assertThat(jdbc.queryForObject("SELECT stock_available FROM product WHERE id=?",Integer.class,b.productId())).isEqualTo(stockB-3);
+        assertThatThrownBy(()->carts.set(b.customer(),data.productId(),1)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->catalog.setProductActive(b.seller(),data.productId(),false)).isInstanceOf(ApiException.class);
+        assertThat(catalog.customerProducts(data.customer()).stream().map(item->((Number)item.get("id")).longValue()))
+                .contains(data.productId()).doesNotContain(b.productId());
+        assertThat(catalog.customerProducts(b.customer()).stream().map(item->((Number)item.get("id")).longValue()))
+                .contains(b.productId()).doesNotContain(data.productId());
+    }
+
+    @Test
+    void categoriesAndSkusAreUniqueWithinAMerchantAndCrossTenantIdsCannotBeEdited() {
+        var b=other();
+        String sharedName=jdbc.queryForObject("SELECT name FROM category WHERE id=?",String.class,data.categoryId());
+        long bCategory=((Number)catalog.createCategory(b.seller(),new CatalogService.CategoryRequest(sharedName,1,true)).get("id")).longValue();
+        long bProduct=((Number)catalog.createProduct(b.seller(),new CatalogService.ProductRequest(
+                bCategory,data.productSku(),"B's private copy","","regular",true,new BigDecimal("55.00"),null,5,List.of())).get("id")).longValue();
+
+        assertThat(catalog.adminCategories(data.seller()).stream().map(item->((Number)item.get("id")).longValue()))
+                .contains(data.categoryId()).doesNotContain(bCategory);
+        assertThat(catalog.adminCategories(b.seller()).stream().map(item->((Number)item.get("id")).longValue()))
+                .contains(bCategory).doesNotContain(data.categoryId());
+        assertThat(catalog.adminProducts(data.seller(),data.productSku(),null,1).items()).extracting("id").containsExactly(data.productId());
+        assertThat(catalog.adminProducts(b.seller(),data.productSku(),null,1).items()).extracting("id").containsExactly(bProduct);
+        assertThatThrownBy(()->catalog.setProductActive(b.seller(),data.productId(),false)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->catalog.createProduct(b.seller(),new CatalogService.ProductRequest(
+                data.categoryId(),"FOREIGN-CATEGORY-"+UUID.randomUUID(),"Invalid","","regular",true,BigDecimal.ONE,null,1,List.of())))
+                .isInstanceOf(ApiException.class);
+        assertThat(jdbc.queryForObject("SELECT active FROM product WHERE id=?",Boolean.class,data.productId())).isTrue();
     }
     @Test
     void privateListsDetailsStatisticsAndExportExcludeTheOtherMerchant() {
@@ -82,11 +111,16 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
     void paymentChannelAndQrCannotBeUsedAcrossMerchants() {
         var b=other();
         var order=approved(data);
-        assertThat(payments.customerChannels(data.customer())).extracting(item->item.get("id")).contains(data.channelId()).doesNotContain(b.channelId());
+        assertThat(customerChannels(data.customer())).extracting(item->item.get("id")).contains(data.channelId()).doesNotContain(b.channelId());
         assertThatThrownBy(()->orders.submitPayment(data.customer(),orderId(order),new OrderService.PaymentRequest(b.channelId(),"test-transfer",(BigDecimal)order.get("total"),(java.time.Instant)order.get("updatedAt"),BigDecimal.ONE))).isInstanceOf(ApiException.class);
         String qr=jdbc.queryForObject("SELECT qr_file_uuid FROM payment_channel WHERE id=?",String.class,b.channelId());
         assertThatThrownBy(()->files.signedUrl(qr,data.seller())).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->payments.create(data.seller(),new PaymentService.PaymentRequest("Foreign QR","USD","TEST","test-address",null,qr,true,1))).isInstanceOf(ApiException.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> customerChannels(com.dailyactivity.auth.domain.Principal customer) {
+        return (List<Map<String, Object>>) payments.customerPaymentOptions(customer).get("channels");
     }
     @Test
     void referralMustRemainInsideTheBuyersMerchant() {
@@ -107,30 +141,30 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM commission_settlement WHERE merchant_id=?",Long.class,data.seller().merchantId())).isZero();
     }
     @Test
-    void managerCanCreateMerchantButCannotAccessItsOrdersAndRevocationClearsMemberGrants() {
+    void managerCanCreateMerchantButCannotAccessItsOrdersAndNewAdminReceivesMerchantMenus() {
         var platform=PrdTestFixture.platform(jdbc);
         var b=other();
         var order=approved(b);
         assertThatThrownBy(()->orders.detail(platform,orderId(order))).isInstanceOf(ApiException.class);
         var existing=merchantRepository.find(b.seller().merchantId()).orElseThrow();
-        merchants.update(platform,existing.id(),new MerchantService.Update(existing.name(),true,existing.shippingFee(),List.of(),existing.updatedAt(),existing.domain(),existing.logoUrl(),existing.theme()));
-        assertThatThrownBy(()->accounts.requireMenu(b.seller(),"products")).isInstanceOf(ApiException.class);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM seller_permission WHERE seller_id=? AND menu_code IN ('products','certificates','categories') AND deleted=0",Long.class,b.sellerId())).isZero();
-        var created=merchants.create(platform,new MerchantService.Create("NEW"+UUID.randomUUID().toString().substring(0,8),"New merchant",new BigDecimal("7.50"),List.of("products"),"new-"+UUID.randomUUID(),"Initial admin",PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD,"new-"+UUID.randomUUID()+".test","/ytpeps-logo.svg","classic"));
+        merchants.update(platform,existing.id(),new MerchantService.Update(existing.name(),true,existing.shippingFee(),existing.updatedAt(),existing.domain(),existing.logoUrl(),existing.theme()));
+        assertThatCode(()->accounts.requireMenu(b.seller(),"products")).doesNotThrowAnyException();
+        var created=merchants.create(platform,new MerchantService.Create("NEW"+UUID.randomUUID().toString().substring(0,8),"New merchant",new BigDecimal("7.50"),"new-"+UUID.randomUUID(),"Initial admin",PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD,"new-"+UUID.randomUUID()+".test","/ytpeps-logo.svg","classic",false,null));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM seller WHERE merchant_id=?",Long.class,created.id())).isEqualTo(1);
-        assertThat(created.permissions()).containsExactly("products");
+        assertThat(jdbc.queryForList("SELECT menu_code FROM seller_permission WHERE seller_id=(SELECT id FROM seller WHERE merchant_id=? AND deleted=0) AND deleted=0",String.class,created.id()))
+                .contains("products","certificates","categories");
     }
     @Test
     void disabledMerchantBlocksBothRolesAndReenableDoesNotRestoreOldTokens() {
         var platform=PrdTestFixture.platform(jdbc);
         var b=other();
         var m=merchantRepository.find(b.seller().merchantId()).orElseThrow();
-        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),false,m.shippingFee(),List.of("products"),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
+        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),false,m.shippingFee(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
         assertThatThrownBy(()->accounts.assertValid(b.seller())).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->accounts.assertValid(b.customer())).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->accounts.customerLogin(b.customer().merchantId(), b.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD)).isInstanceOf(ApiException.class);
         var disabled=merchantRepository.find(m.id()).orElseThrow();
-        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),true,m.shippingFee(),List.of("products"),disabled.updatedAt(),disabled.domain(),disabled.logoUrl(),disabled.theme()));
+        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),true,m.shippingFee(),disabled.updatedAt(),disabled.domain(),disabled.logoUrl(),disabled.theme()));
         assertThatThrownBy(()->accounts.assertValid(b.customer())).isInstanceOf(ApiException.class);
         assertThat(accounts.customerLogin(b.customer().merchantId(), b.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD)).containsKey("accessToken");
     }
@@ -159,7 +193,7 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         carts.set(data.customer(),data.productId(),1);
         var q=orders.quote(data.customer(),new OrderService.QuoteRequest(data.addressId(),List.of(new OrderService.CartRequest(data.productId(),1))));
         var m=merchantRepository.find(data.seller().merchantId()).orElseThrow();
-        merchants.update(PrdTestFixture.platform(jdbc),m.id(),new MerchantService.Update(m.name(),true,new BigDecimal("25.00"),List.of("products","certificates","categories"),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
+        merchants.update(PrdTestFixture.platform(jdbc),m.id(),new MerchantService.Update(m.name(),true,new BigDecimal("25.00"),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
         assertThatThrownBy(()->orders.create(data.customer(),new OrderService.CreateRequest((String)q.get("quoteToken"),"test",List.of(new OrderService.CartRequest(data.productId(),1)),data.addressId())))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("QUOTE_CHANGED");
     }
@@ -168,7 +202,7 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         var b=other();var m=merchantRepository.find(b.seller().merchantId()).orElseThrow();
         var existing=merchantRepository.find(data.seller().merchantId()).orElseThrow();
         assertThatThrownBy(()->merchants.update(PrdTestFixture.platform(jdbc),m.id(),
-                new MerchantService.Update("Changed",true,BigDecimal.ONE,List.of(),m.updatedAt(),existing.domain(),m.logoUrl(),m.theme())))
+                new MerchantService.Update("Changed",true,BigDecimal.ONE,m.updatedAt(),existing.domain(),m.logoUrl(),m.theme())))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("MERCHANT_DOMAIN_EXISTS");
     }
 

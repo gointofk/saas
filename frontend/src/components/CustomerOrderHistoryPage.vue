@@ -227,6 +227,7 @@ function copyOrderItem(item: CustomerOrderItem, translate: (text: string) => str
             </div>
           </div>
         </div>
+        <p v-if="order.paymentLinkRequested && order.paymentStatus !== 'paid'" class="payment-link-request-badge">{{ t('Online payment link requested') }}</p>
         <p v-if="order.fulfillmentSummary?.started" class="history-parcel-summary">{{ t('Parcels') }}: {{ order.fulfillmentSummary.parcelCount }} · {{ t('Shipped') }}: {{ order.fulfillmentSummary.shippedParcelCount }} · {{ t('Received') }}: {{ order.fulfillmentSummary.receivedParcelCount }}<span v-if="order.fulfillmentSummary.unpackedQuantity"> · {{ t('Unpacked items') }}: {{ order.fulfillmentSummary.unpackedQuantity }}</span></p>
         <div class="order-card-main">
           <div class="order-item-preview"><span class="order-item-count">{{ order.items?.length || 0 }}{{ t('items') }}</span><strong>{{ orderItemNames(order) || t('Order items') }}</strong></div>
@@ -262,6 +263,7 @@ function copyOrderItem(item: CustomerOrderItem, translate: (text: string) => str
         <button class="close-button" type="button" :aria-label="t('Close')" @click="emit('closeOrderDetail')">×</button>
       </header>
       <div class="customer-order-modal-body">
+        <p v-if="selectedOrder.paymentLinkRequested && selectedOrder.paymentStatus !== 'paid'" class="payment-link-request-badge detail-payment-link-requested">{{ t('Online payment link requested') }}</p>
         <section class="order-progress-section">
           <h3>{{ t('Order Progress Timeline') }}</h3>
           <p v-if="selectedOrder.status === 'cancelled'" class="order-progress-cancelled">{{ t('Order cancelled; fulfillment stopped.') }}</p>

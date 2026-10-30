@@ -36,16 +36,17 @@ public class CatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> customerCategories() {
-        return catalog.categories(true).stream().map(category -> Map.<String, Object>of(
+    public List<Map<String, Object>> customerCategories(Principal principal) {
+        var account = accounts.customer(principal);
+        return catalog.categories(account.merchantId(), true).stream().map(category -> Map.<String, Object>of(
                 "id", category.id(), "name", category.name())).toList();
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> customerProducts(Principal principal) {
         var account = accounts.customer(principal);
-        var products = catalog.customerProducts(account.priceTier());
-        var prices = quantityPrices.prices(products.stream().map(CatalogRepository.CustomerProductView::id).toList(), account.priceTier());
+        var products = catalog.customerProducts(account.merchantId(), account.priceTier());
+        var prices = quantityPrices.prices(account.merchantId(), products.stream().map(CatalogRepository.CustomerProductView::id).toList(), account.priceTier());
         return products.stream().map(p -> {
             var view = customerProductView(p);
             var bands = prices.getOrDefault(p.id(), List.of());
@@ -76,7 +77,7 @@ public class CatalogService {
             throw ApiException.badRequest("INVALID_PRODUCT_TYPE_FILTER", "Product type filter is invalid.");
         String normalizedSort = sortBy != null && List.of("stock", "price").contains(sortBy) ? sortBy : null;
         String normalizedDirection = "asc".equalsIgnoreCase(sortDirection) ? "asc" : "desc";
-        return page(catalog.adminProducts(q, categoryId, normalizedType, active, normalizedSort, normalizedDirection, RequestValidation.page(page)), page);
+        return page(catalog.adminProducts(principal.merchantId(), q, categoryId, normalizedType, active, normalizedSort, normalizedDirection, RequestValidation.page(page)), page, principal.merchantId());
     }
 
     @Transactional(readOnly = true)
@@ -85,14 +86,14 @@ public class CatalogService {
         // the read-only list to create and edit products, even if they do not have
         // permission to alter the category taxonomy itself.
         accounts.seller(principal);
-        return catalog.categories(false).stream().map(this::categoryView).toList();
+        return catalog.categories(principal.merchantId(), false).stream().map(this::categoryView).toList();
     }
 
     @Transactional
     public Map<String, Object> createCategory(Principal principal, CategoryRequest request) {
         accounts.requireMenu(principal, "categories");
         validateCategory(request);
-        long id = catalog.createCategory(request.name().trim(), request.sortNo(), principal.userId());
+        long id = catalog.createCategory(principal.merchantId(), request.name().trim(), request.sortNo(), principal.userId());
         audit.audit(principal.merchantId(), principal.actor(), "catalog.createCategory", "id=" + id);
         return Map.of("id", id);
     }
@@ -101,14 +102,14 @@ public class CatalogService {
     public void updateCategory(Principal principal, long id, CategoryRequest request) {
         accounts.requireMenu(principal, "categories");
         validateCategory(request);
-        catalog.updateCategory(id, request.name().trim(), request.sortNo(), request.active(), principal.userId(), request.expectedUpdatedAt());
+        catalog.updateCategory(principal.merchantId(), id, request.name().trim(), request.sortNo(), request.active(), principal.userId(), request.expectedUpdatedAt());
         audit.audit(principal.merchantId(), principal.actor(), "catalog.updateCategory", "id=" + id);
     }
 
     @Transactional
     public void deleteCategory(Principal principal, long id) {
         accounts.requireMenu(principal, "categories");
-        catalog.softDeleteCategory(id, principal.userId());
+        catalog.softDeleteCategory(principal.merchantId(), id, principal.userId());
         audit.audit(principal.merchantId(), principal.actor(), "catalog.deleteCategory", "id=" + id);
     }
 
@@ -116,8 +117,8 @@ public class CatalogService {
     public Map<String, Object> createProduct(Principal principal, ProductRequest request) {
         accounts.requireMenu(principal, "products");
         validateProduct(request);
-        long id = catalog.createProduct(toCommand(request), principal.userId());
-        quantityPrices.replace(id, request.quantityPrices(), principal.userId());
+        long id = catalog.createProduct(principal.merchantId(), toCommand(request), principal.userId());
+        quantityPrices.replace(principal.merchantId(), id, request.quantityPrices(), principal.userId());
         audit.audit(principal.merchantId(), principal.actor(), "catalog.createProduct", "id=" + id);
         return Map.of("id", id);
     }
@@ -126,15 +127,15 @@ public class CatalogService {
     public void updateProduct(Principal principal, long id, ProductRequest request) {
         accounts.requireMenu(principal, "products");
         validateProduct(request);
-        var current = catalog.product(id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
+        var current = catalog.product(principal.merchantId(), id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
         checkProductVersion(current, request.expectedUpdatedAt());
         if (request.stockAvailable() != current.stock()
                 && (request.stockReason() == null || request.stockReason().isBlank()))
             throw ApiException.badRequest("STOCK_REASON_REQUIRED", "A reason is required when changing stock.");
-        catalog.updateProduct(id, toCommand(request), principal.userId());
-        quantityPrices.replace(id, "gift".equals(request.productType()) ? List.of() : request.quantityPrices(), principal.userId());
+        catalog.updateProduct(principal.merchantId(), id, toCommand(request), principal.userId());
+        quantityPrices.replace(principal.merchantId(), id, "gift".equals(request.productType()) ? List.of() : request.quantityPrices(), principal.userId());
         if (request.stockAvailable() != current.stock())
-            inventory.adjust(id, request.stockAvailable(), request.stockReason().trim(), java.util.UUID.randomUUID().toString(), principal.actor());
+            inventory.adjust(principal.merchantId(), id, request.stockAvailable(), request.stockReason().trim(), java.util.UUID.randomUUID().toString(), principal.actor());
         audit.audit(principal.merchantId(), principal.actor(), "catalog.updateProduct", "id=" + id);
     }
 
@@ -146,9 +147,9 @@ public class CatalogService {
     @Transactional
     public void setProductActive(Principal principal, long id, boolean active, Instant expectedUpdatedAt) {
         accounts.requireMenu(principal, "products");
-        var current = catalog.product(id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
+        var current = catalog.product(principal.merchantId(), id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
         checkProductVersion(current, expectedUpdatedAt);
-        catalog.setProductActive(id, active, principal.userId());
+        catalog.setProductActive(principal.merchantId(), id, active, principal.userId());
         audit.audit(principal.merchantId(), principal.actor(), "catalog.setProductActive", "id=" + id);
     }
 
@@ -160,9 +161,9 @@ public class CatalogService {
     @Transactional
     public void deleteProduct(Principal principal, long id, Instant expectedUpdatedAt) {
         accounts.requireMenu(principal, "products");
-        var current = catalog.product(id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
+        var current = catalog.product(principal.merchantId(), id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
         checkProductVersion(current, expectedUpdatedAt);
-        catalog.softDeleteProduct(id, principal.userId());
+        catalog.softDeleteProduct(principal.merchantId(), id, principal.userId());
         audit.audit(principal.merchantId(), principal.actor(), "catalog.deleteProduct", "id=" + id);
     }
 
@@ -171,10 +172,10 @@ public class CatalogService {
         accounts.requireMenu(p, "products");
         if (request.targetStock() < 0)
             throw ApiException.badRequest("INVALID_STOCK", "targetStock must be non-negative.");
-        var current = catalog.product(id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
+        var current = catalog.product(p.merchantId(), id, "V1", false, true).orElseThrow(() -> ApiException.notFound("Product not found."));
         checkProductVersion(current, request.expectedUpdatedAt());
-        inventory.adjust(id, request.targetStock(), request.reason(), java.util.UUID.randomUUID().toString(), p.actor());
-        var updated = catalog.product(id, "V1", false, false).orElseThrow(() -> ApiException.notFound("Product not found."));
+        inventory.adjust(p.merchantId(), id, request.targetStock(), request.reason(), java.util.UUID.randomUUID().toString(), p.actor());
+        var updated = catalog.product(p.merchantId(), id, "V1", false, false).orElseThrow(() -> ApiException.notFound("Product not found."));
         audit.audit(p.merchantId(), p.actor(), "catalog.adjustStock", "id=" + id);
         return Map.of("productId", id, "stock", request.targetStock(), "updatedAt", updated.updatedAt());
     }
@@ -187,6 +188,7 @@ public class CatalogService {
     @Transactional(readOnly = true)
     public PageResponse<Map<String, Object>> stockMovements(Principal p, long productId, Integer page) {
         accounts.seller(p);
+        catalog.product(p.merchantId(), productId, "V1", false, false).orElseThrow(() -> ApiException.notFound("Product not found."));
         int current = RequestValidation.page(page);
         return PageResponse.of(inventory.movements(p.merchantId(), productId, current).stream().map(m -> {
             Map<String, Object> v = new LinkedHashMap<>();
@@ -202,12 +204,12 @@ public class CatalogService {
         }).toList(), current, inventory.movementCount(p.merchantId(), productId));
     }
 
-    private PageResponse<Map<String, Object>> page(CatalogRepository.Page<CatalogRepository.ProductView> result, Integer requested) {
+    private PageResponse<Map<String, Object>> page(CatalogRepository.Page<CatalogRepository.ProductView> result, Integer requested, long merchantId) {
         int page = RequestValidation.page(requested);
-        return PageResponse.of(result.items().stream().map(this::view).toList(), page, result.total());
+        return PageResponse.of(result.items().stream().map(p -> view(merchantId, p)).toList(), page, result.total());
     }
 
-    private Map<String, Object> view(CatalogRepository.ProductView p) {
+    private Map<String, Object> view(long merchantId, CatalogRepository.ProductView p) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("id", p.id());
         value.put("categoryId", p.categoryId());
@@ -222,8 +224,8 @@ public class CatalogService {
         value.put("costPrice", p.costPrice());
         value.put("stock", p.stock());
         value.put("updatedAt", p.updatedAt());
-        value.put("tierPrices", catalog.prices(p.id()).stream().map(price -> Map.of("tier", price.tier(), "price", price.price())).toList());
-        value.put("quantityPrices", quantityPrices.allPrices(p.id()));
+        value.put("tierPrices", catalog.prices(merchantId, p.id()).stream().map(price -> Map.of("tier", price.tier(), "price", price.price())).toList());
+        value.put("quantityPrices", quantityPrices.allPrices(merchantId, p.id()));
         value.put("coas", p.coas().stream().map(coa -> Map.<String, Object>of("id", coa.id(), "name", coa.name(), "fileUuid", coa.fileUuid(), "lot", coa.lot() == null ? "" : coa.lot(), "testDate", coa.testDate() == null ? "" : coa.testDate())).toList());
         return value;
     }

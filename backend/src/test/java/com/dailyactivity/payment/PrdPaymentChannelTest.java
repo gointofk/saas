@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,7 +21,7 @@ class PrdPaymentChannelTest extends PrdDatabaseTest {
     @Test
     @DisplayName("客户只看到启用的支付渠道及完整收款信息")
     void customerSeesActiveChannelDetails() {
-        Map<String, Object> channel = payments.customerChannels(data.customer()).stream()
+        Map<String, Object> channel = channels().stream()
                 .filter(item -> item.get("id").equals(data.channelId()))
                 .findFirst()
                 .orElseThrow();
@@ -53,13 +54,13 @@ class PrdPaymentChannelTest extends PrdDatabaseTest {
 
         payments.update(seller(), id, new PaymentService.PaymentRequest(
                 "Temporary Channel Updated " + id, "EUR", "MAINNET", "updated-address", "Updated", qr, true, 8));
-        assertThat(payments.customerChannels(data.customer())).anySatisfy(item -> assertThat(item)
+        assertThat(channels()).anySatisfy(item -> assertThat(item)
                 .containsEntry("id", id)
                 .containsEntry("currencyCode", "EUR")
                 .containsEntry("network", "MAINNET"));
 
         payments.remove(seller(), id);
-        assertThat(payments.customerChannels(data.customer())).noneMatch(item -> item.get("id").equals(id));
+        assertThat(channels()).noneMatch(item -> item.get("id").equals(id));
     }
 
     @Test
@@ -69,6 +70,26 @@ class PrdPaymentChannelTest extends PrdDatabaseTest {
         payments.update(seller(), data.channelId(), new PaymentService.PaymentRequest(
                 "Existing Channel " + data.channelId(), "USD", "TESTNET", "test-receiving-address", "Test", qr, false, 1));
 
-        assertThat(payments.customerChannels(data.customer())).noneMatch(item -> item.get("id").equals(data.channelId()));
+        assertThat(channels()).noneMatch(item -> item.get("id").equals(data.channelId()));
+    }
+
+    @Test
+    @DisplayName("商家可独立启用两种付款方式，关闭加密货币后客户不可申报")
+    void merchantControlsAvailablePaymentMethods() {
+        payments.updatePaymentMethods(seller(), new PaymentService.PaymentMethodsRequest(false, true));
+
+        Map<String, Object> options = payments.customerPaymentOptions(data.customer());
+        assertThat(options).containsEntry("cryptoEnabled", false).containsEntry("onlinePaymentLinkEnabled", true);
+        assertThat((List<?>) options.get("channels")).isEmpty();
+
+        payments.updatePaymentMethods(seller(), new PaymentService.PaymentMethodsRequest(true, true));
+        options = payments.customerPaymentOptions(data.customer());
+        assertThat(options).containsEntry("cryptoEnabled", true).containsEntry("onlinePaymentLinkEnabled", true);
+        assertThat((List<?>) options.get("channels")).isNotEmpty();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> channels() {
+        return (List<Map<String, Object>>) payments.customerPaymentOptions(data.customer()).get("channels");
     }
 }

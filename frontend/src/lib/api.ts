@@ -65,6 +65,7 @@ export type PaymentOrder = {
   paidAmount: number | string
   remainingAmount: number | string
   updatedAt: string
+  paymentLinkRequested?: boolean
   pendingPaymentSubmission?: PaymentSubmission
 }
 export type PaymentRecord = {
@@ -86,6 +87,7 @@ export type PaymentRecordPage = { items: PaymentRecord[]; page: number; total: n
 export const orderPaymentApi = {
   submit: <T>(id: number, body: { channelId: number; transactionNo: string; declaredAmount: string; expectedTotalAmount: number | string; expectedUpdatedAt: string }) =>
     request<T>(`/customer/orders/${id}/payment-submissions`, { method: 'POST', body: JSON.stringify(body) }),
+  requestLink: <T>(id: number) => request<T>(`/customer/orders/${id}/payment-link-request`, { method: 'POST' }),
   confirm: (id: number, body: { receivedAmount: string; submissionId: number | null; expectedTotalAmount: number | string; transactionNo: string; channelId: number | null; internalNote: string | null; expectedUpdatedAt: string }) =>
     request<PaymentOrder>(`/admin/orders/${id}/confirm-payment`, { method: 'POST', body: JSON.stringify(body) }, 'admin'),
   records: (area: Area, id: number, page: number) => request<PaymentRecordPage>(`/${area}/orders/${id}/payments?page=${page}`, {}, area),
@@ -336,7 +338,6 @@ export type AdminMember = {
   permissions: string[]; updatedAt: string
 }
 
-export type PublicMenu = 'products' | 'certificates' | 'categories'
 export type MerchantMailSettings = {
   smtpHost: string; smtpPort: number; smtpUsername: string; tlsMode: 'starttls' | 'ssl'
   senderEmail: string; senderName: string; passwordConfigured: boolean
@@ -350,10 +351,10 @@ export type MerchantIdentity = {
   shippingFee: number | string; updatedAt: string; domain: string; logoUrl: string; theme: string
   registrationEnabled: boolean
 }
-export type Merchant = MerchantIdentity & { permissions: PublicMenu[]; mailSettings: MerchantMailSettings | null }
+export type Merchant = MerchantIdentity & { mailSettings: MerchantMailSettings | null }
 export type MerchantPage = { items: Merchant[]; page: number; total: number; totalPages: number }
 export type MerchantCreate = {
-  code: string; name: string; shippingFee: string; permissions: PublicMenu[]; domain: string; logoUrl: string; theme: string
+  code: string; name: string; shippingFee: string; domain: string; logoUrl: string; theme: string
   adminAccount: string; adminName: string; password: string; confirmation: string
   registrationEnabled: boolean; mailSettings: MerchantMailSettingsInput | null
 }
@@ -365,7 +366,7 @@ export const customerRegistrationApi = {
 export const merchantApi = {
   page: (page: number) => request<MerchantPage>(`/platform/merchants?page=${page}`, {}, 'platform'),
   create: (body: MerchantCreate) => request<Merchant>('/platform/merchants', { method: 'POST', body: JSON.stringify(body) }, 'platform'),
-  update: (id: number, body: { name: string; active: boolean; shippingFee: string; permissions: PublicMenu[]; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string; registrationEnabled: boolean; mailSettings: MerchantMailSettingsInput | null }) =>
+  update: (id: number, body: { name: string; active: boolean; shippingFee: string; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string; registrationEnabled: boolean; mailSettings: MerchantMailSettingsInput | null }) =>
     request<Merchant>(`/platform/merchants/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'platform'),
   testEmail: (id: number, recipient: string) => request<void>(`/platform/merchants/${id}/email-settings/test`, { method: 'POST', body: JSON.stringify({ recipient }) }, 'platform'),
 }

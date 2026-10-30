@@ -120,7 +120,7 @@ public class FileService {
     public String signedUrl(String uuid, Principal p) {
         accounts.seller(p);
         var asset = availableFile(uuid);
-        if (!"coa".equals(asset.purpose()) && !files.belongsToMerchant(uuid, p.merchantId())) throw ApiException.notFound("File not found.");
+        if (!files.belongsToMerchant(uuid, p.merchantId())) throw ApiException.notFound("File not found.");
         switch (asset.purpose()) {
             case "coa" -> accounts.requireAnyMenu(p, "products", "certificates");
             case "order_fulfillment", "order_shipping_label" -> accounts.requireMenu(p, "orders");
@@ -159,17 +159,17 @@ public class FileService {
     }
 
     @Transactional(readOnly = true)
-    public void validateUploadToken(String uuid, String purpose, long actor, Long orderId, String stage, String token) {
+    public void validateUploadToken(String uuid, String purpose, long actor, Long orderId, String stage, String token, long merchantId) {
         var asset = files.find(uuid).orElseThrow(() -> ApiException.badRequest("FILE_NOT_AVAILABLE", "File is not available."));
-        if (!"available".equals(asset.status()) || !asset.purpose().equals(purpose) || !validUploadToken(uuid, purpose, actor, orderId, stage, null, token))
+        if (!files.belongsToMerchant(uuid, merchantId) || !"available".equals(asset.status()) || !asset.purpose().equals(purpose) || !validUploadToken(uuid, purpose, actor, orderId, stage, null, token))
             throw ApiException.badRequest("INVALID_UPLOAD_TOKEN", "File upload token is invalid for this operation.");
         requireUploadedContent(asset);
     }
 
     @Transactional(readOnly = true)
-    public void validateParcelUploadToken(String uuid, String purpose, long actor, Long orderId, String stage, String parcelUuid, String token) {
+    public void validateParcelUploadToken(String uuid, String purpose, long actor, Long orderId, String stage, String parcelUuid, String token, long merchantId) {
         var asset = files.find(uuid).orElseThrow(() -> ApiException.badRequest("FILE_NOT_AVAILABLE", "File is not available."));
-        if (!"available".equals(asset.status()) || !asset.purpose().equals(purpose)
+        if (!files.belongsToMerchant(uuid, merchantId) || !"available".equals(asset.status()) || !asset.purpose().equals(purpose)
                 || !validUploadToken(uuid, purpose, actor, orderId, stage, parcelUuid, token))
             throw ApiException.badRequest("INVALID_UPLOAD_TOKEN", "File upload token is invalid for this parcel and stage.");
         requireUploadedContent(asset);

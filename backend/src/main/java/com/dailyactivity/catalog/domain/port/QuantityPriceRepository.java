@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Map;
 
 public interface QuantityPriceRepository {
-    Map<Long, List<Band>> prices(List<Long> productIds, String tier);
-    List<Band> pricesForUpdate(long productId, String tier);
-    List<TierPrices> allPrices(long productId);
-    void replace(long productId, List<TierPrices> prices, long actorId);
+    Map<Long, List<Band>> prices(long merchantId, List<Long> productIds, String tier);
+    List<Band> pricesForUpdate(long merchantId, long productId, String tier);
+    List<TierPrices> allPrices(long merchantId, long productId);
+    void replace(long merchantId, long productId, List<TierPrices> prices, long actorId);
 }

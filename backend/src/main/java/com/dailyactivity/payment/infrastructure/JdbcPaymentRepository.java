@@ -1,6 +1,7 @@
 package com.dailyactivity.payment.infrastructure;
 
 import com.dailyactivity.common.ApiException;
+import com.dailyactivity.auth.domain.Actor;
 import com.dailyactivity.payment.domain.port.PaymentRepository;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -18,6 +19,25 @@ public class JdbcPaymentRepository implements PaymentRepository {
 
     public JdbcPaymentRepository(NamedParameterJdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @Override
+    public PaymentMethods paymentMethods(long merchantId) {
+        return jdbc.query("SELECT crypto_payment_enabled,online_payment_link_enabled FROM merchant WHERE id=:merchantId",
+                new MapSqlParameterSource("merchantId", merchantId), rows -> {
+                    if (!rows.next()) throw ApiException.notFound("Merchant not found.");
+                    return new PaymentMethods(rows.getBoolean("crypto_payment_enabled"), rows.getBoolean("online_payment_link_enabled"));
+                });
+    }
+
+    @Override
+    public void updatePaymentMethods(long merchantId, PaymentMethods methods, Actor actor) {
+        int updated = jdbc.update("UPDATE merchant SET crypto_payment_enabled=:cryptoEnabled,online_payment_link_enabled=:linkEnabled,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actorId,updated_by_type=:actorType WHERE id=:merchantId",
+                new MapSqlParameterSource().addValue("merchantId", merchantId)
+                        .addValue("cryptoEnabled", methods.cryptoEnabled())
+                        .addValue("linkEnabled", methods.onlinePaymentLinkEnabled())
+                        .addValue("actorId", actor.id()).addValue("actorType", actor.type()));
+        if (updated != 1) throw ApiException.notFound("Merchant not found.");
     }
 
     private String select() {
