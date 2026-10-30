@@ -87,7 +87,7 @@ const trendDays = computed(() => {
     const day = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - offset)).toISOString().slice(0, 10)
     dates.push(day)
   }
-  return dates.map(day => ({ day, ...(values.get(day) || { orderCount: 0, orderAmount: 0 }) }))
+  return dates.map(day => values.get(day) ?? { day, orderCount: 0, orderAmount: 0 })
 })
 const trendMax = computed(() => Math.max(1, ...trendDays.value.map(item => Number(item.orderCount))))
 

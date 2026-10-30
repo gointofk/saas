@@ -29,6 +29,26 @@ class QuantityPricingTest {
     }
 
     @Test
+    void storedThresholdsRestoreContinuousApiRangesAndBoundaryPrices() {
+        var restored = QuantityPricing.fromThresholds(List.of(
+                band(30, null, "80.00"), band(1, null, "95.00"), band(5, null, "85.00")));
+        assertThat(restored).isEqualTo(bands);
+        assertThat(QuantityPricing.price(restored, 4, BigDecimal.ONE)).isEqualByComparingTo("95");
+        assertThat(QuantityPricing.price(restored, 5, BigDecimal.ONE)).isEqualByComparingTo("85");
+        assertThat(QuantityPricing.price(restored, Integer.MAX_VALUE, BigDecimal.ONE)).isEqualByComparingTo("80");
+        assertThat(QuantityPricing.fromThresholds(List.of())).isEmpty();
+    }
+
+    @Test
+    void invalidStoredThresholdsAreRejectedInsteadOfInventingRanges() {
+        for (var thresholds : List.of(List.of(band(2, null, "95")),
+                List.of(band(1, null, "95"), band(1, null, "85")))) {
+            assertThatThrownBy(() -> QuantityPricing.fromThresholds(thresholds))
+                    .isInstanceOf(ApiException.class).extracting("code").isEqualTo("QUANTITY_PRICE_UNAVAILABLE");
+        }
+    }
+
+    @Test
     void invalidRangesAndPricesAreRejected() {
         for (var invalid : List.of(
                 List.of(band(2, null, "95")),

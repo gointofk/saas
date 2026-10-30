@@ -125,10 +125,10 @@ class PrdCertificateTest extends PrdDatabaseTest {
 
     private String insertCoaFile(long merchantId, long sellerId) {
         String uuid = UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO file_asset(merchant_id,file_uuid,stored_file_name,original_file_name,purpose,media_type,size_bytes,sha256,status,uploaded_by_user_id,uploaded_at,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(?,?,?,?,?,?,?,?,'available',?,?,?,?)",
+        jdbc.update("INSERT INTO file_asset(merchant_id,file_uuid,stored_file_name,original_file_name,purpose,media_type,size_bytes,sha256,status,uploaded_at,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,?,?,?,?,'available',?,?,?)",
                 merchantId, uuid, uuid + ".pdf", "certificate.pdf", "coa", "application/pdf", 1L, "1".repeat(64),
-                sellerId, Timestamp.from(Instant.now()), sellerId, sellerId);
+                Timestamp.from(Instant.now()), sellerId, sellerId);
         return uuid;
     }
 }

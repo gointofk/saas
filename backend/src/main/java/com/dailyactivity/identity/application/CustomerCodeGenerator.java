@@ -10,7 +10,7 @@ public final class CustomerCodeGenerator {
     }
 
     public static String next() {
-        char[] code = new char[3];
+        char[] code = new char[8];
         for (int i = 0; i < code.length; i++) code[i] = CODE_CHARS[RANDOM.nextInt(CODE_CHARS.length)];
         return new String(code);
     }

@@ -93,7 +93,7 @@ CREATE TABLE `user` (
   email VARCHAR(128) NOT NULL,
   name VARCHAR(100) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
-  code CHAR(3) NOT NULL,
+  code CHAR(8) NOT NULL,
   customer_type VARCHAR(16) NOT NULL,
   price_tier CHAR(2) NOT NULL,
   active TINYINT NOT NULL DEFAULT 1,
@@ -111,6 +111,7 @@ CREATE TABLE `user` (
   deleted BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY(id), UNIQUE KEY uk_user_email(merchant_id,email),
   UNIQUE KEY uk_user_customer_code(code), KEY idx_user_merchant(merchant_id,id),
+  KEY idx_user_merchant_created(merchant_id,deleted,created_at,id),
   KEY idx_user_active(deleted,active,id), KEY idx_user_referrer(referrer_id,deleted,id),
   KEY idx_user_customer_type(deleted,customer_type,id), KEY idx_user_last_login(deleted,last_login_at,id),
   KEY idx_platform_user_created(created_at,id)
@@ -274,7 +275,6 @@ CREATE TABLE `product_quantity_price` (
   `product_id` BIGINT NOT NULL,
   `tier` CHAR(2) NOT NULL,
   `min_quantity` INT NOT NULL,
-  `max_quantity` INT NULL,
   `unit_price` DECIMAL(18,2) NOT NULL,
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -311,7 +311,7 @@ CREATE TABLE `sales_order` (
   `order_no` VARCHAR(64) NOT NULL COMMENT '订单编号',
   `quote_token_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '已消费报价令牌SHA-256，阻止同一报价重复创建订单',
   `customer_id` BIGINT NOT NULL COMMENT '客户用户ID',
-  `customer_code_snapshot` CHAR(3) NOT NULL COMMENT '客户编号快照',
+  `customer_code_snapshot` CHAR(8) NOT NULL COMMENT '客户编号快照',
   `customer_name_snapshot` VARCHAR(100) NOT NULL COMMENT '客户名称快照',
   `customer_email_snapshot` VARCHAR(128) NOT NULL COMMENT '客户邮箱快照',
   `order_status` VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT '履约状态：pending待处理，packed已打包，shipped已发货，received已收货，completed已完成，cancelled已取消',
@@ -325,7 +325,7 @@ CREATE TABLE `sales_order` (
   `shipping_fee` DECIMAL(18,2) NOT NULL COMMENT '下单时统一运费快照',
   `discount_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '审核编辑时给予的商品优惠额',
   `total_amount` DECIMAL(18,2) NOT NULL COMMENT '最终应付金额：商品小计加运费减优惠额',
-  `address_snapshot` VARCHAR(512) NOT NULL COMMENT '收货地址快照JSON',
+  `address_snapshot` TEXT NOT NULL COMMENT '收货地址快照JSON',
   `recipient_name` VARCHAR(100) NOT NULL COMMENT '收件人姓名',
   `city` VARCHAR(100) NOT NULL COMMENT '城市',
   `buyer_note` VARCHAR(1000) NULL COMMENT '客户备注',
@@ -333,7 +333,6 @@ CREATE TABLE `sales_order` (
   `referrer_id_snapshot` BIGINT NULL COMMENT '下单时推荐人客户ID',
   `referrer_name_snapshot` VARCHAR(100) NULL COMMENT '推荐人名称快照',
   `commission_rate_snapshot` DECIMAL(5,2) NULL COMMENT '下单时佣金比例快照',
-  `status_changed_at` DATETIME(6) NOT NULL COMMENT '订单状态变更时间',
   `completed_at` DATETIME(6) NULL COMMENT '订单完成时间',
   `cancelled_at` DATETIME(6) NULL COMMENT '取消时间',
   `coa_captured_at` DATETIME(6) NULL COMMENT 'COA快照完成时间',
@@ -392,7 +391,6 @@ CREATE TABLE `order_item_quantity_price` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `order_item_id` BIGINT NOT NULL,
   `min_quantity` INT NOT NULL,
-  `max_quantity` INT NULL,
   `unit_price` DECIMAL(18,2) NOT NULL,
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
@@ -466,11 +464,10 @@ CREATE TABLE `file_asset` (
   `size_bytes` BIGINT NOT NULL COMMENT '文件字节数',
   `sha256` CHAR(64) NOT NULL COMMENT '文件SHA-256摘要',
   `status` VARCHAR(16) NOT NULL DEFAULT 'available' COMMENT '文件状态：available可引用，unavailable不可引用',
-  `uploaded_by_user_id` BIGINT NOT NULL COMMENT '文件上传人seller.id',
   `uploaded_at` DATETIME(6) NOT NULL COMMENT '文件上传时间',
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
-  `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  `created_by_user_id` BIGINT NOT NULL COMMENT '创建用户ID',
   created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
@@ -498,7 +495,6 @@ CREATE TABLE `stock_movement` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `product_id` BIGINT NOT NULL COMMENT '商品ID',
   `order_id` BIGINT NULL COMMENT '订单ID',
-  `order_event_id` BIGINT NULL COMMENT '关联订单事件ID',
   `movement_type` VARCHAR(32) NOT NULL COMMENT '库存变动类型：order_create下单扣减，order_edit订单编辑差额，order_cancel取消回补，manual_adjust人工调整',
   `quantity_delta` INT NOT NULL COMMENT '库存变动数量',
   `quantity_before` INT NOT NULL COMMENT '变动前可售库存',
@@ -541,13 +537,13 @@ CREATE TABLE `payment_channel` (
   KEY `idx_channel_available` (`merchant_id`,`deleted`,`active`,`sort_no`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='收款渠道，第一条有效渠道作为推荐渠道';
 
--- 客户付款原始申报，一订单一条记录，确认前可更新
+-- 客户付款逐笔申报，仅追加；锁订单保证同时最多一笔待核验申报
 CREATE TABLE `payment_submission` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `order_id` BIGINT NOT NULL COMMENT '订单ID',
   `customer_id` BIGINT NOT NULL COMMENT '客户用户ID',
   `channel_id` BIGINT NOT NULL COMMENT '收款渠道ID；0 为站外线上支付链接虚拟渠道',
-  `channel_snapshot` VARCHAR(256) NOT NULL COMMENT '收款渠道快照JSON',
+  `channel_snapshot` TEXT NOT NULL COMMENT '收款渠道快照JSON',
   `original_transaction_no` VARCHAR(256) NOT NULL COMMENT '客户原始交易号',
   `declared_order_total` DECIMAL(18,2) NOT NULL COMMENT '申报时订单总额快照',
   `declared_amount` DECIMAL(18,2) NOT NULL COMMENT '本次申报抵扣订单款金额',
@@ -569,7 +565,7 @@ CREATE TABLE `payment_receipt` (
   `order_id` BIGINT NOT NULL COMMENT '订单ID',
   `submission_id` BIGINT NULL COMMENT '付款申报ID',
   `channel_id` BIGINT NOT NULL COMMENT '收款渠道ID',
-  `channel_snapshot` VARCHAR(256) NOT NULL COMMENT '收款渠道快照JSON',
+  `channel_snapshot` TEXT NOT NULL COMMENT '收款渠道快照JSON',
   `verified_transaction_no` VARCHAR(256) NOT NULL COMMENT '核验交易号',
   `received_amount` DECIMAL(18,2) NOT NULL COMMENT '实际收款金额',
   `currency` CHAR(3) NOT NULL DEFAULT 'USD' COMMENT '订单币种：仅USD',
@@ -592,7 +588,6 @@ CREATE TABLE `coa_certificate` (
   `fill` VARCHAR(64) NULL COMMENT 'COA填充信息',
   `test_date` DATE NULL COMMENT 'COA检测日期',
   `current_file_uuid` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '当前COA文件UUID',
-  `uploaded_at` DATETIME(6) NOT NULL COMMENT '文件上传时间',
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
@@ -610,12 +605,10 @@ CREATE TABLE `product_coa_link` (
   `merchant_id` BIGINT NOT NULL COMMENT '所属商户ID；必须与商品和COA一致',
   `product_id` BIGINT NOT NULL COMMENT '商品ID',
   `coa_id` BIGINT NOT NULL COMMENT 'COA证书ID',
-  `linked_by_user_id` BIGINT NOT NULL COMMENT 'COA绑定人seller.id',
-  `linked_at` DATETIME(6) NOT NULL COMMENT 'COA绑定时间',
   `ended_at` DATETIME(6) NULL COMMENT '绑定结束时间',
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
-  `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
+  `created_by_user_id` BIGINT NOT NULL COMMENT '创建用户ID',
   created_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `updated_by_user_id` BIGINT NULL COMMENT '最后更新用户ID',
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
@@ -661,7 +654,6 @@ CREATE TABLE `commission_accrual` (
   `base_amount` DECIMAL(18,2) NOT NULL COMMENT '佣金基数快照：优惠后商品小计，不含运费',
   `commission_amount` DECIMAL(18,2) NOT NULL COMMENT '佣金金额',
   `status` VARCHAR(16) NOT NULL DEFAULT 'estimated' COMMENT '佣金状态：estimated待验证，payable待支付，settled已支付，void已作废',
-  `finalized_at` DATETIME(6) NULL COMMENT '佣金最终确认时间',
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（UTC）',
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（UTC）',
   `created_by_user_id` BIGINT NULL COMMENT '创建用户ID',
@@ -687,11 +679,10 @@ CREATE TABLE `commission_settlement_batch` (
   `settled_by_user_id` BIGINT NOT NULL COMMENT '结算操作人seller.id',
   `settled_at` DATETIME(6) NOT NULL COMMENT '线下结算时间',
   `remark` VARCHAR(1000) NULL COMMENT '结算备注',
-  `offline_paid_confirmed` TINYINT NOT NULL COMMENT '线下付款确认标记：1已确认，0未确认（提交结算仅允许1）',
   KEY `idx_commission_settlement_batch_merchant` (`merchant_id`,`id`),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_settlement_batch_no` (`batch_no`),
-  KEY `idx_settlement_batch_time` (`settled_at`,`id`)
+  KEY `idx_settlement_batch_time` (`merchant_id`,`settled_at`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='线下佣金结算批次，单笔也归批次';
 
 -- 不可变逐单结算，0%禁止写入
@@ -709,16 +700,13 @@ CREATE TABLE `commission_settlement` (
   `base_amount` DECIMAL(18,2) NOT NULL COMMENT '佣金基数快照：优惠后商品小计，不含运费',
   `rate` DECIMAL(5,2) NOT NULL COMMENT '订单锁定佣金比例',
   `commission_amount` DECIMAL(18,2) NOT NULL COMMENT '佣金金额',
-  `settled_at` DATETIME(6) NOT NULL COMMENT '线下结算时间',
-  `settled_by_user_id` BIGINT NOT NULL COMMENT '结算操作人seller.id',
-  `remark` VARCHAR(1000) NULL COMMENT '结算备注',
   KEY `idx_commission_settlement_merchant` (`merchant_id`,`id`),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_settlement_order` (`order_id`),
   UNIQUE KEY `uk_settlement_accrual` (`accrual_id`),
   KEY `idx_settlement_batch` (`batch_id`,`id`),
-  KEY `idx_settlement_referrer_time` (`referrer_id`,`settled_at`,`id`),
-  KEY `idx_settlement_referred_time` (`referred_customer_id`,`settled_at`,`id`)
+  KEY `idx_settlement_referrer` (`merchant_id`,`referrer_id`,`batch_id`,`id`),
+  KEY `idx_settlement_referred` (`merchant_id`,`referred_customer_id`,`batch_id`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='不可变逐单结算，0%禁止写入';
 
 -- 应收/应付账单事实；一订单最多一条应收账单和一条佣金应付账单
@@ -727,7 +715,6 @@ CREATE TABLE `billing_entry` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `bill_no` VARCHAR(64) NOT NULL COMMENT '账单编号：BILL-订单号或COMM-订单号',
   `bill_type` VARCHAR(32) NOT NULL COMMENT '账单类型：order_receivable应收，commission_payable应付',
-  `direction` VARCHAR(16) NOT NULL COMMENT '账单方向：receivable应收，payable应付',
   `order_id` BIGINT NOT NULL COMMENT '关联订单ID',
   `order_no_snapshot` VARCHAR(64) NOT NULL COMMENT '订单编号快照',
   `customer_id` BIGINT NOT NULL COMMENT '账单客户ID：应收为下单客户，应付为推荐人',
@@ -745,6 +732,8 @@ CREATE TABLE `billing_entry` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_billing_no` (`bill_no`),
   UNIQUE KEY `uk_billing_type_order` (`bill_type`,`order_id`),
+  KEY `idx_billing_merchant_date` (`merchant_id`,`order_created_at`,`id`),
+  KEY `idx_billing_merchant_type_status_date` (`merchant_id`,`bill_type`,`status`,`order_created_at`,`id`),
   KEY `idx_billing_customer_date` (`customer_id`,`order_created_at`,`id`),
   KEY `idx_billing_type_status_date` (`bill_type`,`status`,`order_created_at`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='应收应付账单事实，状态与收款/结算事实同事务维护';

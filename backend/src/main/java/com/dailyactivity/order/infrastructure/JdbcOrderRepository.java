@@ -28,7 +28,7 @@ public class JdbcOrderRepository implements OrderRepository {
     public long insertOrder(long merchantId, OrderCreate o) {
         KeyHolder h = new GeneratedKeyHolder();
         try {
-            jdbc.update("INSERT INTO sales_order(merchant_id,order_no,quote_token_hash,customer_id,customer_code_snapshot,customer_name_snapshot,customer_email_snapshot,order_status,payment_status,currency,subtotal,shipping_fee,total_amount,address_snapshot,recipient_name,city,buyer_note,referrer_id_snapshot,referrer_name_snapshot,commission_rate_snapshot,status_changed_at,created_at,created_by_user_id,created_by_type,updated_by_user_id,updated_by_type) VALUES(:merchantId,:orderNo,:quoteTokenHash,:customerId,:code,:name,:email,'pending','unpaid','USD',:subtotal,:shippingFee,:total,:addressSnapshot,:recipientName,:city,:buyerNote,:referrerId,:referrerName,:commissionRate,:now,:now,:actor,:actorType,:actor,:actorType)", new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("orderNo", o.orderNo()).addValue("quoteTokenHash", o.quoteTokenHash()).addValue("customerId", o.customerId()).addValue("code", o.customerCode()).addValue("name", o.customerName()).addValue("email", o.customerEmail()).addValue("subtotal", o.subtotal()).addValue("shippingFee", o.shippingFee()).addValue("total", o.total()).addValue("addressSnapshot", o.addressSnapshot()).addValue("recipientName", o.recipientName()).addValue("city", o.city()).addValue("buyerNote", o.buyerNote()).addValue("referrerId", o.referrerId()).addValue("referrerName", o.referrerName()).addValue("commissionRate", o.commissionRate()).addValue("now", Timestamp.from(o.now())).addValue("actor", o.customerId()).addValue("actorType", "customer"), h, new String[]{"id"});
+            jdbc.update("INSERT INTO sales_order(merchant_id,order_no,quote_token_hash,customer_id,customer_code_snapshot,customer_name_snapshot,customer_email_snapshot,order_status,payment_status,currency,subtotal,shipping_fee,total_amount,address_snapshot,recipient_name,city,buyer_note,referrer_id_snapshot,referrer_name_snapshot,commission_rate_snapshot,created_at,created_by_user_id,created_by_type,updated_by_user_id,updated_by_type) VALUES(:merchantId,:orderNo,:quoteTokenHash,:customerId,:code,:name,:email,'pending','unpaid','USD',:subtotal,:shippingFee,:total,:addressSnapshot,:recipientName,:city,:buyerNote,:referrerId,:referrerName,:commissionRate,:now,:actor,:actorType,:actor,:actorType)", new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("orderNo", o.orderNo()).addValue("quoteTokenHash", o.quoteTokenHash()).addValue("customerId", o.customerId()).addValue("code", o.customerCode()).addValue("name", o.customerName()).addValue("email", o.customerEmail()).addValue("subtotal", o.subtotal()).addValue("shippingFee", o.shippingFee()).addValue("total", o.total()).addValue("addressSnapshot", o.addressSnapshot()).addValue("recipientName", o.recipientName()).addValue("city", o.city()).addValue("buyerNote", o.buyerNote()).addValue("referrerId", o.referrerId()).addValue("referrerName", o.referrerName()).addValue("commissionRate", o.commissionRate()).addValue("now", Timestamp.from(o.now())).addValue("actor", o.customerId()).addValue("actorType", "customer"), h, new String[]{"id"});
         } catch (DuplicateKeyException e) {
             if (quoteAlreadyUsedForUpdate(o.quoteTokenHash()))
                 throw ApiException.conflict("QUOTE_ALREADY_USED", "This checkout quote has already created an order.");
@@ -65,9 +65,9 @@ public class JdbcOrderRepository implements OrderRepository {
     @Override
     public void saveQuantityPrices(long orderId, long productId, List<com.dailyactivity.catalog.domain.QuantityPricing.Band> bands) {
         for (var band : bands) {
-            jdbc.update("INSERT INTO order_item_quantity_price(order_item_id,min_quantity,max_quantity,unit_price) SELECT id,:min,:max,:price FROM order_item WHERE order_id=:orderId AND product_id=:productId AND deleted=0",
+            jdbc.update("INSERT INTO order_item_quantity_price(order_item_id,min_quantity,unit_price) SELECT id,:min,:price FROM order_item WHERE order_id=:orderId AND product_id=:productId AND deleted=0",
                     new MapSqlParameterSource("orderId", orderId).addValue("productId", productId)
-                            .addValue("min", band.minQuantity()).addValue("max", band.maxQuantity()).addValue("price", band.unitPrice()));
+                            .addValue("min", band.minQuantity()).addValue("price", band.unitPrice()));
         }
         if (!bands.isEmpty()) jdbc.update("UPDATE order_item SET price_source='quantity_price' WHERE order_id=:orderId AND product_id=:productId AND deleted=0 AND price_source<>'manual'",
                 new MapSqlParameterSource("orderId", orderId).addValue("productId", productId));
@@ -75,9 +75,9 @@ public class JdbcOrderRepository implements OrderRepository {
 
     @Override
     public List<com.dailyactivity.catalog.domain.QuantityPricing.Band> quantityPrices(long itemId) {
-        return jdbc.query("SELECT qp.min_quantity,qp.max_quantity,qp.unit_price FROM order_item_quantity_price qp JOIN order_item i ON i.id=qp.order_item_id WHERE i.id=:id AND i.deleted=0 AND i.price_source<>'manual' ORDER BY qp.min_quantity",
+        return com.dailyactivity.catalog.domain.QuantityPricing.fromThresholds(jdbc.query("SELECT qp.min_quantity,qp.unit_price FROM order_item_quantity_price qp JOIN order_item i ON i.id=qp.order_item_id WHERE i.id=:id AND i.deleted=0 AND i.price_source<>'manual' ORDER BY qp.min_quantity",
                 new MapSqlParameterSource("id", itemId), (rs, row) -> new com.dailyactivity.catalog.domain.QuantityPricing.Band(
-                        rs.getInt("min_quantity"), (Integer) rs.getObject("max_quantity"), rs.getBigDecimal("unit_price")));
+                        rs.getInt("min_quantity"), null, rs.getBigDecimal("unit_price"))));
     }
 
     @Override
@@ -104,7 +104,7 @@ public class JdbcOrderRepository implements OrderRepository {
     @Override
     public void createReceivable(OrderRow o, Actor actorId) {
         requireApproved(o);
-        jdbc.update("INSERT INTO billing_entry(merchant_id,bill_no,bill_type,direction,order_id,order_no_snapshot,customer_id,customer_name_snapshot,customer_email_snapshot,currency,amount,settled_amount,status,order_created_at) VALUES((SELECT merchant_id FROM sales_order WHERE id=:orderId),:billNo,'order_receivable','receivable',:orderId,:orderNo,:customerId,:name,:email,'USD',:amount,0,:paymentStatus,:createdAt)", new MapSqlParameterSource().addValue("paymentStatus", o.paymentStatus()).addValue("billNo", "BILL-" + o.orderNo()).addValue("orderId", o.id()).addValue("orderNo", o.orderNo()).addValue("customerId", o.customerId()).addValue("name", o.customerName()).addValue("email", o.customerEmail()).addValue("amount", o.total()).addValue("createdAt", Timestamp.from(o.createdAt())));
+        jdbc.update("INSERT INTO billing_entry(merchant_id,bill_no,bill_type,order_id,order_no_snapshot,customer_id,customer_name_snapshot,customer_email_snapshot,currency,amount,settled_amount,status,order_created_at) VALUES((SELECT merchant_id FROM sales_order WHERE id=:orderId),:billNo,'order_receivable',:orderId,:orderNo,:customerId,:name,:email,'USD',:amount,0,:paymentStatus,:createdAt)", new MapSqlParameterSource().addValue("paymentStatus", o.paymentStatus()).addValue("billNo", "BILL-" + o.orderNo()).addValue("orderId", o.id()).addValue("orderNo", o.orderNo()).addValue("customerId", o.customerId()).addValue("name", o.customerName()).addValue("email", o.customerEmail()).addValue("amount", o.total()).addValue("createdAt", Timestamp.from(o.createdAt())));
     }
 
     @Override
@@ -114,7 +114,7 @@ public class JdbcOrderRepository implements OrderRepository {
         BigDecimal commissionBase = o.subtotal().subtract(o.discountAmount());
         BigDecimal amount = commissionBase.multiply(o.commissionRate()).movePointLeft(2).setScale(2, java.math.RoundingMode.HALF_UP);
         jdbc.update("INSERT INTO commission_accrual(merchant_id,order_id,referrer_id,referred_customer_id,referrer_name_snapshot,referred_name_snapshot,rate,base_amount,commission_amount,status,created_by_user_id,created_by_type,updated_by_user_id,updated_by_type) VALUES((SELECT merchant_id FROM sales_order WHERE id=:orderId),:orderId,:referrerId,:customerId,:referrerName,:customerName,:rate,:base,:amount,'estimated',:actor,:actorType,:actor,:actorType)", new MapSqlParameterSource().addValue("orderId", o.id()).addValue("referrerId", o.referrerId()).addValue("customerId", o.customerId()).addValue("referrerName", o.referrerName()).addValue("customerName", o.customerName()).addValue("rate", o.commissionRate()).addValue("base", commissionBase).addValue("amount", amount).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
-        jdbc.update("INSERT INTO billing_entry(merchant_id,bill_no,bill_type,direction,order_id,order_no_snapshot,customer_id,customer_name_snapshot,customer_email_snapshot,currency,amount,settled_amount,status,order_created_at) VALUES((SELECT merchant_id FROM sales_order WHERE id=:orderId),:billNo,'commission_payable','payable',:orderId,:orderNo,:referrerId,:referrerName,'', 'USD',:amount,0,'estimated',:createdAt)", new MapSqlParameterSource().addValue("billNo", "COMM-" + o.orderNo()).addValue("orderId", o.id()).addValue("orderNo", o.orderNo()).addValue("referrerId", o.referrerId()).addValue("referrerName", o.referrerName()).addValue("amount", amount).addValue("createdAt", Timestamp.from(o.createdAt())));
+        jdbc.update("INSERT INTO billing_entry(merchant_id,bill_no,bill_type,order_id,order_no_snapshot,customer_id,customer_name_snapshot,customer_email_snapshot,currency,amount,settled_amount,status,order_created_at) VALUES((SELECT merchant_id FROM sales_order WHERE id=:orderId),:billNo,'commission_payable',:orderId,:orderNo,:referrerId,:referrerName,'', 'USD',:amount,0,'estimated',:createdAt)", new MapSqlParameterSource().addValue("billNo", "COMM-" + o.orderNo()).addValue("orderId", o.id()).addValue("orderNo", o.orderNo()).addValue("referrerId", o.referrerId()).addValue("referrerName", o.referrerName()).addValue("amount", amount).addValue("createdAt", Timestamp.from(o.createdAt())));
     }
 
     @Override
@@ -308,7 +308,7 @@ public class JdbcOrderRepository implements OrderRepository {
 
     @Override
     public void updatePaymentTotals(long orderId, String status, BigDecimal paidAmount, Actor actorId) {
-        jdbc.update("UPDATE sales_order SET payment_status=:status,updated_at=GREATEST(UTC_TIMESTAMP(6),updated_at+INTERVAL 1 MICROSECOND),updated_by_user_id=:actor,updated_by_type=:actorType,status_changed_at=UTC_TIMESTAMP(6) WHERE id=:id", new MapSqlParameterSource().addValue("id", orderId).addValue("status", status).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("UPDATE sales_order SET payment_status=:status,updated_at=GREATEST(UTC_TIMESTAMP(6),updated_at+INTERVAL 1 MICROSECOND),updated_by_user_id=:actor,updated_by_type=:actorType WHERE id=:id", new MapSqlParameterSource().addValue("id", orderId).addValue("status", status).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
         jdbc.update("UPDATE billing_entry SET settled_amount=:amount,status=:status,settled_at=CASE WHEN :status='paid' THEN UTC_TIMESTAMP(6) ELSE NULL END,updated_at=UTC_TIMESTAMP(6) WHERE order_id=:id AND bill_type='order_receivable'", new MapSqlParameterSource().addValue("id", orderId).addValue("amount", paidAmount).addValue("status", status));
     }
 
@@ -333,7 +333,7 @@ public class JdbcOrderRepository implements OrderRepository {
 
     @Override
     public void updateStatus(long orderId, String status, String buyerNote, String internalNote, Actor actorId) {
-        jdbc.update("UPDATE sales_order SET status_changed_at=IF(order_status<>:status,UTC_TIMESTAMP(6),status_changed_at),order_status=:status,buyer_note=COALESCE(:buyerNote,buyer_note),internal_note=COALESCE(:internalNote,internal_note),updated_at=GREATEST(UTC_TIMESTAMP(6),updated_at+INTERVAL 1 MICROSECOND),updated_by_user_id=:actor,updated_by_type=:actorType,completed_at=IF(:status='completed',UTC_TIMESTAMP(6),completed_at),cancelled_at=IF(:status='cancelled',UTC_TIMESTAMP(6),cancelled_at) WHERE id=:id", new MapSqlParameterSource().addValue("id", orderId).addValue("status", status).addValue("buyerNote", buyerNote).addValue("internalNote", internalNote).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("UPDATE sales_order SET order_status=:status,buyer_note=COALESCE(:buyerNote,buyer_note),internal_note=COALESCE(:internalNote,internal_note),updated_at=GREATEST(UTC_TIMESTAMP(6),updated_at+INTERVAL 1 MICROSECOND),updated_by_user_id=:actor,updated_by_type=:actorType,completed_at=IF(:status='completed',UTC_TIMESTAMP(6),completed_at),cancelled_at=IF(:status='cancelled',UTC_TIMESTAMP(6),cancelled_at) WHERE id=:id", new MapSqlParameterSource().addValue("id", orderId).addValue("status", status).addValue("buyerNote", buyerNote).addValue("internalNote", internalNote).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
     }
 
     @Override
@@ -379,7 +379,7 @@ public class JdbcOrderRepository implements OrderRepository {
 
     @Override
     public void updateCommissionVoid(long orderId, Actor actorId) {
-        jdbc.update("UPDATE commission_accrual SET status='void',finalized_at=UTC_TIMESTAMP(6),updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type=:actorType WHERE order_id=:id AND status IN ('estimated','payable')", new MapSqlParameterSource().addValue("id", orderId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("UPDATE commission_accrual SET status='void',updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type=:actorType WHERE order_id=:id AND status IN ('estimated','payable')", new MapSqlParameterSource().addValue("id", orderId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
     }
 
     @Override
@@ -390,14 +390,14 @@ public class JdbcOrderRepository implements OrderRepository {
 
     @Override
     public void updateBillingPayable(long orderId, Actor actorId) {
-        jdbc.update("UPDATE commission_accrual a JOIN sales_order o ON o.id=a.order_id SET a.base_amount=o.subtotal-o.discount_amount,a.commission_amount=ROUND((o.subtotal-o.discount_amount)*a.rate/100,2),a.status='payable',a.finalized_at=UTC_TIMESTAMP(6),a.updated_at=UTC_TIMESTAMP(6),a.updated_by_user_id=:actor,a.updated_by_type=:actorType WHERE a.order_id=:id AND a.status='estimated'", new MapSqlParameterSource().addValue("id", orderId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
+        jdbc.update("UPDATE commission_accrual a JOIN sales_order o ON o.id=a.order_id SET a.base_amount=o.subtotal-o.discount_amount,a.commission_amount=ROUND((o.subtotal-o.discount_amount)*a.rate/100,2),a.status='payable',a.updated_at=UTC_TIMESTAMP(6),a.updated_by_user_id=:actor,a.updated_by_type=:actorType WHERE a.order_id=:id AND a.status='estimated'", new MapSqlParameterSource().addValue("id", orderId).addValue("actor", actorId.id()).addValue("actorType", actorId.type()));
         jdbc.update("UPDATE billing_entry b JOIN commission_accrual a ON a.order_id=b.order_id SET b.amount=a.commission_amount,b.status='payable',b.updated_at=UTC_TIMESTAMP(6) WHERE b.order_id=:id AND b.bill_type='commission_payable' AND b.status='estimated' AND a.status='payable'", new MapSqlParameterSource("id", orderId));
     }
 
     @Override
     public void captureCoaSnapshots(long orderId, Actor actorId) {
         jdbc.update("INSERT INTO order_item_coa_snapshot(order_id,order_item_id,product_id,coa_id,source_link_id,name_snapshot,lot_snapshot,purity_snapshot,fill_snapshot,test_date_snapshot,file_uuid,linked_by_user_id_snapshot,linked_at_snapshot,captured_at) "
-                        + "SELECT oi.order_id,oi.id,oi.product_id,c.id,pcl.id,c.name,c.lot,c.purity,c.fill,c.test_date,c.current_file_uuid,pcl.linked_by_user_id,pcl.linked_at,UTC_TIMESTAMP(6) "
+                        + "SELECT oi.order_id,oi.id,oi.product_id,c.id,pcl.id,c.name,c.lot,c.purity,c.fill,c.test_date,c.current_file_uuid,pcl.created_by_user_id,pcl.created_at,UTC_TIMESTAMP(6) "
                         + "FROM order_item oi JOIN sales_order o ON o.id=oi.order_id "
                         + "JOIN product p ON p.id=oi.product_id AND p.merchant_id=o.merchant_id "
                         + "JOIN product_coa_link pcl ON pcl.product_id=oi.product_id AND pcl.merchant_id=o.merchant_id AND pcl.deleted=0 "

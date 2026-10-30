@@ -303,7 +303,7 @@ Java 全部使用 `BigDecimal`，数据库金额 `DECIMAL(18,2)`、百分比 `DE
 | 推荐人 / 下单客户 / 费率 / 关系版本 | 创建订单 | 关系和费率变更只影响新订单；无推荐不追补 |
 | 渠道名称 / 币种 / 网络 / 地址 / 说明 / 二维码 file_uuid | 付款申报或商家直接确认 | 不因当前渠道改动、停用或软删除而改变 |
 | 订单 COA 元数据、文件、绑定 | 确认完成 | 完成前读取最新有效资料，完成后仅读完成快照，空集合也是有效快照 |
-| 佣金基数 / 逐单金额 | 有推荐人且锁定费率 > 0 的订单完成 | 完成前合法编辑重算、完成后固定；0% 只保留订单关系快照，不生成计提/结算 |
+| 佣金基数 / 逐单金额 | 有推荐人且锁定费率 > 0 的订单审核通过 | 审核通过后固定并进入 payable；订单完成仅捕获 COA；0% 只保留订单关系快照，不生成计提/结算 |
 
 商品下架、停用类目或软删除商品阻止新采购，但不删除库存身份和旧订单。旧订单已有行按状态、金额锁定与库存正常处理。未完成订单（包括 cancelled）的 COA 读取当前有效证书/绑定；商品是否上架不构成订单 COA 的访问门禁。COA 解除、转移或软删除后不回退旧资料。
 
@@ -321,12 +321,12 @@ Java 全部使用 `BigDecimal`，数据库金额 `DECIMAL(18,2)`、百分比 `DE
 | 软删除 | 仅可删除的主数据和可重复关系使用 `deleted BIGINT NOT NULL DEFAULT 0`；有效为 0，软删除就是一次更新，删除时同时写 `updated_at` 和 `updated_by_user_id`，不再单独保存删除时间 |
 | 文本 | 业务文本列统一 `utf8mb4_unicode_ci`；`file_uuid` 使用 ASCII `ascii_bin`；email/account 由应用 trim 后转小写，类目名、SKU 和渠道名直接按数据库排序规则比较并建立唯一索引，不维护额外规范化副本 |
 | 枚举 | VARCHAR + 应用枚举校验；不依赖 CHECK，不使用生成列、函数索引、CTE、窗口函数或 REGEXP_LIKE |
-| 文本快照 | MySQL 5.6 无原生 JSON；序列化 JSON 通常使用 LONGTEXT，订单地址和付款渠道快照分别使用 VARCHAR(512)/VARCHAR(256)，由 Java 验证/读写；检索使用结构化列，不用 JSON_* SQL 函数 |
+| 文本快照 | MySQL 5.6 无原生 JSON；序列化 JSON 通常使用 LONGTEXT，订单地址和付款渠道快照均使用 TEXT，由 Java 验证/读写；检索使用结构化列，不用 JSON_* SQL 函数 |
 | 删除 SQL | 软删除使用 `UPDATE ... SET deleted=id, updated_by_user_id=:userId, updated_at=:utcNow,...`；等级价和购物车行按业务规则物理删除；其他业务表禁止 `DELETE`、`TRUNCATE`、`REPLACE INTO` 和级联物理删除 |
 
 不可变事件/流水/快照/收款与结算事实和菜单字典不设软删除字段；它们没有业务删除入口。不能把软删除当作撤销资金事实的方法。取消用状态表示，不删除订单。
 
-可重复建立且允许软删除的关系使用 `UNIQUE(业务键, deleted)`：旧行删除后 `deleted=id`，新有效行使用 0；避免 `UNIQUE(业务键,is_deleted)` 只能保留一次历史删除的问题。客户码、订单号、每单已消费报价摘要、每单付款申报、每单收款及每单佣金/结算使用永久唯一，不随软删除释放。
+可重复建立且允许软删除的关系使用 `UNIQUE(业务键, deleted)`：旧行删除后 `deleted=id`，新有效行使用 0；避免 `UNIQUE(业务键,is_deleted)` 只能保留一次历史删除的问题。客户码、订单号、每单已消费报价摘要、每笔申报对应的收款及每单佣金/结算使用永久唯一，不随软删除释放。
 
 为简化身份与历史识别，本方案选择本商户客户邮箱、seller 表内唯一账号、admin 表内唯一账号、SKU、类目名、渠道名也不因软删除重新分配；编辑名称/邮箱可改为尚未占用的新值，历史订单通过业务快照追踪。这里的“永久唯一”指保留行当前值不因删除释放，不建立未经要求的所有历史曾用邮箱注册表。客户 code 首版无修改入口且永不重用。
 
@@ -379,14 +379,14 @@ erDiagram
 
 | 表 | 业务字段 | 索引与约束 |
 | --- | --- | --- |
-| `user` | merchant_id、email(128)、name(100)、password_hash、code(3)、customer_type、price_tier、referrer_id、commission_rate、active、auth_version、last_login_at、审计与软删除 | U(merchant_id,email)、U(code)；邮箱小写，客户码大写，客户推荐只能指向同商户 user |
+| `user` | merchant_id、email(128)、name(100)、password_hash、code(8)、customer_type、price_tier、referrer_id、commission_rate、active、auth_version、last_login_at、审计与软删除 | U(merchant_id,email)、U(code)；邮箱小写，客户码大写，客户推荐只能指向同商户 user |
 | `seller` | merchant_id、account(64)、name(100)、password_hash、active、auth_version、last_login_at、审计与软删除 | U(account)，账号小写；商户内成员与菜单授权 |
 | `admin` | account(64)、name(100)、password_hash、active、auth_version、last_login_at、审计与软删除 | U(account)，账号小写；无 merchant_id，不进入商户成员管理 |
 | `seller_permission` | seller_id、menu_code、创建/修改时间、操作者 ID 与类型、deleted | U(seller_id,menu_code,deleted)，撤权软删除，重新授权新增行 |
 | `customer_address` | `customer_id`（`user.id`，必须为 customer）；`recipient_name VARCHAR(100)`；`street VARCHAR(200)`；`apt VARCHAR(100)?`；`city/region VARCHAR(100)`（region 可空）；`postal_code VARCHAR(20)`；`phone VARCHAR(32)`；`is_default BOOLEAN` | I(customer_id,deleted,id)、I(customer_id,deleted,is_default,id)；应用事务保证每客户最多一个有效默认地址 |
 | `permission_menu` | menu_code、name、sort_no | U(menu_code)；内置 10 个菜单 |
 
-客户码由应用使用安全随机数从 `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ` 生成三位 Base36 字符串，并统一保存为大写；`000` 为合法码，比较不区分大小写。共 36³ = 46,656 个候选码。插入 `user` 时依赖 U(code) 防止重复；发生唯一键冲突时生成新码并重试，达到有限重试上限后返回明确系统错误。客户 code 永不重用，已软删除客户的 code 也保留占用。
+客户码由应用使用安全随机数从 `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ` 生成八位 Base36 字符串，并统一保存为大写；`00000000` 为合法码，比较不区分大小写。共 36⁸ = 2,821,109,907,456 个候选码。插入 `user` 时依赖 U(code) 防止重复；发生唯一键冲突时生成新码并重试，达到有限重试上限后返回明确系统错误。客户 code 永不重用，已软删除客户的 code 也保留占用。
 
 默认地址以 `customer_address.is_default` 保存。设置、切换和删除默认地址时锁 customer 对应的 user 行及其有效地址集合；先清空其余有效地址标记，再设置目标地址。删除默认地址时同事务将 created_at/id 最早的其余有效地址标记为默认；最后一条删除后不保留默认地址。应用保证每客户最多一个有效默认地址。
 
@@ -397,9 +397,9 @@ erDiagram
 | `category` | `merchant_id`；`name VARCHAR(100)`；`sort_no INT`；`active` | U(merchant_id,name)；I(merchant_id,deleted,active,sort_no,id)；sort_no > 0 |
 | `product` | `merchant_id`；`category_id`；`sku VARCHAR(64)`；`name VARCHAR(200)`；`description VARCHAR(2000)?`；`product_type VARCHAR(16)`；`active`；`base_price DECIMAL(18,2)`；`cost_price DECIMAL(18,2)?`；`stock_available INT`；`price_revision BIGINT` | U(merchant_id,sku)；I(merchant_id,category_id,deleted,active,product_type,id)，I(merchant_id,deleted,stock_available,id)；库存非负整数；正品 base_price > 0，赠品=0，成本 NULL 或 ≥0 |
 | `product_tier_price` | `product_id`；`tier CHAR(2)`（V1～V6）；`price DECIMAL(18,2)?` | U(product_id,tier)；商户范围经所属 product.merchant_id 校验；等级价替换时物理删除旧行；正品 NULL 表示回默认；赠品六档都为 0；跨表类型校验由应用执行 |
-| `product_quantity_price` | `product_id`、`tier CHAR(2)`、`min_quantity INT`、`max_quantity INT NULL`、`unit_price DECIMAL(18,2)`、审计字段及 deleted | U(product_id,tier,min_quantity,deleted)；商户范围经所属 product.merchant_id 校验；每等级独立连续区间；替换时软删除旧行。正品价 > 0，赠品不配置 |
-| `order_item_quantity_price` | `order_item_id`、`min_quantity`、`max_quantity NULL`、`unit_price`、created_at | U(order_item_id,min_quantity)；不可变快照，无历史回填、无删除入口；price_source=manual 时不参与自动计价 |
-| `stock_movement` | `merchant_id`；`product_id`；`order_id?`；`order_event_id?`；`movement_type VARCHAR(32)`；`quantity_delta INT`；`quantity_before/after INT`；`reason VARCHAR(1000)?`；`operation_id VARCHAR(64)`（服务端操作审计 UUID） | U(operation_id,product_id)；I(merchant_id,id)，I(product_id,created_at,id)，I(order_id,id)；商品与商户必须匹配；每次业务操作每商品先汇总差额，只追加一次 |
+| `product_quantity_price` | `product_id`、`tier CHAR(2)`、`min_quantity INT`、`unit_price DECIMAL(18,2)`、审计字段及 deleted | U(product_id,tier,min_quantity,deleted)；商户范围经所属 product.merchant_id 校验；每等级独立连续区间；替换时软删除旧行。正品价 > 0，赠品不配置 |
+| `order_item_quantity_price` | `order_item_id`、`min_quantity`、`unit_price`、created_at | U(order_item_id,min_quantity)；不可变快照，无历史回填、无删除入口；price_source=manual 时不参与自动计价 |
+| `stock_movement` | `merchant_id`；`product_id`；`order_id?`；`movement_type VARCHAR(32)`；`quantity_delta INT`；`quantity_before/after INT`；`reason VARCHAR(1000)?`；`operation_id VARCHAR(64)`（服务端操作审计 UUID） | U(operation_id,product_id)；I(merchant_id,id)，I(product_id,created_at,id)，I(order_id,id)；商品与商户必须匹配；每次业务操作每商品先汇总差额，只追加一次 |
 | `cart_item` | `customer_id`；`product_id`；`quantity INT` | U(customer_id,product_id)；I(customer_id,id)；quantity > 0；移除或下单消费时物理删除购物车行 |
 
 商品价格、类型、等级价或数量阶梯变更提升 `price_revision`；库存写入先锁商品行，再把“设置为 N”转换为差额调整和流水，不能覆盖并发订单扣减。`price_revision` 只用于报价快照，不是通用并发版本。
@@ -410,14 +410,14 @@ erDiagram
 
 | 表 | 业务字段 | 索引与约束 |
 | --- | --- | --- |
-| `sales_order` | `order_no VARCHAR(64)`；`customer_id`；`customer_code/name/email_snapshot`；`order_status VARCHAR(16)`；`audit_status VARCHAR(16)`（pending/approved/rejected/withdrawn）；`audited_by_user_id/audited_at/audit_remark VARCHAR(1000)?`；`payment_status VARCHAR(32)`；`currency`；`subtotal/shipping_fee/discount_amount/total_amount DECIMAL(18,2)（discount_amount 默认 0）`；`address_snapshot VARCHAR(512)`；`recipient_name/city` 检索冗余；`buyer_note/internal_note VARCHAR(1000)?`；`referrer_id_snapshot?`；`referrer_name_snapshot?`；`commission_rate_snapshot?`；`status_changed_at`；`completed_at/cancelled_at/coa_captured_at?` | U(order_no)；I(customer_id,created_at,id)，I(created_at,id)，I(customer_id,payment_status,created_at,id)，I(payment_status,created_at,id)，I(order_status,created_at,id)，I(audit_status,created_at,id)；T=S+F-D，discount_amount 在尚无收款的待审核订单编辑保存时生效，付款申报不锁定审核金额，审核通过后优惠额固定，shipping_fee 为下单时唯一运费快照；currency=USD；订单无软删除 |
+| `sales_order` | `order_no VARCHAR(64)`；`customer_id`；`customer_code/name/email_snapshot`；`order_status VARCHAR(16)`；`audit_status VARCHAR(16)`（pending/approved/rejected/withdrawn）；`audited_by_user_id/audited_at/audit_remark VARCHAR(1000)?`；`payment_status VARCHAR(32)`；`currency`；`subtotal/shipping_fee/discount_amount/total_amount DECIMAL(18,2)（discount_amount 默认 0）`；`address_snapshot TEXT`；`recipient_name/city` 检索冗余；`buyer_note/internal_note VARCHAR(1000)?`；`referrer_id_snapshot?`；`referrer_name_snapshot?`；`commission_rate_snapshot?`；`completed_at/cancelled_at/coa_captured_at?` | U(order_no)；I(customer_id,created_at,id)，I(created_at,id)，I(customer_id,payment_status,created_at,id)，I(payment_status,created_at,id)，I(order_status,created_at,id)，I(audit_status,created_at,id)；T=S+F-D，discount_amount 在尚无收款的待审核订单编辑保存时生效，付款申报不锁定审核金额，审核通过后优惠额固定，shipping_fee 为下单时唯一运费快照；currency=USD；订单无软删除 |
 | `order_item` | `order_id`；`product_id`；`sku/name/type_snapshot`；`quantity INT`；`unit_price/line_amount`；`unit_cost_snapshot?`；`price_source VARCHAR(16)`（增加 quantity_price）；`price_tier_snapshot?`；`sort_no` | U(order_id,product_id,deleted)，I(order_id,deleted,sort_no,id)，I(product_id,order_id)；同单相同商品合并一有效行；删除行软删除并保留业务快照 |
 | `order_parcel` | `order_id`；`parcel_uuid CHAR(36)`；`parcel_no INT`；`status VARCHAR(16)`（packed/shipped/received/repacked）；`tracking_no VARCHAR(128)?`；`carrier VARCHAR(64)?`；`packed_at/shipped_at/received_at DATETIME(6)?`；创建/修改审计 | U(parcel_uuid)，U(order_id,parcel_no)，I(order_id,status)，I(tracking_no)；包裹编号递增，归档不复用；不保存金额或历史来源标记 |
 | `order_parcel_item` | `parcel_id`；`order_item_id`（订单行快照）；`quantity INT` | U(parcel_id,order_item_id)，I(order_item_id)；正整数；订单行可跨包，总量守恒；不重复变动库存 |
 | `order_event` | `order_id`；`parcel_id BIGINT?`（包裹事件，其余为空）；`operation_id`（服务端操作审计 UUID）；`action VARCHAR(32)`；`from_status/to_status?`；`before_data/after_data LONGTEXT?`；`note TEXT?`；`occurred_at`；`actor_user_id` | U(order_id,operation_id,action)；I(order_id,occurred_at,id)、I(order_id,action)；仅追加，后台详情显示备注、操作人和履约附件；`payment_link_requested` 是订单唯一申请标记，不新增付款状态 |
 | `order_event_file` | `order_id`；`event_id`；`file_uuid CHAR(36)`；`stage VARCHAR(16)`；`sort_no` | U(event_id,file_uuid)，I(order_id,event_id)；仅追加，校验上传凭证、归属、用途与磁盘存在性 |
 | `payment_channel` | `name VARCHAR(32)`；`currency_code/network VARCHAR(32)`；`receiving_address VARCHAR(120)`；`instructions VARCHAR(240)?`；`additional_rate DECIMAL(5,2)?`（0–100，最多两位小数）；`qr_file_uuid CHAR(36)`；`active`；`sort_no INT`；推荐渠道为有效渠道按 sort_no/id 排序后的第一条 | U(merchant_id,name)；I(merchant_id,deleted,active,sort_no,id)；费率可空，不设推荐字段 |
-| `payment_submission` | order_id/customer_id/channel_id；channel_snapshot VARCHAR(256)；original_transaction_no VARCHAR(256)；declared_order_total DECIMAL(18,2)（申报时订单总额）；declared_amount DECIMAL(18,2)（本次抵扣金额）；status VARCHAR(16)（pending/confirmed）；submitted_at | I(order_id,status,id)；逐笔追加，事务锁订单保证同时最多一笔 pending；原申报不覆盖，无软删除 |
+| `payment_submission` | order_id/customer_id/channel_id；channel_snapshot TEXT；original_transaction_no VARCHAR(256)；declared_order_total DECIMAL(18,2)（申报时订单总额）；declared_amount DECIMAL(18,2)（本次抵扣金额）；status VARCHAR(16)（pending/confirmed）；submitted_at | I(order_id,status,id)；逐笔追加，事务锁订单保证同时最多一笔 pending；原申报不覆盖，无软删除 |
 | `payment_receipt` | order_id；submission_id?；channel_id/channel_snapshot；verified_transaction_no；received_amount DECIMAL(18,2)（本次核实抵扣订单款，不含附加费）；currency=USD；verified_by_user_id/verified_at；internal_note? | U(submission_id)，I(order_id,verified_at,id)，I(verified_at,order_id)；每单多笔，申报至多一次确认；NULL submission_id 允许多笔直接登记；`channel_id=0` 保留给虚拟 `Online payment link` 渠道；平台商户分析按 verified_at 过滤区间收款 |
 
 `paidAmount` 是接口字段，由该订单 `SUM(payment_receipt.received_amount)` 得到，不在订单表另存一份可被编辑覆盖的金额。`sales_order.payment_status` 为唯一支付状态列，与申报/收款事实同事务变更；查询不根据金额倒推并修正状态。不建立第二个 `payStatus` 或单独待验证布尔列。
@@ -428,13 +428,13 @@ erDiagram
 
 | 表 | 业务字段 | 索引与约束 |
 | --- | --- | --- |
-| `coa_certificate` | `merchant_id`；`name VARCHAR(200)`；`lot VARCHAR(100)?`；`purity VARCHAR(32)?`；`fill VARCHAR(64)?`；`test_date DATE?`；`current_file_uuid CHAR(36)`；`uploaded_at` | I(merchant_id,deleted,created_at,id)；COA 文件必须属于同一商户；编辑不改创建人，无 COA 业务版本实体 |
-| `product_coa_link` | `merchant_id`；`product_id/coa_id`；`linked_by_user_id/linked_at`；`ended_at?` | U(merchant_id,coa_id,deleted)，I(merchant_id,product_id,deleted,coa_id)；商品、COA 和绑定商户必须一致；一个商品可有多份有效 COA，一 COA 最多一有效商品绑定，转移软删除旧行并新建 |
+| `coa_certificate` | `merchant_id`；`name VARCHAR(200)`；`lot VARCHAR(100)?`；`purity VARCHAR(32)?`；`fill VARCHAR(64)?`；`test_date DATE?`；`current_file_uuid CHAR(36)` | I(merchant_id,deleted,created_at,id)；COA 文件必须属于同一商户；编辑不改创建人，无 COA 业务版本实体 |
+| `product_coa_link` | `merchant_id`；`product_id/coa_id`；`created_by_user_id/created_at`（绑定人/时刻）；`ended_at?` | U(merchant_id,coa_id,deleted)，I(merchant_id,product_id,deleted,coa_id)；商品、COA 和绑定商户必须一致；一个商品可有多份有效 COA，一 COA 最多一有效商品绑定，转移软删除旧行并新建 |
 | `order_item_coa_snapshot` | `order_id/order_item_id/product_id/coa_id/source_link_id`；`name/lot/purity/fill/test_date_snapshot`；`file_uuid CHAR(36)`；`linked_by_user_id/linked_at_snapshot`；`captured_at` | U(order_item_id,coa_id)，I(order_id,order_item_id)；完成时追加，不覆盖 |
-| `file_asset` | 必填 `merchant_id`；`file_uuid CHAR(36)`；`stored_file_name VARCHAR(64)`；`original_file_name VARCHAR(255)`；`purpose`；`media_type`；`size_bytes`；`sha256`；`status`（`available` 才可引用/签发）；`uploaded_by_user_id/uploaded_at` | PK(file_uuid)、U(stored_file_name)；包括 COA 文件在内均归属一个商户，签名 URL 只能对该商户的已授权业务签发 |
-| `commission_accrual` | `order_id`；`referrer_id/referred_customer_id`；双方姓名快照；`rate DECIMAL(5,2)`；`base_amount/commission_amount DECIMAL(18,2)`；`status VARCHAR(16)`；`finalized_at?` | U(order_id)，I(referrer_id,status,id)，I(status,order_id)，I(referred_customer_id,order_id)；状态 estimated/payable/settled/void；仅推荐费率 > 0 创建，不设软删除 |
-| `commission_settlement_batch` | `batch_no VARCHAR(64)`；`order_count INT`；`total_base/total_commission`；`settled_by_user_id/settled_at`；`remark VARCHAR(1000)?`；`offline_paid_confirmed BOOLEAN` | U(batch_no)；I(settled_at,id)；单笔也生成一条批次 |
-| `commission_settlement` | `batch_id/accrual_id/order_id`；`order_no_snapshot`；`referrer_id/referred_customer_id`；双方姓名快照；`base_amount/rate/commission_amount`；`settled_at/settled_by_user_id`；`remark?` | U(order_id)，U(accrual_id)，I(batch_id,id)，I(referrer_id,settled_at,id)，I(referred_customer_id,settled_at,id)；事实永久唯一、不可改 |
+| `file_asset` | 必填 `merchant_id`；`file_uuid CHAR(36)`；`stored_file_name VARCHAR(64)`；`original_file_name VARCHAR(255)`；`purpose`；`media_type`；`size_bytes`；`sha256`；`status`（`available` 才可引用/签发）；`created_by_user_id`（上传人）；`uploaded_at` | PK(file_uuid)、U(stored_file_name)；包括 COA 文件在内均归属一个商户，签名 URL 只能对该商户的已授权业务签发 |
+| `commission_accrual` | `order_id`；`referrer_id/referred_customer_id`；双方姓名快照；`rate DECIMAL(5,2)`；`base_amount/commission_amount DECIMAL(18,2)`；`status VARCHAR(16)` | U(order_id)，I(referrer_id,status,id)，I(status,order_id)，I(referred_customer_id,order_id)；状态 estimated/payable/settled/void；仅推荐费率 > 0 创建，不设软删除 |
+| `commission_settlement_batch` | `batch_no VARCHAR(64)`；`order_count INT`；`total_base/total_commission`；`settled_by_user_id/settled_at`；`remark VARCHAR(1000)?` | U(batch_no)；I(merchant_id,settled_at,id)；单笔也生成一条批次 |
+| `commission_settlement` | `batch_id/accrual_id/order_id`；`order_no_snapshot`；`referrer_id/referred_customer_id`；双方姓名快照；`base_amount/rate/commission_amount`；结算人/时刻/备注经 batch_id 读取批次 | U(order_id)，U(accrual_id)，I(batch_id,id)，I(merchant_id,referrer_id,batch_id,id)，I(merchant_id,referred_customer_id,batch_id,id)；事实永久唯一、不可改 |
 
 数据库不存文件字节、Base64 或完整 URL；文件清单 `file_asset` 保存应用生成的 UUID、服务端文件名、用途、真实 MIME、大小和 SHA-256。COA、付款渠道、履约附件和完成快照全部保存 `file_uuid`，并在写入引用时校验清单记录和磁盘文件一致。磁盘文件名由 UUID 加已校验扩展名生成，仅白名单字符且不含目录。磁盘根目录只在 YAML 配置。
 
@@ -444,7 +444,7 @@ COA 替换先写新文件，再更新 current_file_uuid，不覆盖原文件；�
 
 | 表 / 实现 | 字段或语义 | 索引 |
 | --- | --- | --- |
-| `billing_entry` | `bill_no`；`bill_type`；`direction`；`order_id/order_no_snapshot`；客户快照；`currency`；`amount/settled_amount`；`status`（按 bill_type 使用应收或应付状态集合）；`order_created_at`；`settled_at?` | U(bill_no)，U(bill_type,order_id)，I(customer_id,order_created_at,id)，I(bill_type,status,order_created_at,id)；收款、佣金计提和结算事实均通过 order_id 关联；应收和应付账单均为持久化事实 |
+| `billing_entry` | `bill_no`；`bill_type`；direction 由类型推导（不存列）；`order_id/order_no_snapshot`；客户快照；`currency`；`amount/settled_amount`；`status`（按 bill_type 使用应收或应付状态集合）；`order_created_at`；`settled_at?` | U(bill_no)，U(bill_type,order_id)，I(merchant_id,order_created_at,id)，I(merchant_id,bill_type,status,order_created_at,id)，I(customer_id,order_created_at,id)，I(bill_type,status,order_created_at,id)；收款、佣金计提和结算事实均通过 order_id 关联；应收和应付账单均为持久化事实 |
 
 `sales_order.quote_token_hash` 保存一次性报价令牌的 SHA-256 摘要，并由 `uk_order_quote_token_hash` 唯一索引保证同一报价最多创建一个订单；NULL 仅用于无报价令牌的历史兼容记录。订单事件与库存流水的 `operation_id` 是每次服务端操作新生成的 UUID，用于关联审计记录，不保存请求体或响应，也不提供重复请求重放。
 
@@ -454,14 +454,14 @@ COA 替换先写新文件，再更新 current_file_uuid，不覆盖原文件；�
 
 ### 5.8 MySQL 5.6 兼容约束与初始化入口
 
-数量阶梯价细节见 [quantity_pricing_design.md](quantity_pricing_design.md)。完整结构直接维护于 [init_mysql56.sql](init_mysql56.sql)，包含商户注册开关、SMTP 设置、验证码挑战、三类账号、阶梯价、订单优惠、审核、多包履约、分阶段付款及全部业务表、主键、索引和菜单字典。部署人员仅在确认的空库执行此脚本，再按 [bootstrap_platform.sql](bootstrap_platform.sql) 引导首个平台账号；具体步骤见 11.4。应用和测试不自动执行建表、迁移或初始化。
+数量阶梯价结构见 5.4，接口仍使用 minQuantity/maxQuantity 区间。完整结构直接维护于 [init_mysql56.sql](init_mysql56.sql)，包含商户注册开关、SMTP 设置、验证码挑战、三类账号、阶梯价、订单优惠、审核、多包履约、分阶段付款及全部业务表、主键、索引和菜单字典。部署人员仅在确认的空库执行此脚本，再按 [bootstrap_platform.sql](bootstrap_platform.sql) 引导首个平台账号；具体步骤见 11.4。应用和测试不自动执行建表、迁移或初始化。
 
 不执行旧版本的一次性迁移脚本，不将历史升级步骤作为新系统上线或测试前置条件。不创建视图、外键、触发器、存储过程或会话表；运费保存在 merchant 表，推荐渠道取本商户有效渠道 sort_no/id 排序后的第一条。
 
 - MySQL 5.6.51 / InnoDB / COMPACT；索引按 767 字节限制设计，不要求 innodb_large_prefix 或 Barracuda。
 - 唯一键不能用前缀索引冒充完整唯一：email 由应用 trim、转为小写后限制为 128 字符；一般名称不超 100 个 utf8mb4 字符；交易号只在订单详情中按订单读取，不单独建立检索索引。file_uuid 使用 ASCII 字符集的 UUID，不受 utf8mb4 索引限制影响。
 - 默认地址由 customer_address.is_default 维护；推荐渠道直接取启用渠道按 sort_no/id 排序后的第一条。设置默认地址时锁所属 user 行及地址集合校验目标有效性，不用生成列。
-- JSON 载荷通常以 LONGTEXT 保存；订单地址快照使用 VARCHAR(512)，付款渠道快照使用 VARCHAR(256)。Java 负责 JSON 校验/序列化；正整数、金额、枚举、引用由应用验证，配合行锁、条件更新和唯一索引。
+- JSON 载荷通常以 LONGTEXT 保存；订单地址和付款渠道快照均使用 TEXT。Java 负责 JSON 校验/序列化；正整数、金额、枚举、引用由应用验证，配合行锁、条件更新和唯一索引。
 
 索引只覆盖已确定的列表、关联、排序和唯一性查询。购物车商品反查、订单推荐人反查、文件 SHA-256/用途状态反查、文件 UUID 反查、付款渠道反查、付款交易号/核验时间反查等没有当前业务查询需求的索引不预建；后续出现稳定查询并有执行计划证据时再单独增加，避免为低并发系统维护无收益的索引。
 
@@ -472,12 +472,27 @@ UPDATE product SET stock_available = stock_available - :delta,
 WHERE id = :productId AND stock_available >= :delta;
 
 UPDATE sales_order SET order_status = 'cancelled', cancelled_at = :utcNow,
-  status_changed_at = :utcNow, updated_at = :utcNow
+  updated_at = :utcNow
 WHERE id = :orderId AND customer_id = :customerId
   AND order_status = 'pending' AND payment_status = 'unpaid';
 ```
 
 库存 SQL 不以当前上架/软删除状态作为旧订单门禁；新购另行校验可售性。写入前先对商品行执行 `SELECT ... FOR UPDATE`，再计算差额并更新。回补用独立正增量 SQL，不能传负 delta 绕过扣减校验。索引限制参见 [MySQL 5.6 官方手册](https://downloads.mysql.com/docs/refman-5.6-en.a4.pdf)。
+
+### 5.8.1 数据库评审修订（2026-10-30）
+
+- 本次按全新系统维护最终初始化结构，不提供或自动执行历史迁移。客户码及订单客户码快照均为 CHAR(8)，客户码由安全随机数生成；客户 ID 保持内部关联键。
+- 数量阶梯及订单阶梯快照仅存 min_quantity 与 unit_price；每组从 1 开始、起点递增，读取时用下一起点减 1 推导闭区间上限，最后一档无上限。接口继续接收和返回 maxQuantity，写入前仍校验连续性，人工价与订单快照规则不变。
+- 地址与渠道 JSON 快照使用 TEXT；输入分别按地址列长度以及渠道名称/币种/网络 32、地址 120、说明 240 字符校验。渠道快照通过 Jackson 序列化，包含 instructions，支持引号、反斜线和换行。
+- 文件上传人统一使用 file_asset.created_by_user_id；真实文件上传时刻保留 file_asset.uploaded_at。COA 不重复保存上传时刻，修改元数据不改真实文件上传时刻。绑定人/绑定时刻统一使用 product_coa_link.created_by_user_id/created_at，完成快照仍保存其业务快照值。
+- 删除 stock_movement.order_event_id，库存与订单事件通过 operation_id 关联。删除无人读取且被多种状态覆盖的 sales_order.status_changed_at、commission_accrual.finalized_at；履约节点、审核、收款和结算时刻分别从明确的业务字段/事件读取。
+- 结算批次统一保存 settled_at、settled_by_user_id、remark；逐单结算不重复保存。offlinePaidConfirmed 保持请求必填确认，不持久化恒为 1 的标记。账单 direction 在查询中按 bill_type 推导，API/CSV 字段不变。
+- billing_entry 保留业务快照及 amount/status/settled_amount 查询汇总；其数据来源分别是订单、收款、佣金计提和结算，随对应命令同事务维护，不提供独立修改接口。回归测试核对收款后的账单累计额及结算后的应付账单，禁止以当前主数据重算历史事实。
+- 客户新增 (merchant_id,deleted,created_at,id)；账单新增 (merchant_id,order_created_at,id) 及 (merchant_id,bill_type,status,order_created_at,id)。账单根查询、详情和导出显式限定 b.merchant_id，关联订单同时校验相同商户；结算时间索引放在批次表，并前置 merchant_id。
+
+本次验证：经用户授权建立独立临时空库，初始化成功（35 张表），通过环境变量覆盖测试连接执行 `mvn test`，259 项全部通过（0 失败、0 错误、0 跳过）；`npm run build` 类型检查及生产构建通过。新增回归覆盖长地址、含转义字符和说明的长渠道快照、批次结算详情/客户历史及账单结算时刻一致性、输入长度拒绝、阶梯边界推导。全新系统不再运行已经不存在的历史佣金迁移脚本测试，既有佣金快照冻结测试保留。
+
+执行计划检查使用事务内的 1,000 条合成客户数据及相应订单/账单，分属两个商户，检查后回滚。客户列表命中 idx_user_merchant_created，账单列表命中 idx_billing_merchant_date；类型/状态场景在该样本分布下也选择商户日期索引。上述验证环境是本机 MySQL 8.3.0，未在 MySQL 5.6 实例实测，执行计划不代表生产规模压测；SQL 继续限定 MySQL 5.6 语法。前端构建存在大于 500 kB 的产物体积提示，不影响构建结果。
 
 ### 5.9 索引与无外键保障
 
@@ -540,7 +555,7 @@ WHERE id = :orderId AND customer_id = :customerId
 3. 读取已锁定商户行中的运费，校验其为非负 USD 金额；校验报价中的运费值与当前配置一致，商户运费变更后旧报价返回 409 `QUOTE_CHANGED`，等待客户重新确认。
 4. 校验报价 SHA-256 尚未出现在 `sales_order.quote_token_hash`；同一报价已创建过订单则返回 409 `QUOTE_ALREADY_USED`。按 productId 升序锁定所选商品，检查新购商品有效、上架、正品、类目启用、数量及库存。校验当前价格/等级与报价一致，发现变化返回 409 `QUOTE_CHANGED` 及新报价，等待客户重新确认。此失败不落订单、不清车。
 5. 验证并复制完整地址、成交商品资料、运费及推荐关系快照。推荐人存在与关系变更遵循客户行锁；只锁定一层，不递归计算。
-6. 使用同一个事务时刻 `createdAt=Instant.now()`，按平台时区 `Asia/Shanghai` 取月日，并将该时刻写入订单 `created_at`。订单号格式为 `YT + MMDD + 4 位随机数字`，例如 `YT10091235`。服务端插入订单时由 `sales_order.uk_order_no` 唯一索引仲裁并发碰撞；碰撞后在当前事务更换随机候选号重试。后缀空间耗尽时以 `ORDER_NUMBER_EXHAUSTED` 返回冲突。该格式不含年份，所以相同月日跨年份共用 10,000 个候选号；取消订单仍永久占用号码。业务日期不取浏览器时区或列表数量。
+6. 使用同一个事务时刻 `createdAt=Instant.now()`，按 UTC 取年月日并写订单 created_at。订单号为 `YYYYMMDD + 5 位随机数字`，例如 `2026100901235`，无 YT 前缀。uk_order_no 唯一索引仲裁并发碰撞；服务端从随机起点按与 100,000 互质的随机步长尝试候选，最多覆盖该 UTC 日期的全部 100,000 个后缀，耗尽返回 ORDER_NUMBER_EXHAUSTED。号码全平台永久唯一，取消不释放，业务日期不取浏览器时区或列表数量。
 7. 创建 pending/unpaid、audit_status=pending 订单和有效商品行；按 productId 聚合扣减库存并写一条对应流水。所有商品一起成功或回滚。此步骤不创建应收、佣金计提或账单。
 8. 创建 submitted 事件；订单推荐人与费率只保存为下单快照，尚不生成佣金计提。
 9. 消费本次报价中的购物车行和数量：客户行锁保证并发购物车写入已串行，仍重新读取并核对商品和目标数量；同一已选行被并发改动时整次创建返回 `CART_CHANGED`，不静默覆盖。未在本次报价中的新商品行不删除。已消费行物理删除。
@@ -866,7 +881,7 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 
 例如查询上海 2026-09-20：UTC 区间为 `[2026-09-19T16:00:00Z,2026-09-20T16:00:00Z)`。纽约夏令时转换日按其下一日零点计算，不写死加 24 小时。周从周一开始，月使用自然月；起始晚于结束报 400。查询响应回传 normalizedRange 和 timeZone，供页面与导出复用。
 
-订单号的月日始终由平台 Asia/Shanghai 的创建时刻决定，与展示和查询时区分开。订单、佣金列表、两类账单的日期筛选统一使用 order.created_at；结算历史按 settled_at。9 月下单、10 月核验/结佣的两类账单仍归属该查询时区对应的下单日期，不归到资金登记月份。
+订单号的年月日始终由服务端 UTC 创建时刻决定，与展示和查询时区分开。订单、佣金列表、两类账单的日期筛选统一使用 order.created_at；结算历史按 settled_at。9 月下单、10 月核验/结佣的两类账单仍归属该查询时区对应的下单日期，不归到资金登记月份。
 
 ### 8.3 CSV 规范
 
@@ -1156,10 +1171,10 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 
 | 场景 | 预期与证据 | PRD 验收 |
 | --- | --- | --- |
-| 建号/身份 | 商家后台建号与商户开放时的邮箱自助注册并存；随机三位大写 Base36 code、比较不区分大小写、唯一冲突重试、软删除不重用；email/account 由应用 trim 并转为小写后唯一 | AC-01/21/23/29/30/39/40/68/74/96 |
+| 建号/身份 | 商家后台建号与商户开放时的邮箱自助注册并存；随机八位大写 Base36 code、比较不区分大小写、唯一冲突重试、软删除不重用；email/account 由应用 trim 并转为小写后唯一 | AC-01/21/23/29/30/39/40/68/74/96 |
 | JWT 与撤权 | 无 HttpSession/会话表；退出/改密/停用后旧 JWT 在下一请求失败；撤权后旧页 403，客户 token 不可调后台 | AC-02/39/51/60/74 |
 | 目录/定价 | 正品零价拒绝、空等级价回默认、赠品不开放客户采购、类目排序/停用生效 | AC-03～06/32/33/41 |
-| 报价与编号 | 同一 quoteToken 最多创建一个订单并返回 `QUOTE_ALREADY_USED`；订单号符合 `YT + MMDD + 4 位数字` 且依靠唯一索引防止重复；配置文件运费变化需重确认，未配置不能下单 | AC-07～10/65/68/73/76 |
+| 报价与编号 | 同一 quoteToken 最多创建一个订单并返回 `QUOTE_ALREADY_USED`；订单号符合 `YYYYMMDD + 5 位数字` 且依靠唯一索引防止重复；配置文件运费变化需重确认，未配置不能下单 | AC-07～10/65/68/73/76 |
 | 库存 | 10→7→5→10→10；多商品不足整体回滚；发货不再扣库存；下架不阻止旧单合法操作 | AC-09/17/19/20/24/69/77 |
 | 金额与收款 | 所有入口 S+F-D；优惠在尚无收款的待审核订单可设置；付款申报不锁定审核正品和优惠额；审核通过后商品明细和金额冻结；同总额换行也失败；逐笔追加 receipt，同一申报只确认一次，交易号跨订单可重复 | AC-11～14/18/25/37/38/41/62/70/71/75/84～86 |
 | 付款/履约独立 | 未付款可完成，完成后可付款核验；无核验拒绝、退款、客户收货或回退接口 | AC-26～28/61/63 |
@@ -1199,7 +1214,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 
 | 原型来源 | 已核对逻辑 | 本方案对应 |
 | --- | --- | --- |
-| [customer/store.js](customer/store.js) | 共享 DemoStore、固定等级价、浏览器认证、地区运费与客户码生成 | 稳定客户 ID、服务端定价/JWT、配置文件统一运费、三位随机 Base36 code |
+| [customer/store.js](customer/store.js) | 共享 DemoStore、固定等级价、浏览器认证、地区运费与客户码生成 | 稳定客户 ID、服务端定价/JWT、配置文件统一运费、八位随机 Base36 code |
 | [客户登录](customer/login_register.html)、[商家登录](seller/login.html) | 原型提供已开通账号登录；正式商城按商户开关显示邮箱注册入口；统一错误、独立入口 | 3、7.2；客户/后台 audience 分离 |
 | [商品目录](customer/index.html) | renderCategories/renderCatalog、加车、库存与价格 | 类目启停排序由服务端控制；移除预购承诺；本人等级价格 |
 | [COA 目录](customer/coas.html) | coaRows/renderCoas，商品×证书展开、商品级字段优先 | 证书自身元数据；业务引用鉴权、文件后端签名下载；完成时捕获快照 |

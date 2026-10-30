@@ -48,7 +48,7 @@ class PrdOrderPaymentTest extends PrdDatabaseTest {
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo("QUOTE_ALREADY_USED");
-        assertThat((String) first.get("orderNo")).matches("YT[0-9]{8}");
+        assertThat((String) first.get("orderNo")).matches("[0-9]{13}");
         assertThat(database.queryForObject("SELECT COUNT(*) FROM sales_order WHERE customer_id=?", Long.class, data.customerId()))
                 .isEqualTo(1L);
         assertThat(database.queryForObject("SELECT stock_available FROM product WHERE id=?", Integer.class, data.productId()))

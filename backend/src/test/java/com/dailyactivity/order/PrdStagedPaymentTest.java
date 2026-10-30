@@ -50,7 +50,7 @@ class PrdStagedPaymentTest extends PrdDatabaseTest {
         assertAmount(first, "paidAmount", "30.00");
         assertAmount(first, "remainingAmount", "80.00");
         assertAmount(orders.summary(customer()), "payableTotal", "80.00");
-        assertThat(customers.find(1L, data.customerId()).orElseThrow().unpaidAmount()).isEqualByComparingTo("80.00");
+        assertThat(customers.find(seller().merchantId(), data.customerId()).orElseThrow().unpaidAmount()).isEqualByComparingTo("80.00");
         assertThat((BigDecimal) bills.summary(seller()).get("receivedAmount"))
                 .isEqualByComparingTo(((BigDecimal) initialBills.get("receivedAmount")).add(new BigDecimal("30.00")));
         assertThat((BigDecimal) bills.summary(seller()).get("pendingReceivableAmount"))
@@ -224,7 +224,7 @@ class PrdStagedPaymentTest extends PrdDatabaseTest {
         assertThat(jdbc.queryForObject("SELECT channel_snapshot FROM payment_receipt WHERE order_id=?", String.class, id)).isEqualTo(snapshot);
         assertAmount(received, "remainingAmount", "80.00");
         jdbc.update("INSERT INTO payment_channel(merchant_id,name,currency_code,network,receiving_address,instructions,qr_file_uuid,active,sort_no,created_by_user_id,updated_by_user_id) "
-                + "SELECT merchant_id,CONCAT(name,' next'),currency_code,network,receiving_address,instructions,qr_file_uuid,1,sort_no,created_by_user_id,updated_by_user_id FROM payment_channel WHERE id=?", data.channelId());
+                + "SELECT merchant_id,CONCAT(LEFT(name,27),' next'),currency_code,network,receiving_address,instructions,qr_file_uuid,1,sort_no,created_by_user_id,updated_by_user_id FROM payment_channel WHERE id=?", data.channelId());
         long replacementId = jdbc.queryForObject("SELECT MAX(id) FROM payment_channel WHERE created_by_user_id=?", Long.class, data.sellerId());
         var next = orders.submitPayment(customer(), id, new OrderService.PaymentRequest(replacementId, "next-channel",
                 (BigDecimal) received.get("total"), version(received), new BigDecimal("20.00")));

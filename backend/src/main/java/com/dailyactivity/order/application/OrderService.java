@@ -32,11 +32,11 @@ import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class OrderService {
-    private static final int ORDER_NUMBER_SUFFIX_COUNT = 10_000;
+    private static final int ORDER_NUMBER_SUFFIX_COUNT = 100_000;
     private static final long ONLINE_PAYMENT_LINK_CHANNEL_ID = 0L;
     private static final String ONLINE_PAYMENT_LINK_CHANNEL_SNAPSHOT = "{\"id\":0,\"name\":\"Online payment link\",\"currencyCode\":\"USD\",\"network\":\"External\",\"receivingAddress\":\"\",\"additionalRate\":null,\"qrFileUuid\":\"\"}";
-    private static final ZoneId ORDER_NUMBER_ZONE = ZoneId.of("Asia/Shanghai");
-    private static final DateTimeFormatter ORDER_NUMBER_DATE_FORMAT = DateTimeFormatter.ofPattern("MMdd", Locale.ROOT);
+    private static final ZoneId ORDER_NUMBER_ZONE = ZoneId.of("UTC");
+    private static final DateTimeFormatter ORDER_NUMBER_DATE_FORMAT = DateTimeFormatter.ofPattern("uuuuMMdd", Locale.ROOT);
 
     private final AccountService accounts;
     private final CatalogRepository catalog;
@@ -138,7 +138,7 @@ public class OrderService {
         }
         String operationId = UUID.randomUUID().toString();
         Instant createdAt = Instant.now();
-        String orderNoPrefix = "YT" + createdAt.atZone(ORDER_NUMBER_ZONE).format(ORDER_NUMBER_DATE_FORMAT);
+        String orderNoPrefix = createdAt.atZone(ORDER_NUMBER_ZONE).format(ORDER_NUMBER_DATE_FORMAT);
         if (customer.referrerId() != null) customers.find(principal.merchantId(), customer.referrerId()).orElseThrow(() -> ApiException.badRequest("INVALID_REFERRER", "Referrer is not in this merchant."));
         String referrerName = customer.referrerId() == null ? null : accounts.customerName(customer.referrerId());
         int suffixStart = ThreadLocalRandom.current().nextInt(ORDER_NUMBER_SUFFIX_COUNT);
@@ -146,7 +146,7 @@ public class OrderService {
         long orderId = -1;
         for (int attempt = 0; attempt < ORDER_NUMBER_SUFFIX_COUNT; attempt++) {
             int suffix = (int) ((suffixStart + (long) attempt * suffixStep) % ORDER_NUMBER_SUFFIX_COUNT);
-            String orderNo = orderNoPrefix + String.format(Locale.ROOT, "%04d", suffix);
+            String orderNo = orderNoPrefix + String.format(Locale.ROOT, "%05d", suffix);
             try {
                 orderId = orders.insertOrder(principal.merchantId(), new OrderRepository.OrderCreate(orderNo, quoteHash, customer.id(), customer.code(), customer.name(), customer.email(), json(address), address.name(), address.city(), request.buyerNote(), q.subtotal(), q.shippingFee(), q.total(), customer.referrerId(), referrerName, customer.commissionRate(), createdAt));
                 break;
@@ -677,7 +677,7 @@ public class OrderService {
         validatePaymentAmount(request.declaredAmount(), row.total().subtract(orders.receivedAmount(id)));
         validateTransactionNo(request.transactionNo());
         var channel = payments.channel(p.merchantId(), request.channelId(), true).orElseThrow(() -> ApiException.notFound("Payment channel not found."));
-        orders.savePaymentSubmission(new OrderRepository.PaymentSubmissionInput(id, customer.id(), request.channelId(), request.transactionNo().trim(), row.total(), request.declaredAmount()), channel.snapshot(), p.actor());
+        orders.savePaymentSubmission(new OrderRepository.PaymentSubmissionInput(id, customer.id(), request.channelId(), request.transactionNo().trim(), row.total(), request.declaredAmount()), channelSnapshot(channel), p.actor());
         orders.updatePaymentTotals(id, "pending_verification", orders.receivedAmount(id), p.actor());
         orders.addEvent(id, UUID.randomUUID().toString(), "payment_submitted", row.paymentStatus(), "pending_verification", null, null, null, p.actor());
         return detail(orders.find(p.merchantId(), id, customer.id()).orElseThrow(), false, p);
@@ -740,7 +740,7 @@ public class OrderService {
                             throw ApiException.notFound("Payment channel not found.");
                         var channel = payments.channel(p.merchantId(), request.channelId(), true).orElseThrow(() -> ApiException.notFound("Payment channel not found."));
                         channelId = channel.id();
-                        snapshot = channel.snapshot();
+                        snapshot = channelSnapshot(channel);
                     }
                 }
                 String transactionNo = request.transactionNo() == null || request.transactionNo().isBlank()
@@ -1049,6 +1049,23 @@ public class OrderService {
         v.put("phone", a.phone());
         v.put("isDefault", a.isDefault());
         return v;
+    }
+
+    private String channelSnapshot(PaymentRepository.Channel channel) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("id", channel.id());
+        snapshot.put("name", channel.name());
+        snapshot.put("currencyCode", channel.currencyCode());
+        snapshot.put("network", channel.network());
+        snapshot.put("receivingAddress", channel.receivingAddress());
+        snapshot.put("instructions", channel.instructions());
+        snapshot.put("additionalRate", channel.additionalRate());
+        snapshot.put("qrFileUuid", channel.qrFileUuid());
+        try {
+            return mapper.writeValueAsString(snapshot);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("Cannot serialize payment channel snapshot.", e);
+        }
     }
 
     private String json(AddressRepository.Address a) {

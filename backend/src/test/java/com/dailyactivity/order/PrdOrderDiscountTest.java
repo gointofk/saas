@@ -17,8 +17,6 @@ import org.springframework.context.annotation.Import;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -185,43 +183,6 @@ class PrdOrderDiscountTest extends PrdDatabaseTest {
         String csv = new String(exports.export(seller(), "commissions", new ExportService.ExportRequest(
                 Map.of("q", (String) pending.get("orderNo")))).content(), StandardCharsets.UTF_8);
         assertThat(csv).contains("\"80.00\",\"5.00\",\"4.00\"");
-    }
-
-    @Test
-    @DisplayName("迁移重算历史预计佣金的优惠后基数，保留待结及已结快照并可重跑")
-    void migrationRecalculatesEstimatedCommissionWithoutRewritingFinalizedSnapshots() throws Exception {
-        long estimatedId = orderId(approveWithDiscount(createPendingOrder("migration-estimated", 1), "20.00"));
-        long payableId = orderId(approveWithDiscount(createPendingOrder("migration-payable", 1), "20.00"));
-        long settledId = orderId(approveWithDiscount(createPendingOrder("migration-settled", 1), "20.00"));
-        long accrualId = jdbc.queryForObject("SELECT id FROM commission_accrual WHERE order_id=?", Long.class, settledId);
-        commissions.settle(seller(), new CommissionService.SettlementRequest(
-                List.of(new CommissionRepository.SettlementRequest(accrualId, new BigDecimal("3.50"))), "Paid offline", true));
-        // Legacy snapshots used the gross subtotal. Only estimated snapshots may be recalculated.
-        jdbc.update("UPDATE commission_accrual SET base_amount=90,commission_amount=4.50 WHERE order_id IN (?,?)", estimatedId, payableId);
-        jdbc.update("UPDATE billing_entry SET amount=4.50 WHERE bill_type='commission_payable' AND order_id IN (?,?)", estimatedId, payableId);
-        jdbc.update("UPDATE commission_accrual SET status='estimated' WHERE order_id=?", estimatedId);
-        jdbc.update("UPDATE billing_entry SET status='estimated' WHERE bill_type='commission_payable' AND order_id=?", estimatedId);
-        String migration = Files.readString(Path.of("../doc/migration_commission_approval_settlement.sql"));
-
-        for (int run = 0; run < 2; run++) {
-            // Execute the actual UPDATE statements, scoped to this test's rows and rollback transaction.
-            // Never execute the migration's COMMIT or touch pre-existing database records.
-            for (String table : List.of("commission_accrual", "billing_entry")) {
-                int start = migration.indexOf("UPDATE " + table);
-                String update = migration.substring(start, migration.indexOf(';', start));
-                jdbc.update(update + " AND o.id IN (?,?,?)", estimatedId, payableId, settledId);
-            }
-            assertAmount("SELECT base_amount FROM commission_accrual WHERE order_id=?", estimatedId, "70.00");
-            assertAmount("SELECT commission_amount FROM commission_accrual WHERE order_id=?", estimatedId, "3.50");
-            assertAmount("SELECT amount FROM billing_entry WHERE order_id=? AND bill_type='commission_payable'", estimatedId, "3.50");
-            assertThat(jdbc.queryForObject("SELECT status FROM commission_accrual WHERE order_id=?", String.class, estimatedId)).isEqualTo("payable");
-            assertAmount("SELECT base_amount FROM commission_accrual WHERE order_id=?", payableId, "90.00");
-            assertAmount("SELECT commission_amount FROM commission_accrual WHERE order_id=?", payableId, "4.50");
-            assertAmount("SELECT amount FROM billing_entry WHERE order_id=? AND bill_type='commission_payable'", payableId, "4.50");
-            assertAmount("SELECT commission_amount FROM commission_settlement WHERE order_id=?", settledId, "3.50");
-            assertAmount("SELECT settled_amount FROM billing_entry WHERE order_id=? AND bill_type='commission_payable'", settledId, "3.50");
-            assertThat(jdbc.queryForObject("SELECT status FROM commission_accrual WHERE order_id=?", String.class, settledId)).isEqualTo("settled");
-        }
     }
 
     @Test

@@ -42,7 +42,7 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         return orders.create(buyer.customer(),new OrderService.CreateRequest((String)quote.get("quoteToken"),"Merchant isolation test",List.of(new OrderService.CartRequest(productId,quantity)),buyer.addressId()));
     }
     private Map<String,Object> approved(PrdTestFixture.Scenario buyer) {
-        var order=pending(buyer,data.productId(),1);
+        var order=pending(buyer,buyer.productId(),1);
         return orders.decideAudit(buyer.seller(),orderId(order),new OrderService.AuditDecision("approved","Test",null));
     }
     @Test

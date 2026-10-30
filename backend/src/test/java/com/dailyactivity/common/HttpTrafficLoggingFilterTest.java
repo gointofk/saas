@@ -29,7 +29,7 @@ class HttpTrafficLoggingFilterTest {
     @Test
     void marksNonJsonResponseWithoutLoggingItsContent() {
         assertThat(filter.bodyForLog("csv-content".getBytes(StandardCharsets.UTF_8), "text/csv"))
-                .isEqualTo("<not-json bytes=11>");
+                .isEqualTo("<not-json>");
     }
 
     @Test

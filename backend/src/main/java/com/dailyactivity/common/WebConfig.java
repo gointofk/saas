@@ -2,6 +2,7 @@ package com.dailyactivity.common;
 
 import com.dailyactivity.auth.api.MenuAuthorizationInterceptor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -17,9 +18,13 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(menuAuthorizationInterceptor).addPathPatterns("/api/v1/**");
-        registry.addInterceptor((request, response, handler) -> {
-            response.setHeader("Cache-Control", "no-store");
-            return true;
+        registry.addInterceptor(new HandlerInterceptor() {
+            @Override
+            public boolean preHandle(jakarta.servlet.http.HttpServletRequest request,
+                                     jakarta.servlet.http.HttpServletResponse response, Object handler) {
+                response.setHeader("Cache-Control", "no-store");
+                return true;
+            }
         }).addPathPatterns("/api/v1/platform/**");
     }
 

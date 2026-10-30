@@ -95,7 +95,7 @@ public final class PrdTestFixture {
         long giftProductId = jdbc.queryForObject("SELECT id FROM product WHERE sku=?", Long.class, giftSku);
 
         String qrUuid = UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO file_asset(merchant_id,file_uuid,stored_file_name,original_file_name,purpose,media_type,size_bytes,sha256,status,uploaded_by_user_id,uploaded_at) "
+        jdbc.update("INSERT INTO file_asset(merchant_id,file_uuid,stored_file_name,original_file_name,purpose,media_type,size_bytes,sha256,status,created_by_user_id,uploaded_at) "
                         + "VALUES(?,?,?,?,?,?,?,?,'available',?,?)",
                 merchantId, qrUuid, qrUuid + ".png", "test.png", "payment_channel_qr", "image/png", 1L,
                 "0".repeat(64), sellerId, Timestamp.from(java.time.Instant.now()));
@@ -136,7 +136,7 @@ public final class PrdTestFixture {
     private static String unusedCustomerCode(JdbcTemplate jdbc, String prefix) {
         for (int i=0; i<1296; i++) {
             String suffix=Integer.toString(i,36).toUpperCase(java.util.Locale.ROOT);
-            String code=prefix+(suffix.length()==1 ? "0" : "")+suffix;
+            String code=prefix+"0".repeat(7-suffix.length())+suffix;
             if (jdbc.queryForObject("SELECT COUNT(*) FROM `user` WHERE code=?",Long.class,code)==0) return code;
         }
         throw new IllegalStateException("No free fixture customer code.");

@@ -96,14 +96,14 @@ class PrdReferralCollectedTest extends PrdDatabaseTest {
         String orderNo = "REF-" + UUID.randomUUID();
         BigDecimal commission = new BigDecimal(amount);
         BigDecimal base = commission.multiply(new BigDecimal("20"));
-        jdbc.update("INSERT INTO sales_order(order_no,customer_id,customer_code_snapshot,customer_name_snapshot,customer_email_snapshot,"
-                        + "order_status,audit_status,subtotal,shipping_fee,total_amount,address_snapshot,recipient_name,city,status_changed_at) "
-                        + "SELECT ?,id,code,name,email,?,'approved',?,20.00,?,'{}','Test Recipient','Test City',UTC_TIMESTAMP(6) FROM `user` WHERE id=?",
+        jdbc.update("INSERT INTO sales_order(merchant_id,order_no,customer_id,customer_code_snapshot,customer_name_snapshot,customer_email_snapshot,"
+                        + "order_status,audit_status,subtotal,shipping_fee,total_amount,address_snapshot,recipient_name,city) "
+                        + "SELECT merchant_id,?,id,code,name,email,?,'approved',?,20.00,?,'{}','Test Recipient','Test City' FROM `user` WHERE id=?",
                 orderNo, "payable".equals(status) ? "completed" : "pending", base, base.add(new BigDecimal("20.00")), customerId);
         long orderId = jdbc.queryForObject("SELECT id FROM sales_order WHERE order_no=?", Long.class, orderNo);
-        jdbc.update("INSERT INTO commission_accrual(order_id,referrer_id,referred_customer_id,referrer_name_snapshot,referred_name_snapshot,"
-                        + "rate,base_amount,commission_amount,status) VALUES(?,?,?,'Test Referrer','Test Customer',5.00,?,?,?)",
-                orderId, referrerId, customerId, base, commission, status);
+        jdbc.update("INSERT INTO commission_accrual(merchant_id,order_id,referrer_id,referred_customer_id,referrer_name_snapshot,referred_name_snapshot,"
+                        + "rate,base_amount,commission_amount,status) VALUES(?,?,?,?, 'Test Referrer','Test Customer',5.00,?,?,?)",
+                data.seller().merchantId(), orderId, referrerId, customerId, base, commission, status);
         long accrualId = jdbc.queryForObject("SELECT id FROM commission_accrual WHERE order_id=?", Long.class, orderId);
         return new CommissionRepository.SettlementRequest(accrualId, commission);
     }

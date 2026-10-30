@@ -65,6 +65,10 @@ public class AddressService {
     private void validate(AddressRequest r) {
         if (r.name() == null || r.name().isBlank() || r.street() == null || r.street().isBlank() || r.city() == null || r.city().isBlank() || r.postalCode() == null || r.postalCode().isBlank() || r.phone() == null || r.phone().isBlank())
             throw ApiException.badRequest("INVALID_ADDRESS", "Required address fields are missing.");
+        if (r.name().trim().length() > 100 || r.street().trim().length() > 200
+                || (r.apt() != null && r.apt().length() > 100) || r.city().trim().length() > 100
+                || (r.region() != null && r.region().length() > 100))
+            throw ApiException.badRequest("INVALID_ADDRESS", "Address fields exceed their maximum length.");
         String postalCode = r.postalCode().trim();
         String phone = r.phone().trim();
         long phoneDigits = phone.chars().filter(Character::isDigit).count();

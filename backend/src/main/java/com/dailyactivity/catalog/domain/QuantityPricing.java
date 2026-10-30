@@ -12,6 +12,21 @@ public final class QuantityPricing {
     public record Band(int minQuantity, Integer maxQuantity, BigDecimal unitPrice) {}
     public record TierPrices(String tier, List<Band> bands) {}
 
+    /** Stored schedules contain only lower thresholds; API bands keep inclusive upper bounds. */
+    public static List<Band> fromThresholds(List<Band> thresholds) {
+        var sorted = thresholds.stream().sorted(java.util.Comparator.comparingInt(Band::minQuantity)).toList();
+        var bands = new java.util.ArrayList<Band>(sorted.size());
+        for (int i = 0; i < sorted.size(); i++) {
+            Band current = sorted.get(i);
+            if ((i == 0 && current.minQuantity() != 1)
+                    || (i > 0 && current.minQuantity() <= sorted.get(i - 1).minQuantity()))
+                throw ApiException.conflict("QUANTITY_PRICE_UNAVAILABLE", "Stored quantity thresholds are invalid.");
+            Integer max = i + 1 < sorted.size() ? sorted.get(i + 1).minQuantity() - 1 : null;
+            bands.add(new Band(current.minQuantity(), max, current.unitPrice()));
+        }
+        return List.copyOf(bands);
+    }
+
     public static BigDecimal price(List<Band> bands, int quantity, BigDecimal fallback) {
         if (bands.isEmpty()) return fallback;
         return bands.stream().filter(b -> quantity >= b.minQuantity()

@@ -28,13 +28,6 @@ public interface PaymentRepository {
 
     record Channel(long id, String name, String currencyCode, String network, String receivingAddress,
                    String instructions, BigDecimal additionalRate, String qrFileUuid, boolean active, int sortNo) {
-        public String snapshot() {
-            return "{\"id\":" + id + ",\"name\":\"" + escape(name) + "\",\"currencyCode\":\"" + escape(currencyCode) + "\",\"network\":\"" + escape(network) + "\",\"receivingAddress\":\"" + escape(receivingAddress) + "\",\"additionalRate\":" + (additionalRate == null ? "null" : additionalRate.toPlainString()) + ",\"qrFileUuid\":\"" + escape(qrFileUuid) + "\"}";
-        }
-
-        private static String escape(String value) {
-            return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
-        }
     }
 
     record ChannelInput(String name, String currencyCode, String network, String receivingAddress, String instructions,

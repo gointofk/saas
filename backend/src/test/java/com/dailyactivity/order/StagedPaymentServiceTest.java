@@ -113,18 +113,21 @@ class StagedPaymentServiceTest {
 
     @Test
     @DisplayName("部分付款后的新申报使用剩余余额，申报不会增加实收")
-    void declaresAnotherPaymentAgainstTheRemainingBalance() {
+    void declaresAnotherPaymentAgainstTheRemainingBalance() throws Exception {
         // Arrange
         var before = row("partially_paid", "30.00");
         when(orders.findForUpdate(1L, 1, 2L)).thenReturn(Optional.of(before));
         when(orders.find(1L, 1, 2L)).thenReturn(Optional.of(row("pending_verification", "30.00")));
         when(orders.pendingPaymentSubmission(1)).thenReturn(Optional.empty());
-        var channel = new PaymentRepository.Channel(5, "New channel", "USD", "TEST", "address", null, null, "qr", true, 1);
+        String instructions = "Pay \"exactly\" once\nKeep the receipt\\reference";
+        var channel = new PaymentRepository.Channel(5, "New channel", "USD", "TEST", "address", instructions, null, "qr", true, 1);
         when(payments.channel(1L, 5, true)).thenReturn(Optional.of(channel));
         // Act
         service.submitPayment(CUSTOMER, 1, new OrderService.PaymentRequest(5, "next-tx", new BigDecimal("100.00"), VERSION, new BigDecimal("20.00")));
         // Assert
-        verify(orders).savePaymentSubmission(new OrderRepository.PaymentSubmissionInput(1, 2, 5, "next-tx", new BigDecimal("100.00"), new BigDecimal("20.00")), channel.snapshot(), new com.dailyactivity.auth.domain.Actor("customer",2));
+        var snapshot = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(orders).savePaymentSubmission(eq(new OrderRepository.PaymentSubmissionInput(1, 2, 5, "next-tx", new BigDecimal("100.00"), new BigDecimal("20.00"))), snapshot.capture(), eq(new com.dailyactivity.auth.domain.Actor("customer",2)));
+        assertThat(new ObjectMapper().readTree(snapshot.getValue()).get("instructions").asText()).isEqualTo(instructions);
         verify(orders).updatePaymentTotals(1, "pending_verification", new BigDecimal("30.00"), new com.dailyactivity.auth.domain.Actor("customer",2));
         verify(orders, never()).savePaymentReceipt(any(), anyString(), any(com.dailyactivity.auth.domain.Actor.class));
     }

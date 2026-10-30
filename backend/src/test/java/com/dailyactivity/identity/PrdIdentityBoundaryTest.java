@@ -126,7 +126,7 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
     }
 
     @Test
-    @DisplayName("创建客户生成三位编码并保存推荐人与佣金比例快照")
+    @DisplayName("创建客户生成八位编码并保存推荐人与佣金比例快照")
     void customerCreationStoresReferralConfiguration() {
         String email = "created-" + data.customerEmail();
         Map<String, Object> result = customers.create(seller(), new CustomerService.CustomerRequest(
@@ -140,7 +140,7 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
                 .containsEntry("referrerId", data.referrerId())
                 .containsEntry("priceTier", "V2")
                 .containsEntry("commissionRate", new BigDecimal("0.00"));
-        assertThat((String) row.get("userCode")).matches("[0-9A-Z]{3}");
+        assertThat((String) row.get("userCode")).matches("[0-9A-Z]{8}");
     }
 
     @Test
@@ -242,6 +242,6 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
                 "unknown-" + data.sellerAccount(), "Unknown", "MemberPass123!", "MemberPass123!", List.of("not-a-menu"))))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
-                .isEqualTo("INVALID_PERMISSION");
+                .isEqualTo("FORBIDDEN");
     }
 }

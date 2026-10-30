@@ -64,8 +64,10 @@ class PrdOrderBoundaryTest extends PrdDatabaseTest {
         orders.cancel(customer(), orderId(first), "cancel after order creation", null);
         Map<String, Object> second = createOrder("random-order-2", 1);
 
-        assertThat(first.get("orderNo")).asString().matches("YT[0-9]{8}");
-        assertThat(second.get("orderNo")).asString().matches("YT[0-9]{8}");
+        assertThat(first.get("orderNo")).asString().matches("[0-9]{13}");
+        assertThat(first.get("orderNo")).asString().startsWith(java.time.format.DateTimeFormatter
+                .ofPattern("uuuuMMdd").withZone(java.time.ZoneOffset.UTC).format((java.time.Instant) first.get("createdAt")));
+        assertThat(second.get("orderNo")).asString().matches("[0-9]{13}");
         assertThat(second.get("orderNo")).isNotEqualTo(first.get("orderNo"));
     }
 

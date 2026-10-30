@@ -105,6 +105,10 @@ public class PaymentService {
     private void validate(Principal p, PaymentRequest r) {
         if (r.name() == null || r.name().isBlank() || r.currencyCode() == null || r.currencyCode().isBlank() || r.network() == null || r.network().isBlank() || r.receivingAddress() == null || r.receivingAddress().isBlank() || r.qrFileUuid() == null || r.qrFileUuid().isBlank() || r.sortNo() < 1)
             throw ApiException.badRequest("INVALID_PAYMENT_CHANNEL", "Payment channel fields are invalid.");
+        if (r.name().trim().length() > 32 || r.currencyCode().trim().toUpperCase(java.util.Locale.ROOT).length() > 32
+                || r.network().trim().length() > 32 || r.receivingAddress().trim().length() > 120
+                || (r.instructions() != null && r.instructions().length() > 240))
+            throw ApiException.badRequest("INVALID_PAYMENT_CHANNEL", "Payment channel fields exceed their maximum length.");
         if (r.additionalRate() != null && (r.additionalRate().signum() < 0 || r.additionalRate().compareTo(new BigDecimal("100.00")) > 0 || r.additionalRate().stripTrailingZeros().scale() > 2))
             throw ApiException.badRequest("INVALID_PAYMENT_CHANNEL", "Additional rate must be between 0 and 100 with at most two decimal places.");
         if (!files.belongsToMerchant(r.qrFileUuid().trim(), p.merchantId()) || !files.availableForPurpose(r.qrFileUuid().trim(), "payment_channel_qr"))
@@ -119,7 +123,7 @@ public class PaymentService {
         }
 
         PaymentRepository.ChannelInput input() {
-            return new PaymentRepository.ChannelInput(name.trim(), currencyCode.trim().toUpperCase(), network.trim(), receivingAddress.trim(), instructions, additionalRate == null ? null : additionalRate.setScale(2), qrFileUuid.trim(), active, sortNo);
+            return new PaymentRepository.ChannelInput(name.trim(), currencyCode.trim().toUpperCase(java.util.Locale.ROOT), network.trim(), receivingAddress.trim(), instructions, additionalRate == null ? null : additionalRate.setScale(2), qrFileUuid.trim(), active, sortNo);
         }
     }
 

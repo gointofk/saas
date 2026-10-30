@@ -70,8 +70,8 @@ public class JdbcCertificateRepository implements CertificateRepository {
     public long create(long merchantId, Input i, long actor) {
         validateFile(merchantId, i.fileUuid());
         KeyHolder h = new GeneratedKeyHolder();
-        jdbc.update("INSERT INTO coa_certificate(merchant_id,name,lot,purity,fill,test_date,current_file_uuid,uploaded_at,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(:merchantId,:name,:lot,:purity,:fill,:testDate,:fileUuid,UTC_TIMESTAMP(6),:actor,:actor)",
+        jdbc.update("INSERT INTO coa_certificate(merchant_id,name,lot,purity,fill,test_date,current_file_uuid,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(:merchantId,:name,:lot,:purity,:fill,:testDate,:fileUuid,:actor,:actor)",
                 params(merchantId, i, actor), h, new String[]{"id"});
         return h.getKey().longValue();
     }
@@ -79,7 +79,7 @@ public class JdbcCertificateRepository implements CertificateRepository {
     @Override
     public void update(long merchantId, long id, Input i, long actor, java.time.Instant expectedUpdatedAt) {
         validateFile(merchantId, i.fileUuid());
-        int n = jdbc.update("UPDATE coa_certificate SET name=:name,lot=:lot,purity=:purity,fill=:fill,test_date=:testDate,current_file_uuid=:fileUuid,uploaded_at=UTC_TIMESTAMP(6),updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor "
+        int n = jdbc.update("UPDATE coa_certificate SET name=:name,lot=:lot,purity=:purity,fill=:fill,test_date=:testDate,current_file_uuid=:fileUuid,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor "
                         + "WHERE merchant_id=:merchantId AND id=:id AND deleted=0 AND (:version IS NULL OR updated_at=:version)",
                 params(merchantId, i, actor).addValue("id", id).addValue("version", expectedUpdatedAt == null ? null : java.sql.Timestamp.from(expectedUpdatedAt)));
         if (n != 1) throw ApiException.conflict("CERTIFICATE_CHANGED", "Certificate changed. Refresh and try again.");
@@ -183,7 +183,7 @@ public class JdbcCertificateRepository implements CertificateRepository {
     }
 
     private void insertLink(long merchantId, long productId, long coaId, long actor) {
-        jdbc.update("INSERT INTO product_coa_link(merchant_id,product_id,coa_id,linked_by_user_id,linked_at,created_by_user_id,updated_by_user_id) VALUES(:merchantId,:productId,:coaId,:actor,UTC_TIMESTAMP(6),:actor,:actor)",
+        jdbc.update("INSERT INTO product_coa_link(merchant_id,product_id,coa_id,created_by_user_id,updated_by_user_id) VALUES(:merchantId,:productId,:coaId,:actor,:actor)",
                 new MapSqlParameterSource().addValue("merchantId", merchantId).addValue("productId", productId).addValue("coaId", coaId).addValue("actor", actor));
     }
 

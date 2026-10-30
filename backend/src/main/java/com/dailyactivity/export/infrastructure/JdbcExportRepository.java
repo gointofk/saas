@@ -35,7 +35,7 @@ public class JdbcExportRepository implements ExportRepository {
         String sql = switch (type) {
             case "orders" -> "SELECT COUNT(*) FROM sales_order o WHERE o.merchant_id=:merchantId AND 1=1" + orderFilters(filter);
             case "commissions" -> "SELECT COUNT(*) FROM commission_accrual a JOIN sales_order o ON o.id=a.order_id WHERE o.merchant_id=:merchantId AND o.audit_status='approved' AND o.order_status<>'cancelled'" + commissionFilters(filter);
-            case "bills" -> "SELECT COUNT(*) FROM billing_entry b JOIN sales_order o ON o.id=b.order_id WHERE o.merchant_id=:merchantId AND o.audit_status='approved'" + billFilters(filter);
+            case "bills" -> "SELECT COUNT(*) FROM billing_entry b JOIN sales_order o ON o.id=b.order_id AND o.merchant_id=b.merchant_id WHERE b.merchant_id=:merchantId AND o.audit_status='approved'" + billFilters(filter);
             default -> throw new IllegalArgumentException("Unsupported export type: " + type);
         };
         Long count = jdbc.queryForObject(sql, countParams(merchantId, type, filter), Long.class);
@@ -47,7 +47,7 @@ public class JdbcExportRepository implements ExportRepository {
         String sql = switch (type) {
             case "orders" -> "SELECT COUNT(*) FROM sales_order o WHERE o.merchant_id=:merchantId AND 1=1" + orderFilters(filter);
             case "commissions" -> "SELECT COUNT(*) FROM commission_accrual a JOIN sales_order o ON o.id=a.order_id WHERE o.merchant_id=:merchantId AND o.audit_status='approved' AND o.order_status<>'cancelled'" + commissionFilters(filter);
-            case "bills" -> "SELECT COUNT(*) FROM billing_entry b JOIN sales_order o ON o.id=b.order_id WHERE o.merchant_id=:merchantId AND o.audit_status='approved'" + billFilters(filter);
+            case "bills" -> "SELECT COUNT(*) FROM billing_entry b JOIN sales_order o ON o.id=b.order_id AND o.merchant_id=b.merchant_id WHERE b.merchant_id=:merchantId AND o.audit_status='approved'" + billFilters(filter);
             default -> throw new IllegalArgumentException("Unsupported export type: " + type);
         };
         Long count = jdbc.queryForObject(sql, countParams(merchantId, type, filter), Long.class);
@@ -91,7 +91,7 @@ public class JdbcExportRepository implements ExportRepository {
     }
 
     private List<Long> billIds(long merchantId, Filter filter, int limit) {
-        String sql = "SELECT b.id FROM billing_entry b JOIN sales_order o ON o.id=b.order_id WHERE o.merchant_id=:merchantId AND o.audit_status='approved'"
+        String sql = "SELECT b.id FROM billing_entry b JOIN sales_order o ON o.id=b.order_id AND o.merchant_id=b.merchant_id WHERE b.merchant_id=:merchantId AND o.audit_status='approved'"
                 + billFilters(filter) + " ORDER BY b.order_created_at DESC,b.id DESC LIMIT :limit";
         return jdbc.query(sql, billParams(merchantId, filter).addValue("limit", limit), (rs, row) -> rs.getLong("id"));
     }
@@ -156,10 +156,10 @@ public class JdbcExportRepository implements ExportRepository {
     }
 
     private List<Map<String, Object>> billRows(long merchantId, List<Long> ids) {
-        String sql = "SELECT b.bill_no,b.bill_type,b.direction,b.order_created_at,b.order_no_snapshot,"
+        String sql = "SELECT b.bill_no,b.bill_type,CASE b.bill_type WHEN 'order_receivable' THEN 'receivable' WHEN 'commission_payable' THEN 'payable' END direction,b.order_created_at,b.order_no_snapshot,"
                 + "b.customer_name_snapshot,b.customer_email_snapshot,b.amount,b.settled_amount,b.status,o.order_status "
-                + "FROM billing_entry b JOIN sales_order o ON o.id=b.order_id "
-                + "WHERE b.id IN (:ids) ORDER BY b.order_created_at DESC,b.id DESC";
+                + "FROM billing_entry b JOIN sales_order o ON o.id=b.order_id AND o.merchant_id=b.merchant_id "
+                + "WHERE b.merchant_id=:merchantId AND b.id IN (:ids) ORDER BY b.order_created_at DESC,b.id DESC";
         return jdbc.query(sql, new MapSqlParameterSource("ids", ids).addValue("merchantId", merchantId), (rs, row) -> {
             Map<String, Object> value = new LinkedHashMap<>();
             value.put("billNo", rs.getString("bill_no"));

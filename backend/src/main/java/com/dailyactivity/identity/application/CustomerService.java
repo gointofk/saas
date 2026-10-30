@@ -66,7 +66,7 @@ public class CustomerService {
                     throw ApiException.conflict("CUSTOMER_EMAIL_EXISTS", "Email is already in use.");
             }
         }
-        throw new IllegalStateException("Unable to allocate a unique customer code.");
+        throw ApiException.conflict("CUSTOMER_CODE_UNAVAILABLE", "Unable to allocate a customer code. Try again later.");
     }
 
     @Transactional
@@ -160,7 +160,7 @@ public class CustomerService {
             throw ApiException.badRequest("SELF_REFERRAL", "A customer cannot refer itself.");
         var a = users.findCustomerById(referrer).filter(candidate -> candidate.merchantId() == p.merchantId()).orElseThrow(() -> ApiException.badRequest("INVALID_REFERRER", "Referrer is not a customer."));
         if (!a.active()) throw ApiException.conflict("REFERRER_INACTIVE", "Referrer is inactive.");
-        if (rate == null || rate.scale() > 0 || rate.signum() < 0 || rate.compareTo(new BigDecimal("20")) > 0)
+        if (rate == null || rate.stripTrailingZeros().scale() > 0 || rate.signum() < 0 || rate.compareTo(new BigDecimal("20")) > 0)
             throw ApiException.badRequest("INVALID_COMMISSION_RATE", "Commission rate must be an integer between 0 and 20.");
     }
 
