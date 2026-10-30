@@ -116,6 +116,7 @@ public class OrderService {
     @Transactional
     public Map<String, Object> create(Principal principal, CreateRequest request) {
         var customer = accounts.customerForUpdate(principal);
+        boolean commissionEnabled = accounts.commissionEnabled(principal.merchantId());
         var q = quoteTokens.parse(request.quoteToken(), customer.id());
         if (q.shippingFee().compareTo(accounts.shippingFee(principal)) != 0)
             throw ApiException.conflict("QUOTE_CHANGED", "Shipping fee changed; request a new quote.");
@@ -141,6 +142,8 @@ public class OrderService {
         String orderNoPrefix = createdAt.atZone(ORDER_NUMBER_ZONE).format(ORDER_NUMBER_DATE_FORMAT);
         if (customer.referrerId() != null) customers.find(principal.merchantId(), customer.referrerId()).orElseThrow(() -> ApiException.badRequest("INVALID_REFERRER", "Referrer is not in this merchant."));
         String referrerName = customer.referrerId() == null ? null : accounts.customerName(customer.referrerId());
+        BigDecimal commissionRateSnapshot = commissionEnabled ? customer.commissionRate()
+                : customer.referrerId() == null ? null : BigDecimal.ZERO;
         int suffixStart = ThreadLocalRandom.current().nextInt(ORDER_NUMBER_SUFFIX_COUNT);
         int suffixStep = randomOrderNumberStep();
         long orderId = -1;
@@ -148,7 +151,7 @@ public class OrderService {
             int suffix = (int) ((suffixStart + (long) attempt * suffixStep) % ORDER_NUMBER_SUFFIX_COUNT);
             String orderNo = orderNoPrefix + String.format(Locale.ROOT, "%05d", suffix);
             try {
-                orderId = orders.insertOrder(principal.merchantId(), new OrderRepository.OrderCreate(orderNo, quoteHash, customer.id(), customer.code(), customer.name(), customer.email(), json(address), address.name(), address.city(), request.buyerNote(), q.subtotal(), q.shippingFee(), q.total(), customer.referrerId(), referrerName, customer.commissionRate(), createdAt));
+                orderId = orders.insertOrder(principal.merchantId(), new OrderRepository.OrderCreate(orderNo, quoteHash, customer.id(), customer.code(), customer.name(), customer.email(), json(address), address.name(), address.city(), request.buyerNote(), q.subtotal(), q.shippingFee(), q.total(), customer.referrerId(), referrerName, commissionRateSnapshot, createdAt, commissionEnabled));
                 break;
             } catch (OrderNumberCollisionException collision) {
                 // The unique index is authoritative; try another random candidate within this order transaction.

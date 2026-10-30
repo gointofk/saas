@@ -7,6 +7,8 @@ import OrderParcelList from './OrderParcelList.vue'
 import ParcelPhotoPicker from './ParcelPhotoPicker.vue'
 import { ApiRequestError, orderParcelApi } from '../lib/api'
 import type { OrderParcel, ParcelOrder, PackParcelInput, ShipParcelInput } from '../lib/api'
+import { formatOrderCopyRows } from '../lib/order-copy-format'
+import { MAX_ORDER_ATTACHMENT_BYTES, ORDER_IMAGE_MIME_TYPES } from '../lib/order-file-rules'
 
 const t = useSellerTranslation()
 
@@ -121,8 +123,7 @@ async function copyPackingDetails() {
     t('邮编：{0}', [address?.postalCode || '']),
     t('邮箱：{0}', [order.value.customer?.email || '']),
     '------------------------------------------------',
-    t('产品代号\t数量'),
-    ...selectedItems.map(item => `${item.sku}\t${activeDraft.value?.quantities[item.orderItemId] ?? ''}`),
+    ...formatOrderCopyRows(selectedItems.map(item => ({ sku: item.sku, quantity: activeDraft.value?.quantities[item.orderItemId] ?? '' })), t('产品代号'), t('数量')),
   ]
   try {
     await navigator.clipboard.writeText(lines.join('\n'))
@@ -197,8 +198,9 @@ function beginReceive(id: number) {
 function validateFiles(files: File[], label = false) {
   if (!files.length && !label) throw new Error('请添加至少一张打包图片。')
   if (files.length > (label ? 10 : 1)) throw new Error(label ? '面单最多添加 10 个附件。' : '每个包裹只能添加一张打包图片。')
-  if (files.some(f => f.size > 5 * 1024 * 1024 || f.size === 0)) throw new Error('单个文件应为 1 字节至 5 MiB。')
-  if (files.some(f => !['image/jpeg', 'image/png', ...(label ? ['application/pdf'] : [])].includes(f.type))) throw new Error(label ? '面单仅支持 JPG、PNG 或 PDF。' : '打包图片仅支持 JPG 或 PNG。')
+  if (files.some(f => f.size > MAX_ORDER_ATTACHMENT_BYTES || f.size === 0)) throw new Error('单个文件应为 1 字节至 15 MiB。')
+  const allowedTypes = new Set<string>([...ORDER_IMAGE_MIME_TYPES, ...(label ? ['application/pdf'] : [])])
+  if (files.some(f => !allowedTypes.has(f.type))) throw new Error(label ? '面单仅支持 JPG、PNG、GIF、BMP 或 PDF。' : '打包图片仅支持 JPG、PNG、GIF 或 BMP。')
 }
 function validate() {
   if (!order.value) throw new Error('请先加载订单。')

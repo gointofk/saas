@@ -32,6 +32,11 @@ import java.util.*;
 @Service
 public class FileService {
     private static final long MAX_FILE_BYTES = 5L * 1024 * 1024;
+    private static final long MAX_ORDER_ATTACHMENT_BYTES = 15L * 1024 * 1024;
+    private static final String IMAGE_GIF = "image/gif";
+    private static final String IMAGE_BMP = "image/bmp";
+    private static final Set<String> ORDER_IMAGE_TYPES = Set.of(
+            MediaType.IMAGE_JPEG_VALUE, MediaType.IMAGE_PNG_VALUE, IMAGE_GIF, IMAGE_BMP);
     private static final long UPLOAD_TOKEN_TTL_SECONDS = 24 * 60 * 60;
     private final FileRepository files;
     private final AccountService accounts;
@@ -53,8 +58,14 @@ public class FileService {
         if (!List.of("coa", "payment_channel_qr", "order_fulfillment", "order_shipping_label").contains(purpose))
             throw ApiException.badRequest("INVALID_FILE_PURPOSE", "Unsupported file purpose.");
         accounts.requireMenu(p, menu(purpose));
-        if (file == null || file.isEmpty() || file.getSize() > MAX_FILE_BYTES)
+        if (file == null || file.isEmpty())
             throw ApiException.badRequest("INVALID_FILE", "File is empty.");
+        boolean orderAttachment = List.of("order_fulfillment", "order_shipping_label").contains(purpose);
+        long maxFileBytes = orderAttachment ? MAX_ORDER_ATTACHMENT_BYTES : MAX_FILE_BYTES;
+        if (file.getSize() > maxFileBytes)
+            throw ApiException.badRequest("FILE_TOO_LARGE", orderAttachment
+                    ? "Order attachments must not exceed 15 MiB."
+                    : "Files must not exceed 5 MiB.");
         if (List.of("order_fulfillment", "order_shipping_label").contains(purpose) && (orderId == null || orderId < 1 || !List.of("packed", "shipped").contains(stage)))
             throw ApiException.badRequest("INVALID_FULFILLMENT_UPLOAD", "Order id and fulfillment stage are required.");
         if (parcelUuid != null && !parcelUuid.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
@@ -69,8 +80,8 @@ public class FileService {
         Path target = null;
         try {
             String mediaType = detectMediaType(file);
-            if (!List.of("coa", "order_shipping_label").contains(purpose) && MediaType.APPLICATION_PDF_VALUE.equals(mediaType))
-                throw ApiException.badRequest("UNSUPPORTED_FILE_TYPE", "Only JPEG and PNG files are allowed for this purpose.");
+            if (!isAllowedMediaType(purpose, mediaType))
+                throw ApiException.badRequest("UNSUPPORTED_FILE_TYPE", "This file type is not allowed for this purpose.");
             verifyImageDimensions(file, mediaType);
             String stored = uuid + extensionFor(mediaType);
             Files.createDirectories(root);
@@ -257,12 +268,34 @@ public class FileService {
             if (head.length >= 5 && head[0] == '%' && head[1] == 'P' && head[2] == 'D' && head[3] == 'F' && head[4] == '-') return MediaType.APPLICATION_PDF_VALUE;
             if (head.length >= 8 && (head[0] & 0xff) == 0x89 && head[1] == 0x50 && head[2] == 0x4e && head[3] == 0x47 && head[4] == 0x0d && head[5] == 0x0a && head[6] == 0x1a && head[7] == 0x0a) return MediaType.IMAGE_PNG_VALUE;
             if (head.length >= 3 && (head[0] & 0xff) == 0xff && (head[1] & 0xff) == 0xd8 && (head[2] & 0xff) == 0xff) return MediaType.IMAGE_JPEG_VALUE;
+            if (head.length >= 6 && head[0] == 'G' && head[1] == 'I' && head[2] == 'F' && head[3] == '8'
+                    && (head[4] == '7' || head[4] == '9') && head[5] == 'a') return IMAGE_GIF;
+            if (head.length >= 2 && head[0] == 'B' && head[1] == 'M') return IMAGE_BMP;
         }
-        throw ApiException.badRequest("UNSUPPORTED_FILE_TYPE", "Only PDF, PNG and JPEG files are allowed.");
+        throw ApiException.badRequest("UNSUPPORTED_FILE_TYPE", "Unsupported file type.");
+    }
+
+    private boolean isAllowedMediaType(String purpose, String mediaType) {
+        if ("order_fulfillment".equals(purpose)) return ORDER_IMAGE_TYPES.contains(mediaType);
+        if ("order_shipping_label".equals(purpose))
+            return ORDER_IMAGE_TYPES.contains(mediaType) || MediaType.APPLICATION_PDF_VALUE.equals(mediaType);
+        if ("coa".equals(purpose))
+            return MediaType.APPLICATION_PDF_VALUE.equals(mediaType)
+                    || MediaType.IMAGE_JPEG_VALUE.equals(mediaType)
+                    || MediaType.IMAGE_PNG_VALUE.equals(mediaType);
+        return "payment_channel_qr".equals(purpose)
+                && (MediaType.IMAGE_JPEG_VALUE.equals(mediaType) || MediaType.IMAGE_PNG_VALUE.equals(mediaType));
     }
 
     private String extensionFor(String mediaType) {
-        return MediaType.APPLICATION_PDF_VALUE.equals(mediaType) ? ".pdf" : MediaType.IMAGE_PNG_VALUE.equals(mediaType) ? ".png" : ".jpg";
+        return switch (mediaType) {
+            case MediaType.APPLICATION_PDF_VALUE -> ".pdf";
+            case MediaType.IMAGE_PNG_VALUE -> ".png";
+            case MediaType.IMAGE_JPEG_VALUE -> ".jpg";
+            case IMAGE_GIF -> ".gif";
+            case IMAGE_BMP -> ".bmp";
+            default -> throw new IllegalArgumentException("Unsupported media type");
+        };
     }
 
     private void verifyImageDimensions(MultipartFile file, String mediaType) throws Exception {

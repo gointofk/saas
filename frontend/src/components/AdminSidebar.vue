@@ -8,6 +8,8 @@ defineProps<{
   items: NavigationItem[]
   activePage: string
   openOrders: number
+  merchantName: string
+  merchantLogoUrl: string
 }>()
 
 const emit = defineEmits<{ navigate: [page: string] }>()
@@ -16,8 +18,8 @@ const emit = defineEmits<{ navigate: [page: string] }>()
 <template>
   <aside class="sidebar">
     <button class="side-brand brand-button" type="button" @click="emit('navigate', 'orders')">
-      <img class="side-logo" src="/ytpeps-logo.svg" alt="">
-      <span><span class="side-brand-name">YTPEPS</span><span class="side-brand-sub">{{ t('商家管理后台') }}</span></span>
+      <img v-if="merchantLogoUrl" class="side-logo" :src="merchantLogoUrl" alt="">
+      <span><span class="side-brand-name">{{ merchantName || 'YTPEPS' }}</span><span class="side-brand-sub">{{ t('商家管理后台') }}</span></span>
     </button>
     <nav class="side-menu" :aria-label="t('商家导航')">
       <button

@@ -107,7 +107,12 @@ function remove(session: SavedSellerSession) {
   <button type="button" class="seller-account-trigger" :disabled="disabled || locked" @click="show">{{ t('切换账号') }}</button>
   <Teleport v-if="open" to="body">
     <AppModal class="seller-account-overlay" :label="t('切换账号')" content-class="seller-account-modal" @close="close">
-      <h2 class="modal-title">{{ t(adding ? '添加账号' : '切换账号') }}</h2>
+      <div class="seller-account-modal-header">
+        <h2 class="modal-title">{{ t(adding ? '添加账号' : '切换账号') }}</h2>
+        <button type="button" class="seller-account-close" :aria-label="t('关闭')" :disabled="locked" @click="close">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+        </button>
+      </div>
       <form v-if="adding" class="seller-account-form" @submit.prevent="submit">
         <label for="switch-account">{{ t('登录账号') }}</label>
         <input id="switch-account" v-model="account" autocomplete="username" maxlength="64" required :disabled="locked">
@@ -134,10 +139,7 @@ function remove(session: SavedSellerSession) {
         </div>
         <p v-if="pending" class="seller-account-hint" role="status">{{ t('正在验证登录状态…') }}</p>
         <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
-        <div class="modal-actions">
-          <button type="button" class="modal-cancel" :disabled="locked" @click="close">{{ t('关闭') }}</button>
-          <button type="button" class="modal-save" :disabled="locked" @click="add()">{{ t('添加账号') }}</button>
-        </div>
+        <button type="button" class="modal-save seller-account-add-button" :disabled="locked" @click="add()">{{ t('添加账号') }}</button>
       </template>
       <div v-if="canSignOut && !adding" class="seller-account-signout">
         <button type="button" :disabled="locked" :aria-busy="signingOut" @click="signOut">{{ t('退出登录') }}</button>
@@ -149,6 +151,12 @@ function remove(session: SavedSellerSession) {
 <style scoped>
 .seller-account-trigger { padding: 7px 12px; border: 1px solid #e5e5ea; border-radius: 999px; background: #fff; color: #424245; font-size: 12px; cursor: pointer; }
 .seller-account-trigger:hover { border-color: #06c; color: #06c; }
+.seller-account-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.seller-account-modal-header .modal-title { margin: 0; }
+.seller-account-close { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #6e6e73; cursor: pointer; }
+.seller-account-close:hover:not(:disabled) { background: #f5f5f7; color: #1d1d1f; }
+.seller-account-close svg { width: 18px; height: 18px; }
+.seller-account-add-button { width: 100%; min-height: 42px; margin-top: 12px; }
 .seller-account-hint { margin: 8px 0 12px; color: #6e6e73; font-size: 12px; line-height: 1.6; }
 .seller-account-list { display: grid; gap: 8px; max-height: 40vh; overflow-y: auto; }
 .seller-account-row { display: flex; align-items: center; gap: 8px; border: 1px solid #e5e5ea; border-radius: 10px; padding: 4px 10px; }

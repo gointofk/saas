@@ -1,5 +1,5 @@
-/* Shared layout rules load first; buyer/seller themes remain the final visual overrides. */
-@layer tokens, base, auth, customer, admin, responsive, platform, buyer-theme, seller-theme;
+/* Platform reuses the Seller theme; its final layer contains page-specific layouts. */
+@layer tokens, base, auth, customer, admin, responsive, buyer-theme, seller-theme, platform;
 
 @import "./styles/tokens.css";
 @import "./styles/base.css";

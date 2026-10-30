@@ -40,7 +40,7 @@ public class AuthController {
     @PostMapping("/customer/auth/register")
     public ResponseEntity<Map<String, Boolean>> register(@Valid @RequestBody CustomerRegistrationRequest request, HttpServletRequest httpRequest) {
         long merchantId = storefront.resolve(httpRequest).id();
-        registrations.register(merchantId, request.email(), request.name(), request.password(), request.confirmation(), request.verificationCode(), clientIps.resolve(httpRequest));
+        registrations.register(merchantId, request.email(), request.name(), request.password(), request.confirmation(), request.verificationCode(), request.inviteCode(), clientIps.resolve(httpRequest));
         return ResponseEntity.status(201).body(Map.of("registered", true));
     }
 
@@ -83,7 +83,7 @@ public class AuthController {
 
     public record CustomerRegistrationRequest(@NotBlank String email, @NotBlank String name,
                                               @NotBlank String password, @NotBlank String confirmation,
-                                              @NotBlank String verificationCode) {
+                                              @NotBlank String verificationCode, String inviteCode) {
     }
 
     public record SellerLoginRequest(@NotBlank String account, @NotBlank String password) {

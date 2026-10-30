@@ -13,19 +13,33 @@ public interface MerchantRepository {
     Merchant lock(long id);
     List<Merchant> page(int page);
     long count();
-    long create(String code, String name, BigDecimal shippingFee, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled);
+    long create(String code, String name, BigDecimal shippingFee, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled, boolean commissionEnabled, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled);
+    default long create(String code, String name, BigDecimal shippingFee, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled) {
+        return create(code, name, shippingFee, domain, logoUrl, theme, actor, registrationEnabled, true, true, false);
+    }
+    default long create(String code, String name, BigDecimal shippingFee, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled, boolean commissionEnabled) {
+        return create(code, name, shippingFee, domain, logoUrl, theme, actor, registrationEnabled, commissionEnabled, true, false);
+    }
     default long create(String code, String name, BigDecimal shippingFee, String domain, String logoUrl, String theme, long actor) {
-        return create(code, name, shippingFee, domain, logoUrl, theme, actor, false);
+        return create(code, name, shippingFee, domain, logoUrl, theme, actor, false, true, true, false);
     }
     void update(long id, String name, BigDecimal shippingFee, boolean active, long actor);
     void updateRegistrationEnabled(long id, boolean enabled, long actor);
+    void updateCommissionEnabled(long id, boolean enabled, long actor);
+    void updatePaymentMethods(long id, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled, long actor);
     void audit(long merchantId, Actor actor, String action, String detail);
-    record Merchant(long id, String code, String name, boolean active, BigDecimal shippingFee, Instant updatedAt, String domain, String logoUrl, String theme, boolean registrationEnabled) {
+    record Merchant(long id, String code, String name, boolean active, BigDecimal shippingFee, Instant updatedAt, String domain, String logoUrl, String theme, boolean registrationEnabled, boolean commissionEnabled, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled) {
+        public Merchant(long id,String code,String name,boolean active,BigDecimal fee,Instant time,String domain,String logoUrl,String theme,boolean registrationEnabled,boolean commissionEnabled) {
+            this(id,code,name,active,fee,time,domain,logoUrl,theme,registrationEnabled,commissionEnabled,true,false);
+        }
+        public Merchant(long id,String code,String name,boolean active,BigDecimal fee,Instant time,String domain,String logoUrl,String theme,boolean registrationEnabled) {
+            this(id,code,name,active,fee,time,domain,logoUrl,theme,registrationEnabled,true,true,false);
+        }
         public Merchant(long id,String code,String name,boolean active,BigDecimal fee,Instant time,String domain,String logoUrl,String theme) {
-            this(id,code,name,active,fee,time,domain,logoUrl,theme,false);
+            this(id,code,name,active,fee,time,domain,logoUrl,theme,false,true,true,false);
         }
         public Merchant(long id,String code,String name,boolean active,BigDecimal fee,Instant time) {
-            this(id,code,name,active,fee,time,null,"/ytpeps-logo.svg","classic",false);
+            this(id,code,name,active,fee,time,null,"/ytpeps-logo.svg","classic",false,true,true,false);
         }
     }
 }

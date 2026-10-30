@@ -219,6 +219,8 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
         // Restrict this transaction to the fixture member so the invariant is
         // tested independently of pre-existing rows.
         jdbc.update("UPDATE seller SET active=0 WHERE 1=1 AND id<>?", data.sellerId());
+        // Exercise the last-manager rule independently of the protected platform-created account marker.
+        jdbc.update("UPDATE seller SET merchant_admin=0 WHERE id=?", data.sellerId());
         assertThatThrownBy(() -> members.status(seller(), data.sellerId(), false))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")

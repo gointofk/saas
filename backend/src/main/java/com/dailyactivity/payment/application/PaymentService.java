@@ -12,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.math.BigDecimal;
-import com.dailyactivity.auth.domain.Actor;
 
 @Service
 public class PaymentService {
@@ -47,11 +46,7 @@ public class PaymentService {
     @Transactional
     public Map<String, Object> updatePaymentMethods(Principal p, PaymentMethodsRequest request) {
         accounts.requireMenu(p, "payment_channels");
-        if (request == null || request.cryptoEnabled() == null || request.onlinePaymentLinkEnabled() == null)
-            throw ApiException.badRequest("INVALID_PAYMENT_METHODS", "Choose whether cryptocurrency and online payment links are available.");
-        var methods = new PaymentRepository.PaymentMethods(request.cryptoEnabled(), request.onlinePaymentLinkEnabled());
-        payments.updatePaymentMethods(p.merchantId(), methods, new Actor("seller", p.userId()));
-        return methodView(methods);
+        throw ApiException.forbidden("PAYMENT_METHODS_PLATFORM_MANAGED", "Payment method availability is managed in platform merchant settings.");
     }
 
     private Map<String, Object> methodView(PaymentRepository.PaymentMethods methods) {
@@ -64,7 +59,7 @@ public class PaymentService {
         accounts.seller(p);
         int current = page == null ? 1 : page;
         if (current < 1) throw ApiException.badRequest("INVALID_PAGE", "page starts at 1.");
-        return PageResponse.of(payments.page(p.merchantId(), false, current).stream().map(this::view).toList(), current, payments.count(p.merchantId(), false));
+        return PageResponse.of(payments.page(p.merchantId(), false, current).stream().map(this::adminView).toList(), current, payments.count(p.merchantId(), false));
     }
 
     @Transactional
@@ -99,6 +94,12 @@ public class PaymentService {
         v.put("qrFileUuid", c.qrFileUuid());
         v.put("active", c.active());
         v.put("sortNo", c.sortNo());
+        return v;
+    }
+
+    private Map<String, Object> adminView(PaymentRepository.Channel c) {
+        Map<String, Object> v = view(c);
+        v.put("updatedAt", c.updatedAt());
         return v;
     }
 

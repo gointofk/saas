@@ -61,7 +61,7 @@ public class CustomerRegistrationService {
     }
 
     public void register(long merchantId, String emailInput, String nameInput, String password, String confirmation,
-                         String verificationCode, String clientIp) {
+                         String verificationCode, String inviteCode, String clientIp) {
         requireRegistrationOpen(merchant(merchantId));
         String email = normalizeEmail(emailInput);
         String name = nameInput == null ? "" : nameInput.trim();
@@ -74,7 +74,7 @@ public class CustomerRegistrationService {
         if (verificationCode == null || !verificationCode.matches("[0-9]{6}"))
             throw ApiException.badRequest("REGISTRATION_CODE_INVALID", "The verification code is invalid or expired.");
         rateLimiter.checkVerification(merchantId, email, clientIp);
-        CustomerRegistrationTransaction.Result result = registrationTransaction.register(merchantId, email, verificationCode, name, password);
+        CustomerRegistrationTransaction.Result result = registrationTransaction.register(merchantId, email, verificationCode, name, password, inviteCode);
         switch (result) {
             case CREATED -> { return; }
             case EMAIL_EXISTS -> throw ApiException.conflict("CUSTOMER_EMAIL_EXISTS", "An account already uses this email address.");

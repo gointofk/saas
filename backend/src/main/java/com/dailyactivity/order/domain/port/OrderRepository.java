@@ -110,7 +110,14 @@ public interface OrderRepository {
     record OrderCreate(String orderNo, String quoteTokenHash, long customerId, String customerCode, String customerName, String customerEmail,
                        String addressSnapshot, String recipientName, String city, String buyerNote, BigDecimal subtotal,
                        BigDecimal shippingFee, BigDecimal total, Long referrerId, String referrerName,
-                       BigDecimal commissionRate, Instant now) {
+                       BigDecimal commissionRate, Instant now, boolean commissionEnabledSnapshot) {
+        public OrderCreate(String orderNo, String quoteTokenHash, long customerId, String customerCode, String customerName, String customerEmail,
+                           String addressSnapshot, String recipientName, String city, String buyerNote, BigDecimal subtotal,
+                           BigDecimal shippingFee, BigDecimal total, Long referrerId, String referrerName,
+                           BigDecimal commissionRate, Instant now) {
+            this(orderNo,quoteTokenHash,customerId,customerCode,customerName,customerEmail,addressSnapshot,recipientName,city,buyerNote,
+                    subtotal,shippingFee,total,referrerId,referrerName,commissionRate,now,true);
+        }
     }
 
     record ItemCreate(long productId, String sku, String name, String productType, int quantity, BigDecimal unitPrice,

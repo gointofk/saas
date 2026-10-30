@@ -1,6 +1,6 @@
 server:
   address: 127.0.0.1
-  port: 8080
+  port: 8081
   tomcat:
     accept-count: 128
     threads:
@@ -10,13 +10,13 @@ server:
 
 spring:
   application:
-    name: dailyactivity-api
+    name: saas
   profiles:
     active: dev
   servlet:
     multipart:
-      max-file-size: 5MB
-      max-request-size: 6MB
+      max-file-size: 15MB
+      max-request-size: 16MB
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
@@ -38,6 +38,11 @@ app:
     clock-skew-seconds: 60
     login-window-seconds: 300
     login-max-attempts: 5
+  registration:
+    secret: c0c4fe2dd74e429bc951573291a94c0bc8ad19aa58b52cda0e9a9b2ca0955b2m
+    code-ttl-seconds: 600
+    resend-delay-seconds: 60
+    max-code-attempts: 5
   quote:
     ttl-seconds: 72000
   file:

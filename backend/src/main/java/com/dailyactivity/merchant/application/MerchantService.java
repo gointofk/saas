@@ -11,6 +11,7 @@ import com.dailyactivity.merchant.domain.port.MerchantRepository;
 import com.dailyactivity.merchant.domain.port.MerchantEmailSettingsRepository;
 import com.dailyactivity.merchant.domain.port.MerchantEmailSender;
 import com.dailyactivity.merchant.domain.port.MerchantSecretProtector;
+import com.dailyactivity.commission.domain.port.CommissionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -25,11 +26,13 @@ public class MerchantService {
     private final MerchantEmailSettingsRepository emailSettings;
     private final MerchantSecretProtector secretCipher;
     private final MerchantEmailSender emailSender;
+    private final CommissionRepository commissions;
     public MerchantService(MerchantRepository merchants, MemberRepository members, AccountService accounts,
                            MerchantEmailSettingsRepository emailSettings, MerchantSecretProtector secretCipher,
-                           MerchantEmailSender emailSender) {
+                           MerchantEmailSender emailSender, CommissionRepository commissions) {
         this.merchants=merchants; this.members=members; this.accounts=accounts;
         this.emailSettings=emailSettings; this.secretCipher=secretCipher; this.emailSender=emailSender;
+        this.commissions=commissions;
     }
     @Transactional(readOnly=true)
     public PageResponse<MerchantView> page(Principal p, Integer page) {
@@ -44,6 +47,9 @@ public class MerchantService {
         String domain = StorefrontService.normalizeDomain(r.domain());
         StorefrontService.validateBranding(r.logoUrl(),r.theme());
         boolean registrationEnabled=Boolean.TRUE.equals(r.registrationEnabled());
+        boolean commissionEnabled=r.commissionEnabled()==null || r.commissionEnabled();
+        boolean cryptoEnabled=r.cryptoEnabled()==null || r.cryptoEnabled();
+        boolean onlinePaymentLinkEnabled=Boolean.TRUE.equals(r.onlinePaymentLinkEnabled());
         PreparedEmailSettings mail=prepareEmailSettings(r.mailSettings(),null,registrationEnabled);
         if(registrationEnabled) requireUsableMailSettings(mail,null);
         if (r.code()==null || !r.code().matches("[A-Za-z0-9_-]{2,32}"))
@@ -55,11 +61,11 @@ public class MerchantService {
         if (r.password().length()<12 || r.password().length()>64)
             throw ApiException.badRequest("INVALID_PASSWORD","Password must be 12–64 characters.");
         String hash=PasswordHasher.hash(r.password());
-        long id=merchants.create(r.code().toUpperCase(Locale.ROOT),r.name().trim(),r.shippingFee(),domain,r.logoUrl(),r.theme(),p.userId(),registrationEnabled);
+        long id=merchants.create(r.code().toUpperCase(Locale.ROOT),r.name().trim(),r.shippingFee(),domain,r.logoUrl(),r.theme(),p.userId(),registrationEnabled,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled);
         if(mail!=null) emailSettings.save(id,mail.settings(),mail.encryptedPassword());
         var permissions=List.of("order_audit","orders","commissions","bills","customers","products","certificates","categories","payment_channels","members");
-        members.create(id,new MemberRepository.MemberInput(r.adminAccount().trim().toLowerCase(Locale.ROOT),r.adminName().trim(),hash,permissions),p.actor());
-        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", emailSettingsUpdated="+(mail!=null));
+        members.createMerchantAdministrator(id,new MemberRepository.MemberInput(r.adminAccount().trim().toLowerCase(Locale.ROOT),r.adminName().trim(),hash,permissions),p.actor());
+        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", emailSettingsUpdated="+(mail!=null));
         return view(merchants.find(id).orElseThrow());
     }
     @Transactional
@@ -70,6 +76,29 @@ public class MerchantService {
         StorefrontService.validateBranding(r.logoUrl(),r.theme());
         var existing=merchants.lock(id);
         checkVersion(existing,r.expectedUpdatedAt());
+        boolean commissionEnabled=r.commissionEnabled()==null?existing.commissionEnabled():r.commissionEnabled();
+        boolean cryptoEnabled=r.cryptoEnabled()==null?existing.cryptoEnabled():r.cryptoEnabled();
+        boolean onlinePaymentLinkEnabled=r.onlinePaymentLinkEnabled()==null?existing.onlinePaymentLinkEnabled():r.onlinePaymentLinkEnabled();
+        if (existing.commissionEnabled() && !commissionEnabled) {
+            CommissionRepository.CommissionDisableReadiness readiness=commissions.commissionDisableReadiness(id);
+            if (!readiness.canDisable()) {
+                throw ApiException.conflict("COMMISSION_CLOSE_BLOCKED", "Settle " + readiness.outstandingAccrualCount()
+                        + " outstanding commission record(s) totaling " + readiness.outstandingAmount().toPlainString()
+                        + " and review " + readiness.pendingEligibleOrderCount() + " commission-eligible order(s) before disabling commissions.");
+            }
+        }
+        boolean resetPassword = (r.password()!=null && !r.password().isEmpty())
+                || (r.confirmation()!=null && !r.confirmation().isEmpty());
+        MemberRepository.InitialAdministrator administrator = null;
+        String passwordHash = null;
+        if (resetPassword) {
+            if (r.password()==null || !r.password().equals(r.confirmation()))
+                throw ApiException.badRequest("PASSWORD_CONFIRMATION_MISMATCH","Password confirmation does not match.");
+            if (r.password().isBlank() || r.password().length()<12 || r.password().length()>64)
+                throw ApiException.badRequest("INVALID_PASSWORD","Password must be 12–64 characters.");
+            administrator=members.initialAdministrator(id).orElseThrow(()->ApiException.notFound("Merchant administrator not found."));
+            passwordHash=PasswordHasher.hash(r.password());
+        }
 
         boolean registrationEnabled=r.registrationEnabled()==null?existing.registrationEnabled():r.registrationEnabled();
         var stored=emailSettings.find(id).orElse(null);
@@ -79,9 +108,18 @@ public class MerchantService {
         merchants.update(id,r.name().trim(),r.shippingFee(),r.active(),p.userId());
         if(registrationEnabled!=existing.registrationEnabled()) merchants.updateRegistrationEnabled(id,registrationEnabled,p.userId());
         else if(r.registrationEnabled()!=null) merchants.updateRegistrationEnabled(id,registrationEnabled,p.userId());
+        if(commissionEnabled!=existing.commissionEnabled() || r.commissionEnabled()!=null)
+            merchants.updateCommissionEnabled(id,commissionEnabled,p.userId());
+        if(cryptoEnabled!=existing.cryptoEnabled() || onlinePaymentLinkEnabled!=existing.onlinePaymentLinkEnabled()
+                || r.cryptoEnabled()!=null || r.onlinePaymentLinkEnabled()!=null)
+            merchants.updatePaymentMethods(id,cryptoEnabled,onlinePaymentLinkEnabled,p.userId());
         if(mail!=null) emailSettings.save(id,mail.settings(),mail.encryptedPassword());
         merchants.branding(id,domain,r.logoUrl(),r.theme());
-        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+"; after: name="+r.name()+", active="+r.active()+", shippingFee="+r.shippingFee()+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", emailSettingsUpdated="+(mail!=null));
+        if (resetPassword) {
+            members.resetPassword(id,administrator.id(),passwordHash,p.actor());
+            merchants.audit(id,p.actor(),"merchant_admin_password_reset","Administrator seller ID: "+administrator.id());
+        }
+        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+"; after: name="+r.name()+", active="+r.active()+", shippingFee="+r.shippingFee()+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", emailSettingsUpdated="+(mail!=null));
         return view(merchants.find(id).orElseThrow());
     }
     private void checkVersion(MerchantRepository.Merchant m,Instant version) {
@@ -97,7 +135,7 @@ public class MerchantService {
             throw ApiException.badRequest("INVALID_SHIPPING_FEE","Shipping fee must be a non-negative amount with at most two decimals.");
     }
     private MerchantView view(MerchantRepository.Merchant m) {
-        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFee(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme(),m.registrationEnabled(),emailSettings.find(m.id()).map(this::emailView).orElse(null));
+        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFee(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme(),m.registrationEnabled(),m.commissionEnabled(),m.cryptoEnabled(),m.onlinePaymentLinkEnabled(),emailSettings.find(m.id()).map(this::emailView).orElse(null),members.initialAdministrator(m.id()).orElse(null));
     }
     private MerchantEmailSettingsView emailView(MerchantEmailSettingsRepository.StoredSettings s) {
         return new MerchantEmailSettingsView(s.smtpHost(),s.smtpPort(),s.smtpUsername(),s.tlsMode(),s.senderEmail(),s.senderName(),s.configured());
@@ -147,13 +185,28 @@ public class MerchantService {
     private record PreparedEmailSettings(MerchantEmailSettingsRepository.Settings settings,String encryptedPassword) {}
     public record TestEmailRequest(String recipient) {}
     public record MerchantEmailSettingsView(String smtpHost,int smtpPort,String smtpUsername,String tlsMode,String senderEmail,String senderName,boolean passwordConfigured) {}
-    public record MerchantView(long id,String code,String name,boolean active,BigDecimal shippingFee,Instant updatedAt,String domain,String logoUrl,String theme,boolean registrationEnabled,MerchantEmailSettingsView mailSettings) {}
+    public record MerchantView(long id,String code,String name,boolean active,BigDecimal shippingFee,Instant updatedAt,String domain,String logoUrl,String theme,boolean registrationEnabled,boolean commissionEnabled,boolean cryptoEnabled,boolean onlinePaymentLinkEnabled,MerchantEmailSettingsView mailSettings,MemberRepository.InitialAdministrator administrator) {}
     public record MailSettingsInput(String smtpHost,Integer smtpPort,String smtpUsername,String smtpPassword,String tlsMode,String senderEmail,String senderName) {}
-    public record Create(String code,String name,BigDecimal shippingFee,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
+    public record Create(String code,String name,BigDecimal shippingFee,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled) {
+        public Create(String code,String name,BigDecimal shippingFee,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled) {
+            this(code,name,shippingFee,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,null,null);
+        }
+        public Create(String code,String name,BigDecimal shippingFee,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
+            this(code,name,shippingFee,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,true,null,null);
+        }
     }
-    public record Update(String name,boolean active,BigDecimal shippingFee,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
+    public record Update(String name,boolean active,BigDecimal shippingFee,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled) {
+        public Update(String name,boolean active,BigDecimal shippingFee,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled) {
+            this(name,active,shippingFee,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,null,null);
+        }
+        public Update(String name,boolean active,BigDecimal shippingFee,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
+            this(name,active,shippingFee,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,null,null,null,null,null);
+        }
         public Update(String name,boolean active,BigDecimal shippingFee,Instant expectedUpdatedAt,String domain,String logoUrl,String theme) {
-            this(name,active,shippingFee,expectedUpdatedAt,domain,logoUrl,theme,null,null);
+            this(name,active,shippingFee,expectedUpdatedAt,domain,logoUrl,theme,null,null,null,null,null,null,null);
+        }
+        public Update(String name,boolean active,BigDecimal shippingFee,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation) {
+            this(name,active,shippingFee,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,null,null,null);
         }
     }
 }

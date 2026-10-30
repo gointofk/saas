@@ -56,7 +56,7 @@
     border-bottom-color: #e5e5ea;
     background: #fff;
   }
-  .demo-seller-shell .side-logo { width: 30px; height: 30px; flex-basis: 30px; }
+  .demo-seller-shell .side-logo { width: auto; max-width: 80px; height: 30px; flex: 0 0 auto; object-fit: contain; }
   .demo-seller-shell .side-brand-name { color: #1d1d1f; font-size: 16px; font-weight: 600; letter-spacing: -.025em; }
   .demo-seller-shell .side-brand-sub { margin-top: 2px; color: #6e6e73; font-size: 11px; }
   .demo-seller-shell .side-menu { gap: 3px; padding: 16px 11px; }
@@ -246,7 +246,6 @@
   .demo-seller-shell #panel-billing .billing-filter-card .seg button:first-child,
   .demo-seller-shell #panel-billing .billing-filter-card .seg button:last-child { border-radius: 999px; }
   .demo-seller-shell #panel-billing .billing-stat-grid { grid-auto-rows: minmax(78px, auto); gap: 10px; }
-  .demo-seller-shell #panel-billing .billing-total-stat { grid-row: 1 / span 2; }
   .demo-seller-shell #panel-billing .billing-stat-grid .stat-card { min-height: 82px; padding: 14px 16px; }
   .demo-seller-shell #panel-billing .billing-stat-grid .stat-card strong { font-size: 21px; }
   .demo-seller-shell #panel-billing .billing-table { min-width: 1000px; }
@@ -366,7 +365,7 @@
   .modal-box.seller-modal .modal-save { min-height: 36px; padding: 0 17px; font-size: 12px; }
 
   .auth-screen:has(.seller-auth-shell) { background: #f5f5f7; }
-  .seller-auth-shell .seller-login-brand .brand-icon { width: 34px; height: 34px; }
+  .seller-auth-shell .seller-login-brand .brand-icon { width: auto; max-width: 180px; height: 34px; }
   .seller-auth-shell .seller-login-brand strong { color: #1d1d1f; font-size: 19px; font-weight: 600; }
   .seller-auth-shell .seller-login-brand small { color: #6e6e73; font-size: 12px; }
   .seller-auth-shell .auth-card { border: 1px solid #e5e5ea; border-radius: 18px; background: #fff; box-shadow: 0 12px 36px rgba(0, 0, 0, .06); }
@@ -380,15 +379,14 @@
 
   @media (max-width: 1280px) {
     .demo-seller-shell .stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .demo-seller-shell #panel-billing .billing-stat-grid { grid-template-columns: minmax(130px, .8fr) minmax(0, 4fr); grid-template-rows: repeat(2, minmax(78px, auto)); }
-    .demo-seller-shell #panel-billing .billing-total-stat { grid-column: 1; grid-row: 1 / span 2; }
-    .demo-seller-shell #panel-billing .billing-stat-line { grid-column: 2; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .demo-seller-shell #panel-billing .billing-stat-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+    .demo-seller-shell #panel-billing .billing-stat-line { grid-column: 1; grid-template-columns: repeat(5, minmax(0, 1fr)); }
   }
 
   @media (max-width: 760px) {
     .demo-seller-shell .sidebar { position: relative; width: 100%; border-right: 0; border-bottom: 1px solid #e5e5ea; }
     .demo-seller-shell .side-brand { min-height: 58px; padding: 10px 16px; }
-    .demo-seller-shell .side-logo { width: 27px; height: 27px; flex-basis: 27px; }
+    .demo-seller-shell .side-logo { width: auto; max-width: 68px; height: 27px; flex: 0 0 auto; }
     .demo-seller-shell .side-menu { flex-flow: row nowrap; gap: 4px; padding: 0 12px 10px; overflow-x: auto; scrollbar-width: none; }
     .demo-seller-shell .side-menu::-webkit-scrollbar { display: none; }
     .demo-seller-shell .side-menu-item { flex: 0 0 auto; width: auto; min-height: 36px; padding: 0 10px; white-space: nowrap; }
@@ -421,7 +419,6 @@
     .customer-details-modal .customer-order-filter-card .seg { flex-wrap: wrap; }
     .customer-details-modal .customer-order-search { flex: 1 1 100%; width: 100%; min-width: 0; }
     .demo-seller-shell #panel-billing .billing-stat-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
-    .demo-seller-shell #panel-billing .billing-total-stat { grid-column: 1; grid-row: auto; }
     .demo-seller-shell #panel-billing .billing-stat-line { grid-column: 1; grid-row: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .demo-seller-shell #panel-commissions > .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .demo-seller-shell .card-head { align-items: flex-start; flex-direction: column; padding: 16px; }
@@ -700,7 +697,7 @@ html[lang="en"] .seller-order-edit-row { grid-template-columns: minmax(140px, 1f
   html[lang="en"] .seller-order-edit-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 
-.seller-date-control { position: relative; display: flex; width: 144px; min-width: 0; align-items: center; }
+.seller-date-control { position: relative; display: flex; width: var(--seller-date-control-width, 144px); min-width: 0; align-items: center; }
 .seller-date-control > input[type="text"] { width: 100%; min-width: 0; height: 38px; padding: 0 36px 0 9px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); color: var(--color-ink); font-size: 12px; }
 .seller-date-control .history-date-picker-button { position: absolute; top: 0; right: 0; display: grid; width: 34px; height: 38px; place-items: center; border: 0; border-radius: 0 8px 8px 0; background: transparent; color: var(--color-muted); }
 .seller-date-control .history-date-picker-button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; }

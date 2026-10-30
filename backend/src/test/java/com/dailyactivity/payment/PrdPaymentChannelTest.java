@@ -74,15 +74,15 @@ class PrdPaymentChannelTest extends PrdDatabaseTest {
     }
 
     @Test
-    @DisplayName("商家可独立启用两种付款方式，关闭加密货币后客户不可申报")
-    void merchantControlsAvailablePaymentMethods() {
-        payments.updatePaymentMethods(seller(), new PaymentService.PaymentMethodsRequest(false, true));
+    @DisplayName("付款方式开关变化后客户选项随之更新")
+    void customerPaymentOptionsReflectMerchantSettings() {
+        jdbc.update("UPDATE merchant SET crypto_payment_enabled=0,online_payment_link_enabled=1 WHERE id=?", data.customer().merchantId());
 
         Map<String, Object> options = payments.customerPaymentOptions(data.customer());
         assertThat(options).containsEntry("cryptoEnabled", false).containsEntry("onlinePaymentLinkEnabled", true);
         assertThat((List<?>) options.get("channels")).isEmpty();
 
-        payments.updatePaymentMethods(seller(), new PaymentService.PaymentMethodsRequest(true, true));
+        jdbc.update("UPDATE merchant SET crypto_payment_enabled=1 WHERE id=?", data.customer().merchantId());
         options = payments.customerPaymentOptions(data.customer());
         assertThat(options).containsEntry("cryptoEnabled", true).containsEntry("onlinePaymentLinkEnabled", true);
         assertThat((List<?>) options.get("channels")).isNotEmpty();

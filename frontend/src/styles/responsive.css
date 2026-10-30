@@ -70,9 +70,8 @@
   .demo-seller-shell #panel-orders .filter-card > .filter-row, .demo-seller-shell #panel-products .seller-filter-row, .demo-seller-shell #panel-users .filter-row { flex-wrap: wrap; }
   .demo-seller-shell #panel-orders .filter-card > .filter-row .filter-group { flex-wrap: wrap; }
   .demo-seller-shell #panel-billing .billing-filter-card .filter-row { flex-wrap: wrap; justify-content: flex-start; }
-  .demo-seller-shell #panel-billing .billing-stat-grid { grid-template-columns: minmax(130px, .8fr) minmax(0, 4fr); grid-template-rows: repeat(2, minmax(78px, auto)); }
-  .demo-seller-shell #panel-billing .billing-total-stat { grid-column: 1; grid-row: 1 / span 2; }
-  .demo-seller-shell #panel-billing .billing-stat-line { grid-column: 2; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .demo-seller-shell #panel-billing .billing-stat-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  .demo-seller-shell #panel-billing .billing-stat-line { grid-column: 1; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .demo-seller-shell .content > .panel.active > .card { overflow-x: auto; }
@@ -80,7 +79,6 @@
   .demo-seller-shell #panel-orders .filter-card > .filter-row .filter-group { align-items: flex-start; }
   .demo-seller-shell #panel-orders .seller-search { flex-basis: 100%; }
   .demo-seller-shell #panel-billing .billing-stat-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
-  .demo-seller-shell #panel-billing .billing-total-stat { grid-column: 1; grid-row: auto; }
   .demo-seller-shell #panel-billing .billing-stat-line { grid-column: 1; grid-row: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .demo-customer-shell .account-page .tab-item { padding-right: 14px; padding-left: 14px; }
 }

@@ -334,7 +334,7 @@ export const api = {
 }
 
 export type AdminMember = {
-  id: number; account: string; name: string; active: boolean
+  id: number; account: string; name: string; active: boolean; merchantAdmin: boolean
   permissions: string[]; updatedAt: string
 }
 
@@ -349,24 +349,32 @@ export type MerchantMailSettingsInput = {
 export type MerchantIdentity = {
   id: number; code: string; name: string; active: boolean
   shippingFee: number | string; updatedAt: string; domain: string; logoUrl: string; theme: string
-  registrationEnabled: boolean
+  registrationEnabled: boolean; commissionEnabled: boolean
+  cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean
 }
-export type Merchant = MerchantIdentity & { mailSettings: MerchantMailSettings | null }
+export type MerchantAdministrator = { id: number; account: string; name: string; active: boolean }
+export type Merchant = MerchantIdentity & { mailSettings: MerchantMailSettings | null; administrator: MerchantAdministrator | null }
 export type MerchantPage = { items: Merchant[]; page: number; total: number; totalPages: number }
 export type MerchantCreate = {
   code: string; name: string; shippingFee: string; domain: string; logoUrl: string; theme: string
   adminAccount: string; adminName: string; password: string; confirmation: string
-  registrationEnabled: boolean; mailSettings: MerchantMailSettingsInput | null
+  registrationEnabled: boolean; commissionEnabled: boolean
+  cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean
+  mailSettings: MerchantMailSettingsInput | null
 }
 export const customerRegistrationApi = {
   requestCode: (email: string) => request<{ message: string }>('/customer/auth/registration-code', { method: 'POST', body: JSON.stringify({ email }) }, 'customer', { token: null, clearOnUnauthorized: false }),
-  register: (body: { email: string; name: string; password: string; confirmation: string; verificationCode: string }) =>
+  register: (body: { email: string; name: string; password: string; confirmation: string; verificationCode: string; inviteCode?: string }) =>
     request<{ registered: boolean }>('/customer/auth/register', { method: 'POST', body: JSON.stringify(body) }, 'customer', { token: null, clearOnUnauthorized: false }),
 }
 export const merchantApi = {
   page: (page: number) => request<MerchantPage>(`/platform/merchants?page=${page}`, {}, 'platform'),
   create: (body: MerchantCreate) => request<Merchant>('/platform/merchants', { method: 'POST', body: JSON.stringify(body) }, 'platform'),
-  update: (id: number, body: { name: string; active: boolean; shippingFee: string; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string; registrationEnabled: boolean; mailSettings: MerchantMailSettingsInput | null }) =>
+  uploadLogo: async (file: File) => {
+    const form = new FormData(); form.append('file', file)
+    return request<{ logoUrl: string }>('/platform/merchant-logos', { method: 'POST', body: form }, 'platform')
+  },
+  update: (id: number, body: { name: string; active: boolean; shippingFee: string; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string; registrationEnabled: boolean; commissionEnabled: boolean; cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean; mailSettings: MerchantMailSettingsInput | null; password?: string; confirmation?: string }) =>
     request<Merchant>(`/platform/merchants/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'platform'),
   testEmail: (id: number, recipient: string) => request<void>(`/platform/merchants/${id}/email-settings/test`, { method: 'POST', body: JSON.stringify({ recipient }) }, 'platform'),
 }

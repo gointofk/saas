@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref } from 'vue'
 import { useSellerTranslation } from '../lib/seller-locale'
 import AppModal from './AppModal.vue'
 import type { OrderAddressSnapshot, OrderParcel, ParcelEvent } from '../lib/api'
+import { formatOrderCopyRows } from '../lib/order-copy-format'
 
 const sellerText = useSellerTranslation()
 
@@ -61,8 +62,7 @@ async function copyPackedOrder(parcel: OrderParcel) {
     translate('邮编：{0}', [address?.postalCode || '']),
     translate('邮箱：{0}', [info.customerEmail || '']),
     '------------------------------------------------',
-    translate('产品代号\t数量'),
-    ...parcel.items.map(item => `${item.sku}\t${item.quantity}`),
+    ...formatOrderCopyRows(parcel.items, translate('产品代号'), translate('数量')),
   ]
   window.clearTimeout(packedOrderCopyTimer)
   packedOrderCopyFeedback.value = null

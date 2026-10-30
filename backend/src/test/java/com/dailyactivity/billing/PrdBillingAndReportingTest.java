@@ -58,10 +58,10 @@ class PrdBillingAndReportingTest extends PrdDatabaseTest {
     }
 
     @Test
-    @DisplayName("取消订单不计入账单列表、总数及下单账单数")
-    void cancelledOrdersAreExcludedFromBillListAndTotals() {
+    @DisplayName("取消订单不计入账单列表和下单账单数")
+    void cancelledOrdersAreExcludedFromBillListAndOrderBillCounts() {
         Map<String, Object> summaryBefore = billing.summary(seller());
-        long billCountBefore = ((Number) summaryBefore.get("totalBills")).longValue();
+        long billCountBefore = billing.page(seller(), null, null, null, null, null, 1).total();
         long orderBillCountBefore = ((Number) summaryBefore.get("orderBills")).longValue();
         Map<String, Object> activeOrder = createOrder("billing-active-order", 1);
         Map<String, Object> cancelledOrder = createOrder("billing-cancelled-order", 1);
@@ -72,7 +72,6 @@ class PrdBillingAndReportingTest extends PrdDatabaseTest {
         assertThat(page.items()).allSatisfy(bill -> assertThat(bill.get("orderStatus")).isNotEqualTo("cancelled"));
         assertThat(billing.page(seller(), "order_receivable", null, 1).total()).isEqualTo(orderBillCountBefore + 1);
         assertThat(billing.page(seller(), null, null, (String) cancelledOrder.get("orderNo"), null, null, 1).total()).isZero();
-        assertThat(billing.summary(seller()).get("totalBills")).isEqualTo(billCountBefore + 2);
         assertThat(page.items()).anySatisfy(bill -> assertThat(bill.get("orderId")).isEqualTo(activeOrder.get("id")));
     }
 

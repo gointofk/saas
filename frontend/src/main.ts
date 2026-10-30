@@ -6,7 +6,12 @@ import './styles.css'
 
 async function start() {
   const platform=/^\/platform(?:\/|$)/.test(location.pathname)
-  if (!platform && !/^\/admin(?:\/|$)/.test(location.pathname)) {
+  const admin = /^\/admin(?:\/|$)/.test(location.pathname)
+  if (admin) {
+    // A merchant hostname can brand the seller login page. Shared admin hosts
+    // may not resolve to a storefront, so this lookup must remain optional.
+    void loadStorefront().catch(() => {})
+  } else if (!platform) {
     document.querySelector('#app')!.textContent='正在加载商城…'
     try { await loadStorefront() }
     catch (e) {

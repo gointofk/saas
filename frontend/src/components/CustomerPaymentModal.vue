@@ -130,7 +130,6 @@ async function copyReceivingAddress() {
 
     <section class="payment-modal-section payment-step-panel">
       <h2 class="address-title">{{ t('Pay for your order') }}</h2>
-      <p class="panel-intro">{{ t('Choose a payment channel for this order. Payment is recorded separately for each order.') }}</p>
       <CustomerPaymentMethodPicker
         :model-value="paymentMethod"
         :crypto-enabled="cryptoEnabled"
@@ -144,8 +143,13 @@ async function copyReceivingAddress() {
       />
 
       <template v-if="paymentMethod === 'crypto' && channels.length">
+      <section class="crypto-payment-flow" :aria-label="t('Cryptocurrency payment')">
+      <header class="crypto-payment-flow-heading">
+        <span class="crypto-payment-flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M18 7V5.5A2.5 2.5 0 0 0 15.5 3h-9A2.5 2.5 0 0 0 4 5.5V7m10.5 6.5H21"/><circle cx="15" cy="13.5" r=".8"/></svg></span>
+        <strong>{{ t('Cryptocurrency payment') }}</strong>
+      </header>
       <fieldset class="payment-channel-list">
-        <legend class="sr-only">{{ t('Choose a payment channel') }}</legend>
+        <legend>{{ t('Choose a payment channel') }}</legend>
         <label v-for="(channel, index) in channels" :key="channel.id" class="payment-channel-option" :class="{ selected: paymentChannel === channel.id }">
           <input autocomplete="off" :checked="paymentChannel === channel.id" type="radio" name="history-payment-channel" :value="channel.id" :disabled="pending" @change="emit('update:paymentChannel', channel.id)">
           <span class="payment-channel-copy"><strong>{{ channel.name }}</strong><small>{{ channel.currencyCode }} · {{ channel.network }}</small></span>
@@ -156,8 +160,7 @@ async function copyReceivingAddress() {
 
       <div v-if="selectedChannel" class="selected-channel-panel">
         <div class="selected-channel-heading">
-          <div><small>{{ t('Selected channel') }}</small><strong>{{ selectedChannel.name }}</strong><span>{{ selectedChannel.currencyCode }} · {{ selectedChannel.network }}</span></div>
-          <span class="channel-network-tag">{{ selectedChannel.network }}</span>
+          <div><strong>{{ selectedChannel.name }}</strong><span>{{ selectedChannel.currencyCode }} · {{ selectedChannel.network }}</span></div>
         </div>
         <div class="payment-transfer-grid">
           <button v-if="qrUrl" class="payment-qr-button" type="button" :aria-label="t('Enlarge payment QR code')" @click="qrPreviewOpen = true">
@@ -187,6 +190,7 @@ async function copyReceivingAddress() {
       </div>
 
       <div class="payment-reference-fields">
+        <h3 class="payment-reference-heading">{{ t('After sending payment') }}</h3>
         <CustomerPaymentAmount :model-value="paymentAmount" :remaining="order.remainingAmount" :disabled="pending" :t="t" @update:model-value="emit('update:paymentAmount', $event)" />
         <label class="transaction-field">
           <span>{{ t('Transaction ID / Tx hash') }}</span>
@@ -194,6 +198,7 @@ async function copyReceivingAddress() {
           <small>{{ t('Paste the transaction ID after sending payment. The seller will verify this payment.') }}</small>
         </label>
       </div>
+      </section>
       </template>
     </section>
 

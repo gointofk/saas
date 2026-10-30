@@ -5,6 +5,7 @@ import com.dailyactivity.identity.domain.port.CustomerRepository;
 import com.dailyactivity.config.RegistrationProperties;
 import com.dailyactivity.common.ApiException;
 import com.dailyactivity.merchant.domain.port.MerchantSecretProtector;
+import com.dailyactivity.merchant.domain.port.MerchantRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,19 +18,22 @@ import java.util.Locale;
 public class CustomerRegistrationTransaction {
     private final CustomerRegistrationRepository challenges;
     private final CustomerRepository customers;
+    private final MerchantRepository merchants;
     private final RegistrationProperties properties;
     private final MerchantSecretProtector secretCipher;
 
     public CustomerRegistrationTransaction(CustomerRegistrationRepository challenges, CustomerRepository customers,
-                                           RegistrationProperties properties, MerchantSecretProtector secretCipher) {
+                                           MerchantRepository merchants, RegistrationProperties properties,
+                                           MerchantSecretProtector secretCipher) {
         this.challenges = challenges;
         this.customers = customers;
+        this.merchants = merchants;
         this.properties = properties;
         this.secretCipher = secretCipher;
     }
 
     @Transactional
-    public Result register(long merchantId, String email, String verificationCode, String name, String password) {
+    public Result register(long merchantId, String email, String verificationCode, String name, String password, String inviteCode) {
         Instant now = Instant.now();
         var challenge = challenges.lock(merchantId, email).orElse(null);
         if (challenge == null || challenge.consumedAt() != null || !challenge.expiresAt().isAfter(now)) return Result.INVALID_CODE;
@@ -43,10 +47,11 @@ public class CustomerRegistrationTransaction {
             challenges.consume(merchantId, email);
             return Result.EMAIL_EXISTS;
         }
+        Long referrerId = resolveReferrer(merchantId, inviteCode);
         String passwordHash = com.dailyactivity.auth.infrastructure.PasswordHasher.hash(password);
         for (int attempt = 0; attempt < 10; attempt++) {
             try {
-                customers.createSelfRegistered(merchantId, email, name, passwordHash, CustomerCodeGenerator.next(), now);
+                customers.createSelfRegistered(merchantId, email, name, passwordHash, CustomerCodeGenerator.next(), referrerId, now);
                 challenges.consume(merchantId, email);
                 return Result.CREATED;
             } catch (ApiException e) {
@@ -58,6 +63,20 @@ public class CustomerRegistrationTransaction {
             }
         }
         throw ApiException.conflict("CUSTOMER_CODE_UNAVAILABLE", "Unable to allocate a customer code. Try again later.");
+    }
+
+    private Long resolveReferrer(long merchantId, String input) {
+        if (input == null || input.isBlank()) return null;
+        var merchant = merchants.lock(merchantId);
+        if (!merchant.active()) throw ApiException.forbidden("This storefront is unavailable.");
+        if (!merchant.registrationEnabled()) throw ApiException.forbidden("Customer registration is not available for this storefront.");
+        if (!merchant.commissionEnabled())
+            throw ApiException.forbidden("COMMISSION_FEATURE_DISABLED", "Commission features are disabled for this merchant.");
+        String code = input.trim().toUpperCase(Locale.ROOT);
+        if (!code.matches("[0-9A-Z]{8}"))
+            throw ApiException.badRequest("INVALID_INVITATION_CODE", "Invitation code is invalid.");
+        return customers.lockActiveReferrerIdByCode(merchantId, code)
+                .orElseThrow(() -> ApiException.badRequest("INVALID_INVITATION_CODE", "Invitation code is invalid."));
     }
 
     private String codeHash(long merchantId, String email, String code) {

@@ -50,7 +50,7 @@ button, input, select, textarea { font-family: inherit; }
 .panel-header h2 { color: var(--color-ink); font-family: inherit; font-size: 25px; font-weight: 700; letter-spacing: 0; }
 .topbar-logout { cursor: pointer; }
 .panel-header { align-items: center; }
-.brand-logo { width: 44px; height: 44px; border-radius: 50%; }
+.brand-logo { width: auto; max-width: 144px; height: 44px; flex: 0 0 auto; border-radius: 0; object-fit: contain; }
 .filter-title { margin: 0; color: var(--color-primary-strong); font-size: 25px; font-weight: 600; white-space: nowrap; }
 .sku-badge { padding: 4px 8px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-soft); color: var(--color-primary); font-size: 11px; font-weight: 800; letter-spacing: .06em; }
 .card-bottom { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--color-line); }

@@ -36,16 +36,19 @@ public class BillingService {
         int page = RequestValidation.page(requestedPage);
         if (type != null && !type.isBlank() && !java.util.List.of("order_receivable", "commission_payable").contains(type))
             throw com.dailyactivity.common.ApiException.badRequest("INVALID_BILL_TYPE", "Bill type filter is invalid.");
+        boolean commissionEnabled = accounts.commissionEnabled(principal.merchantId());
+        if (!commissionEnabled && "commission_payable".equals(type)) accounts.requireCommissionEnabled(principal.merchantId());
+        String effectiveType = !commissionEnabled && (type == null || type.isBlank()) ? "order_receivable" : type;
         if (status != null && !status.isBlank()) {
-            java.util.List<String> supportedStatuses = "order_receivable".equals(type)
+            java.util.List<String> supportedStatuses = "order_receivable".equals(effectiveType)
                     ? java.util.List.of("unpaid", "pending_verification", "partially_paid", "paid")
-                    : "commission_payable".equals(type) ? java.util.List.of("estimated", "payable", "settled") : java.util.List.of();
+                    : "commission_payable".equals(effectiveType) ? java.util.List.of("estimated", "payable", "settled") : java.util.List.of();
             if (!supportedStatuses.contains(status))
                 throw com.dailyactivity.common.ApiException.badRequest("INVALID_BILL_STATUS", "Choose a status supported by the selected bill type.");
         }
         if (from != null && to != null && from.isAfter(to))
             throw com.dailyactivity.common.ApiException.badRequest("INVALID_DATE_RANGE", "The start date must not be after the end date.");
-        var filter = new CommissionRepository.BillFilter(type, status, query, from, to);
+        var filter = new CommissionRepository.BillFilter(effectiveType, status, query, from, to);
         return PageResponse.of(bills.bills(principal.merchantId(), filter, page).stream().map(this::view).toList(), page, bills.billCount(principal.merchantId(), filter));
     }
 
@@ -54,21 +57,20 @@ public class BillingService {
         accounts.seller(principal);
         var summary = bills.billSummary(principal.merchantId());
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("totalBills", summary.totalBills());
+        boolean commissionEnabled = accounts.commissionEnabled(principal.merchantId());
         result.put("orderBills", summary.orderBills());
         result.put("pendingOrders", summary.pendingOrders());
         result.put("orderAmount", summary.orderAmount());
         result.put("receivedAmount", summary.receivedAmount());
         result.put("pendingReceivableAmount", summary.pendingReceivableAmount());
-        result.put("commissionBills", summary.commissionBills());
-        result.put("payableCommissionBills", summary.payableCommissionBills());
-        result.put("commissionAmount", summary.commissionAmount());
-        result.put("settledCommissionAmount", summary.settledCommissionAmount());
-        result.put("payableCommissionAmount", summary.payableCommissionAmount());
-        result.put("estimatedCommissionAmount", summary.estimatedCommissionAmount());
-        // Keep the original keys available for clients that already consume them.
-        result.put("receivable", summary.orderBills());
-        result.put("payable", summary.commissionBills());
+        if (commissionEnabled) {
+            result.put("commissionBills", summary.commissionBills());
+            result.put("payableCommissionBills", summary.payableCommissionBills());
+            result.put("commissionAmount", summary.commissionAmount());
+            result.put("settledCommissionAmount", summary.settledCommissionAmount());
+            result.put("payableCommissionAmount", summary.payableCommissionAmount());
+            result.put("estimatedCommissionAmount", summary.estimatedCommissionAmount());
+        }
         return result;
     }
 
@@ -76,6 +78,8 @@ public class BillingService {
     public Map<String, Object> billOrder(Principal principal, long billId) {
         accounts.requireMenu(principal, "bills");
         var bill = bills.bill(principal.merchantId(), billId).orElseThrow(() -> com.dailyactivity.common.ApiException.notFound("Billing entry not found."));
+        if (!accounts.commissionEnabled(principal.merchantId()) && "commission_payable".equals(bill.type()))
+            throw com.dailyactivity.common.ApiException.notFound("Billing entry not found.");
         return orders.detail(principal, bill.orderId());
     }
 

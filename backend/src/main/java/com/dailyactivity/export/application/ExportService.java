@@ -39,7 +39,7 @@ public class ExportService {
         String type = normalizeType(typeValue);
         requireMenu(principal, type);
         long merchantId = principal.merchantId();
-        List<Long> ids = resolveIds(principal.merchantId(), type, request);
+        List<Long> ids = resolveIds(principal.merchantId(), type, request, accounts.commissionEnabled(merchantId));
         if (ids.isEmpty()) throw ApiException.badRequest("EMPTY_EXPORT_SELECTION", "No records match the export selection.");
         List<Map<String, Object>> rows = repository.rows(merchantId, type, ids);
         if (rows.size() > properties.maxRows())
@@ -52,12 +52,12 @@ public class ExportService {
         String type = normalizeType(typeValue);
         requireMenu(principal, type);
         long merchantId = principal.merchantId();
-        ExportRepository.Filter filter = filter(type, request == null ? null : request.filter());
+        ExportRepository.Filter filter = filter(type, request == null ? null : request.filter(), accounts.commissionEnabled(merchantId), merchantId);
         return new ExportPreview(repository.matchingRecordCount(merchantId, type, filter), repository.outputRowCount(merchantId, type, filter), properties.maxRows());
     }
 
-    private List<Long> resolveIds(long merchantId, String type, ExportRequest request) {
-        ExportRepository.Filter filter = filter(type, request == null ? null : request.filter());
+    private List<Long> resolveIds(long merchantId, String type, ExportRequest request, boolean commissionEnabled) {
+        ExportRepository.Filter filter = filter(type, request == null ? null : request.filter(), commissionEnabled, merchantId);
         List<Long> ids = repository.matchingIds(merchantId, type, filter, properties.maxRows() + 1);
         if (ids.size() > properties.maxRows())
             throw ApiException.unprocessable("EXPORT_LIMIT_EXCEEDED", "The export selection exceeds 10000 rows.");
@@ -120,12 +120,17 @@ public class ExportService {
         return prefix + "-" + DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneId.of("UTC")).format(Instant.now()) + ".csv";
     }
 
-    private ExportRepository.Filter filter(String type, Map<String, String> raw) {
+    private ExportRepository.Filter filter(String type, Map<String, String> raw, boolean commissionEnabled, long merchantId) {
         Map<String, String> values = raw == null ? Map.of() : raw;
         Instant from = instant(values.get("from"), "from");
         Instant to = instant(values.get("to"), "to");
         if (from != null && to != null && !from.isBefore(to)) throw ApiException.badRequest("INVALID_DATE_RANGE", "from must be before to.");
-        return new ExportRepository.Filter(values.get("status"), values.get("paymentStatus"), limitQuery(values.get("q")), from, to, values.get("type"));
+        String billType = values.get("type");
+        if ("bills".equals(type) && !commissionEnabled) {
+            if ("commission_payable".equals(billType)) accounts.requireCommissionEnabled(merchantId);
+            billType = "order_receivable";
+        }
+        return new ExportRepository.Filter(values.get("status"), values.get("paymentStatus"), limitQuery(values.get("q")), from, to, billType);
     }
 
     private Instant instant(String value, String name) {
@@ -144,6 +149,7 @@ public class ExportService {
     }
 
     private void requireMenu(Principal principal, String type) {
+        if ("commissions".equals(type)) accounts.requireCommissionEnabled(principal.merchantId());
         accounts.requireMenu(principal, switch (type) {
             case "orders" -> "orders";
             case "commissions" -> "commissions";

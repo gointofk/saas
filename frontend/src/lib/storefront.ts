@@ -1,9 +1,22 @@
 import { reactive } from 'vue'
 import { request } from './api'
-export const storefrontBrand = reactive({ name: '', logoUrl: '', theme: 'classic', registrationEnabled: false })
+export const storefrontBrand = reactive({ name: '', logoUrl: '', theme: 'classic', registrationEnabled: false, commissionEnabled: true })
+
+export function applyMerchantBranding(name: string, logoUrl: string) {
+  document.title = name || 'YTPEPS'
+  let icon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+  if (!icon) {
+    icon = document.createElement('link')
+    icon.rel = 'icon'
+    document.head.append(icon)
+  }
+  icon.removeAttribute('type')
+  icon.href = logoUrl || '/ytpeps-logo.svg'
+}
+
 export async function loadStorefront() {
   const brand = await request<typeof storefrontBrand>('/customer/storefront', {}, 'customer', { token: null, clearOnUnauthorized: false })
   Object.assign(storefrontBrand, brand)
-  document.title = brand.name
+  applyMerchantBranding(brand.name, brand.logoUrl)
   document.documentElement.dataset.storefrontTheme = brand.theme
 }

@@ -1,7 +1,6 @@
 package com.dailyactivity.payment.infrastructure;
 
 import com.dailyactivity.common.ApiException;
-import com.dailyactivity.auth.domain.Actor;
 import com.dailyactivity.payment.domain.port.PaymentRepository;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -30,18 +29,8 @@ public class JdbcPaymentRepository implements PaymentRepository {
                 });
     }
 
-    @Override
-    public void updatePaymentMethods(long merchantId, PaymentMethods methods, Actor actor) {
-        int updated = jdbc.update("UPDATE merchant SET crypto_payment_enabled=:cryptoEnabled,online_payment_link_enabled=:linkEnabled,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actorId,updated_by_type=:actorType WHERE id=:merchantId",
-                new MapSqlParameterSource().addValue("merchantId", merchantId)
-                        .addValue("cryptoEnabled", methods.cryptoEnabled())
-                        .addValue("linkEnabled", methods.onlinePaymentLinkEnabled())
-                        .addValue("actorId", actor.id()).addValue("actorType", actor.type()));
-        if (updated != 1) throw ApiException.notFound("Merchant not found.");
-    }
-
     private String select() {
-        return "SELECT id,name,currency_code,network,receiving_address,instructions,additional_rate,qr_file_uuid,active,sort_no FROM payment_channel WHERE merchant_id=:merchantId AND deleted=0";
+        return "SELECT id,name,currency_code,network,receiving_address,instructions,additional_rate,qr_file_uuid,active,sort_no,updated_at FROM payment_channel WHERE merchant_id=:merchantId AND deleted=0";
     }
 
     @Override
@@ -97,6 +86,6 @@ public class JdbcPaymentRepository implements PaymentRepository {
     }
 
     private Channel channel(java.sql.ResultSet r) throws java.sql.SQLException {
-        return new Channel(r.getLong("id"), r.getString("name"), r.getString("currency_code"), r.getString("network"), r.getString("receiving_address"), r.getString("instructions"), r.getBigDecimal("additional_rate"), r.getString("qr_file_uuid"), r.getBoolean("active"), r.getInt("sort_no"));
+        return new Channel(r.getLong("id"), r.getString("name"), r.getString("currency_code"), r.getString("network"), r.getString("receiving_address"), r.getString("instructions"), r.getBigDecimal("additional_rate"), r.getString("qr_file_uuid"), r.getBoolean("active"), r.getInt("sort_no"), r.getTimestamp("updated_at").toInstant());
     }
 }

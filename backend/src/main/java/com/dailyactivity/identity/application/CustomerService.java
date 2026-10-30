@@ -32,18 +32,19 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public PageResponse<Map<String, Object>> page(Principal p, String q, Integer page, String customerType, Boolean unpaid) {
         accounts.seller(p);
+        boolean commissionEnabled = accounts.commissionEnabled(p.merchantId());
         String type = customerType == null || customerType.isBlank() || "all".equals(customerType) ? null : customerType;
         if (type != null && !List.of("partner", "regular").contains(type))
             throw ApiException.badRequest("INVALID_CUSTOMER_TYPE", "Customer type filter is invalid.");
         boolean unpaidOnly = Boolean.TRUE.equals(unpaid);
         int current = RequestValidation.page(page);
-        return PageResponse.of(customers.page(p.merchantId(), q, type, unpaidOnly, current).stream().map(this::view).toList(), current, customers.count(p.merchantId(), q, type, unpaidOnly));
+        return PageResponse.of(customers.page(p.merchantId(), q, type, unpaidOnly, current).stream().map(c -> view(c, commissionEnabled)).toList(), current, customers.count(p.merchantId(), q, type, unpaidOnly));
     }
 
     @Transactional(readOnly = true)
     public Map<String, Object> get(Principal p, long id) {
         accounts.seller(p);
-        return view(customers.find(p.merchantId(), id).orElseThrow(() -> ApiException.notFound("Customer not found.")));
+        return view(customers.find(p.merchantId(), id).orElseThrow(() -> ApiException.notFound("Customer not found.")), accounts.commissionEnabled(p.merchantId()));
     }
 
     @Transactional
@@ -52,13 +53,15 @@ public class CustomerService {
         validate(r, true);
         if (!r.password().equals(r.confirmation()))
             throw ApiException.badRequest("PASSWORD_CONFIRMATION_MISMATCH", "Password confirmation does not match.");
-        validateReferrer(p, r.referrerId(), r.commissionRate(), null);
+        boolean commissionEnabled = accounts.commissionEnabled(p.merchantId());
+        if (commissionEnabled) validateReferrer(p, r.referrerId(), r.commissionRate(), null);
+        else rejectCommissionInputWhenDisabled(r.referrerId(), r.commissionRate());
         String email = r.email().trim().toLowerCase(Locale.ROOT);
         if (users.findCustomerByEmail(p.merchantId(), email).isPresent())
             throw ApiException.conflict("CUSTOMER_EMAIL_EXISTS", "Email is already in use.");
         for (int attempt = 0; attempt < 10; attempt++) {
             try {
-                long id = customers.create(p.merchantId(), new CustomerRepository.CustomerInput(email, r.name().trim(), PasswordHasher.hash(r.password()), r.customerType(), r.priceTier(), r.referrerId(), r.commissionRate()), newCode(), p.userId());
+                long id = customers.create(p.merchantId(), new CustomerRepository.CustomerInput(email, r.name().trim(), PasswordHasher.hash(r.password()), r.customerType(), r.priceTier(), commissionEnabled ? r.referrerId() : null, commissionEnabled ? r.commissionRate() : null), newCode(), p.userId());
                 return Map.of("id", id);
             } catch (com.dailyactivity.common.ApiException e) {
                 if (!"CUSTOMER_IDENTIFIER_EXISTS".equals(e.code())) throw e;
@@ -73,11 +76,19 @@ public class CustomerService {
     public void update(Principal p, long id, CustomerRequest r) {
         accounts.requireMenu(p, "customers");
         validate(r, false);
-        validateReferrer(p, r.referrerId(), r.commissionRate(), id);
+        boolean commissionEnabled = accounts.commissionEnabled(p.merchantId());
+        CustomerRepository.Customer existing = null;
+        if (commissionEnabled) validateReferrer(p, r.referrerId(), r.commissionRate(), id);
+        else {
+            rejectCommissionInputWhenDisabled(r.referrerId(), r.commissionRate());
+            existing = customers.find(p.merchantId(), id).orElseThrow(() -> ApiException.notFound("Customer not found."));
+        }
         boolean resetPassword = r.password() != null && !r.password().isBlank();
         if (resetPassword && !r.password().equals(r.confirmation()))
             throw ApiException.badRequest("PASSWORD_CONFIRMATION_MISMATCH", "Password confirmation does not match.");
-        customers.update(p.merchantId(), id, new CustomerRepository.CustomerInput(r.email().trim().toLowerCase(Locale.ROOT), r.name().trim(), null, r.customerType(), r.priceTier(), r.referrerId(), r.commissionRate()), p.userId());
+        Long referrerId = commissionEnabled ? r.referrerId() : existing.referrerId();
+        BigDecimal commissionRate = commissionEnabled ? r.commissionRate() : existing.commissionRate();
+        customers.update(p.merchantId(), id, new CustomerRepository.CustomerInput(r.email().trim().toLowerCase(Locale.ROOT), r.name().trim(), null, r.customerType(), r.priceTier(), referrerId, commissionRate), p.userId());
         if (resetPassword)
             customers.setPassword(p.merchantId(), id, PasswordHasher.hash(r.password()), p.userId());
     }
@@ -99,19 +110,22 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> referrals(Principal p) {
         var a = accounts.customer(p);
+        accounts.requireCommissionEnabled(p.merchantId());
         return customers.customerReferrals(p.merchantId(), a.id()).stream().map(this::referralView).toList();
     }
 
     @Transactional(readOnly = true)
     public PageResponse<Map<String, Object>> adminReferrals(Principal p, long customerId, Integer page) {
         accounts.requireMenu(p, "customers");
+        accounts.requireCommissionEnabled(p.merchantId());
         customers.find(p.merchantId(), customerId).orElseThrow(() -> ApiException.notFound("Customer not found."));
         int current = RequestValidation.page(page);
-        return PageResponse.of(customers.directReferrals(p.merchantId(), customerId, current).stream().map(this::view).toList(), current, customers.directReferralCount(p.merchantId(), customerId));
+        return PageResponse.of(customers.directReferrals(p.merchantId(), customerId, current).stream().map(c -> view(c, true)).toList(), current, customers.directReferralCount(p.merchantId(), customerId));
     }
 
     @Transactional(readOnly = true)
     public Map<String, Object> referralSummary(Principal p) {
+        accounts.requireCommissionEnabled(p.merchantId());
         var s = customers.referralSummary(p.merchantId(), accounts.customer(p).id());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("currentCount", s.currentCount());
@@ -164,11 +178,16 @@ public class CustomerService {
             throw ApiException.badRequest("INVALID_COMMISSION_RATE", "Commission rate must be an integer between 0 and 20.");
     }
 
+    private void rejectCommissionInputWhenDisabled(Long referrerId, BigDecimal rate) {
+        if (referrerId != null || (rate != null && rate.signum() != 0))
+            throw ApiException.forbidden("COMMISSION_FEATURE_DISABLED", "Commission features are disabled for this merchant.");
+    }
+
     private String newCode() {
         return CustomerCodeGenerator.next();
     }
 
-    private Map<String, Object> view(CustomerRepository.Customer c) {
+    private Map<String, Object> view(CustomerRepository.Customer c, boolean commissionEnabled) {
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("id", c.id());
         v.put("userCode", c.code());
@@ -178,9 +197,11 @@ public class CustomerService {
         v.put("priceTier", c.priceTier());
         v.put("active", c.active());
         v.put("orderCount", c.orderCount());
-        v.put("referrerId", c.referrerId());
-        v.put("commissionRate", c.commissionRate());
-        v.put("referralCount", c.referralCount());
+        if (commissionEnabled) {
+            v.put("referrerId", c.referrerId());
+            v.put("commissionRate", c.commissionRate());
+            v.put("referralCount", c.referralCount());
+        }
         v.put("totalAmount", c.totalAmount());
         v.put("unpaidCount", c.unpaidCount());
         v.put("unpaidAmount", c.unpaidAmount());

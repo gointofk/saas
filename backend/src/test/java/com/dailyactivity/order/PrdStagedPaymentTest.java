@@ -5,7 +5,6 @@ import com.dailyactivity.auth.application.AccountService;
 import com.dailyactivity.order.application.OrderService;
 import com.dailyactivity.billing.application.BillingService;
 import com.dailyactivity.identity.domain.port.CustomerRepository;
-import com.dailyactivity.payment.application.PaymentService;
 import com.dailyactivity.support.PrdDatabaseTest;
 import com.dailyactivity.support.PrdTestFixture;
 import org.junit.jupiter.api.DisplayName;
@@ -32,7 +31,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class PrdStagedPaymentTest extends PrdDatabaseTest {
     @Autowired private BillingService bills;
     @Autowired private CustomerRepository customers;
-    @Autowired private PaymentService payments;
     @Autowired private MockMvc http;
     @Autowired private AccountService accounts;
 
@@ -80,7 +78,7 @@ class PrdStagedPaymentTest extends PrdDatabaseTest {
         assertThatThrownBy(() -> orders.requestPaymentLink(customer(), id))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("PAYMENT_METHOD_NOT_AVAILABLE");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM order_event WHERE order_id=? AND action='payment_link_requested'", Long.class, id)).isZero();
-        payments.updatePaymentMethods(seller(), new PaymentService.PaymentMethodsRequest(true, true));
+        jdbc.update("UPDATE merchant SET online_payment_link_enabled=1 WHERE id=?", data.customer().merchantId());
 
         String token = (String) accounts.customerLogin(data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD).get("accessToken");
         String domain = jdbc.queryForObject("SELECT domain FROM merchant WHERE id=?", String.class, data.customer().merchantId());
@@ -120,7 +118,7 @@ class PrdStagedPaymentTest extends PrdDatabaseTest {
     @DisplayName("停用加密货币后拒绝新的加密货币付款申报")
     void disabledCryptoPaymentCannotBeSubmitted() {
         var order = createOrder("crypto-disabled", 1);
-        payments.updatePaymentMethods(seller(), new PaymentService.PaymentMethodsRequest(false, true));
+        jdbc.update("UPDATE merchant SET crypto_payment_enabled=0,online_payment_link_enabled=1 WHERE id=?", data.customer().merchantId());
 
         assertThatThrownBy(() -> orders.submitPayment(customer(), orderId(order), new OrderService.PaymentRequest(
                 data.channelId(), "crypto-disabled-reference", (BigDecimal) order.get("total"), version(order), new BigDecimal("30.00"))))

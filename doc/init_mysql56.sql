@@ -3,7 +3,8 @@
 -- 不含 CREATE DATABASE/USE，不修改用户账户，不导入 Demo 或默认密码。
 -- 35 张 InnoDB 实体表；无视图、外键、触发器、存储过程、会话表。
 -- 不含原生 JSON、生成列、CHECK、CTE 或 5.7/8.x 专有 SQL。
--- 所有文件引用使用 file_asset.file_uuid；文件内容仍在本地磁盘，业务 JSON 按字段约定保存为 LONGTEXT 或有界 VARCHAR。
+-- COA、收款二维码和履约附件使用 file_asset.file_uuid；商户 Logo 使用公开品牌图片路径写入 merchant.logo_url。
+-- 文件内容仍在本地磁盘，业务 JSON 按字段约定保存为 LONGTEXT 或有界 VARCHAR。
 -- 每个索引按 COMPACT 的 767 字节限制设计，唯一键不使用前缀缩短。
 -- 仅带 deleted 字段的主数据和可重复关系由应用执行 UPDATE deleted=id，并写 updated_at/updated_by_user_id。
 -- 数量/金额/枚举/引用/0%不结算等规则由应用层事务校验。
@@ -27,6 +28,7 @@ CREATE TABLE merchant (
   customer_registration_enabled TINYINT NOT NULL DEFAULT 0,
   crypto_payment_enabled TINYINT NOT NULL DEFAULT 1,
   online_payment_link_enabled TINYINT NOT NULL DEFAULT 0,
+  commission_enabled TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用佣金功能',
   shipping_fee DECIMAL(18,2) NOT NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -138,6 +140,7 @@ CREATE TABLE seller (
   name VARCHAR(100) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   active TINYINT NOT NULL DEFAULT 1,
+  merchant_admin TINYINT NOT NULL DEFAULT 0,
   auth_version BIGINT NOT NULL DEFAULT 0,
   last_login_at DATETIME(6) NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -147,7 +150,8 @@ CREATE TABLE seller (
   updated_by_user_id BIGINT NULL,
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   deleted BIGINT NOT NULL DEFAULT 0,
-  PRIMARY KEY(id), UNIQUE KEY uk_seller_account(account), KEY idx_seller_merchant(merchant_id,deleted,active,id)
+  PRIMARY KEY(id), UNIQUE KEY uk_seller_account(account), KEY idx_seller_merchant(merchant_id,deleted,active,id),
+  KEY idx_seller_merchant_admin(merchant_id,merchant_admin,deleted,id)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE admin (
@@ -333,6 +337,7 @@ CREATE TABLE `sales_order` (
   `referrer_id_snapshot` BIGINT NULL COMMENT '下单时推荐人客户ID',
   `referrer_name_snapshot` VARCHAR(100) NULL COMMENT '推荐人名称快照',
   `commission_rate_snapshot` DECIMAL(5,2) NULL COMMENT '下单时佣金比例快照',
+  `commission_enabled_snapshot` TINYINT NOT NULL DEFAULT 1 COMMENT '下单时商户佣金开关快照',
   `completed_at` DATETIME(6) NULL COMMENT '订单完成时间',
   `cancelled_at` DATETIME(6) NULL COMMENT '取消时间',
   `coa_captured_at` DATETIME(6) NULL COMMENT 'COA快照完成时间',
@@ -460,7 +465,7 @@ CREATE TABLE `file_asset` (
   `stored_file_name` VARCHAR(64) NOT NULL COMMENT '服务端存储文件名',
   `original_file_name` VARCHAR(255) NOT NULL COMMENT '原始文件名',
   `purpose` VARCHAR(32) NOT NULL COMMENT '文件用途：coa、payment_channel_qr、order_fulfillment、order_shipping_label',
-  `media_type` VARCHAR(64) NOT NULL COMMENT '文件MIME类型：application/pdf、image/jpeg、image/png',
+  `media_type` VARCHAR(64) NOT NULL COMMENT '文件MIME类型：application/pdf、image/jpeg、image/png、image/gif、image/bmp',
   `size_bytes` BIGINT NOT NULL COMMENT '文件字节数',
   `sha256` CHAR(64) NOT NULL COMMENT '文件SHA-256摘要',
   `status` VARCHAR(16) NOT NULL DEFAULT 'available' COMMENT '文件状态：available可引用，unavailable不可引用',
@@ -756,3 +761,13 @@ VALUES
   (10, 'members', '成员与权限', 100);
 
 COMMIT;
+
+-- 可选的首个平台管理员。执行本文件前可在同一 MySQL 会话设置以下变量；不设置时不会创建默认账号。
+-- @platform_password_hash 必须是 Argon2id 摘要，不接受明文密码。
+INSERT INTO admin(account,name,password_hash,active)
+SELECT LOWER(TRIM(@platform_account)),TRIM(@platform_name),@platform_password_hash,1
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM admin)
+  AND CHAR_LENGTH(TRIM(@platform_account)) BETWEEN 1 AND 64
+  AND CHAR_LENGTH(TRIM(@platform_name)) BETWEEN 1 AND 100
+  AND @platform_password_hash LIKE '$argon2id$%';

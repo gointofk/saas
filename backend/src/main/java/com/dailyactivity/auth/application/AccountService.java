@@ -222,6 +222,15 @@ public class AccountService {
         return merchants.find(p.merchantId()).orElseThrow().shippingFee();
     }
 
+    public boolean commissionEnabled(long merchantId) {
+        return merchants.find(merchantId).map(com.dailyactivity.merchant.domain.port.MerchantRepository.Merchant::commissionEnabled).orElse(false);
+    }
+
+    public void requireCommissionEnabled(long merchantId) {
+        if (!commissionEnabled(merchantId))
+            throw ApiException.forbidden("COMMISSION_FEATURE_DISABLED", "Commission features are disabled for this merchant.");
+    }
+
     private String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(java.util.Locale.ROOT);
     }

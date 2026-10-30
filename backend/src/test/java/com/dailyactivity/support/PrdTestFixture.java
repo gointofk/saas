@@ -56,8 +56,8 @@ public final class PrdTestFixture {
         String customerCode = unusedCustomerCode(jdbc, "C");
         String passwordHash = PasswordHasher.hash(CUSTOMER_PASSWORD);
 
-        jdbc.update("INSERT INTO seller(merchant_id,account,name,password_hash,active,auth_version,created_by_user_id,updated_by_user_id) "
-                        + "VALUES(?,?,?,?,1,0,NULL,NULL)",
+        jdbc.update("INSERT INTO seller(merchant_id,account,name,password_hash,active,merchant_admin,auth_version,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,1,1,0,NULL,NULL)",
                 merchantId, sellerAccount, "Test Admin", PasswordHasher.hash(SELLER_PASSWORD));
         long sellerId = jdbc.queryForObject("SELECT id FROM seller WHERE account=?", Long.class, sellerAccount);
         insertPermissions(jdbc, sellerId, sellerId,

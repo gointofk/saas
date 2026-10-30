@@ -32,10 +32,6 @@ public interface CommissionRepository {
 
     long settle(long merchantId, List<SettlementRequest> items, String remark, long actorId);
 
-    List<Bill> bills(long merchantId, String type, String status, int page);
-
-    long billCount(long merchantId, String type, String status);
-
     List<Bill> bills(long merchantId, BillFilter filter, int page);
 
     long billCount(long merchantId, BillFilter filter);
@@ -43,6 +39,8 @@ public interface CommissionRepository {
     BillSummary billSummary(long merchantId);
 
     Optional<Bill> bill(long merchantId, long id);
+
+    CommissionDisableReadiness commissionDisableReadiness(long merchantId);
 
     record Accrual(long id, long orderId, String orderNo, long referrerId, String referrer, String referred,
                    String status, BigDecimal rate, BigDecimal baseAmount, BigDecimal commissionAmount,
@@ -77,9 +75,16 @@ public interface CommissionRepository {
     record BillFilter(String type, String status, String query, Instant from, Instant to) {
     }
 
-    record BillSummary(long totalBills, long orderBills, long pendingOrders, BigDecimal orderAmount,
+    record BillSummary(long orderBills, long pendingOrders, BigDecimal orderAmount,
                        BigDecimal receivedAmount, BigDecimal pendingReceivableAmount, long commissionBills,
                        long payableCommissionBills, BigDecimal commissionAmount, BigDecimal settledCommissionAmount,
                        BigDecimal payableCommissionAmount, BigDecimal estimatedCommissionAmount) {
+    }
+
+    record CommissionDisableReadiness(long outstandingAccrualCount, BigDecimal outstandingAmount,
+                                      long pendingEligibleOrderCount) {
+        public boolean canDisable() {
+            return outstandingAccrualCount == 0 && pendingEligibleOrderCount == 0;
+        }
     }
 }

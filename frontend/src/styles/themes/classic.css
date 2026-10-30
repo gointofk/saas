@@ -79,9 +79,10 @@
   }
 
   .demo-customer-shell .customer-header .brand-logo {
-    width: 28px;
+    width: auto;
+    max-width: 128px;
     height: 28px;
-    border-radius: 0;
+    object-fit: contain;
   }
 
   .demo-customer-shell .customer-header .brand-name {
@@ -890,7 +891,8 @@
   }
 
   .customer-auth-screen .auth-header .brand-icon {
-    width: 28px;
+    width: auto;
+    max-width: 128px;
     height: 28px;
     padding: 0;
     border: 0;
@@ -947,6 +949,8 @@
     color: #1d1d1f;
   }
   .customer-auth-screen .auth-form input:focus { border-color: #06c; box-shadow: 0 0 0 3px rgba(0, 102, 204, .12); }
+  .customer-auth-screen .registration-form input.registration-input-invalid,
+  .customer-auth-screen .registration-form input.registration-input-invalid:focus { border-color: #c53434; box-shadow: 0 0 0 3px rgb(197 52 52 / 12%); }
   .customer-auth-screen .auth-form .button-dark {
     min-height: 46px;
     border-color: #06c;

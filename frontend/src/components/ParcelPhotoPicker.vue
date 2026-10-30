@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSellerTranslation } from '../lib/seller-locale'
+import { MAX_ORDER_ATTACHMENT_BYTES, ORDER_IMAGE_ACCEPT, ORDER_IMAGE_FORMATS, ORDER_IMAGE_MIME_TYPES } from '../lib/order-file-rules'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 const t = useSellerTranslation()
@@ -21,8 +22,8 @@ const cameraInput = ref<HTMLInputElement | null>(null)
 const error = ref('')
 const dragging = ref(false)
 const previews = ref(new Map<File, string>())
-const formats = computed(() => props.allowPdf ? 'JPG / PNG / PDF' : 'JPG / PNG')
-const accept = computed(() => props.allowPdf ? 'image/png,image/jpeg,application/pdf' : 'image/png,image/jpeg')
+const formats = computed(() => props.allowPdf ? `${ORDER_IMAGE_FORMATS} / PDF` : ORDER_IMAGE_FORMATS)
+const accept = computed(() => props.allowPdf ? `${ORDER_IMAGE_ACCEPT},application/pdf` : ORDER_IMAGE_ACCEPT)
 const unit = computed(() => props.allowPdf ? t('个') : t('张'))
 const kind = computed(() => props.allowPdf ? t('面单') : t('图片'))
 
@@ -37,9 +38,10 @@ onBeforeUnmount(() => { for (const url of previews.value.values()) URL.revokeObj
 function append(files: File[]) {
   if (props.disabled) return
   error.value = ''
-  const invalid = files.find(file => !['image/jpeg', 'image/png', ...(props.allowPdf ? ['application/pdf'] : [])].includes(file.type) || file.size === 0 || file.size > 5 * 1024 * 1024)
+  const allowedTypes = new Set<string>([...ORDER_IMAGE_MIME_TYPES, ...(props.allowPdf ? ['application/pdf'] : [])])
+  const invalid = files.find(file => !allowedTypes.has(file.type) || file.size === 0 || file.size > MAX_ORDER_ATTACHMENT_BYTES)
   if (invalid) {
-    error.value = `${invalid.name} 无法添加，请选择不超过 5 MiB 的 ${formats.value} 文件。`
+    error.value = `${invalid.name} 无法添加，请选择不超过 15 MiB 的 ${formats.value} 文件。`
     return
   }
   const next = [...props.modelValue]
@@ -83,7 +85,7 @@ function remove(index: number) {
         <button v-if="allowCamera" class="photo-add-button" type="button" :disabled="disabled || modelValue.length >= maxFiles" @click="cameraInput?.click()">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.5-2h7L17 7h3v12H4zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /></svg> {{ t('拍照上传') }} </button>
       </div>
-      <span>{{ maxFiles === 1 ? t('{0} · 不超过 5 MiB', [formats]) : t('可拖入多个文件 · {0} · 每个不超过 5 MiB', [formats]) }}</span>
+      <span>{{ maxFiles === 1 ? t('{0} · 不超过 15 MiB', [formats]) : t('可拖入多个文件 · {0} · 每个不超过 15 MiB', [formats]) }}</span>
     </div>
     <p v-if="error || (invalid && !modelValue.length)" class="photo-picker-error" role="alert">{{ t(error) || (optional ? t('请检查所选文件。') : t('请为本包添加至少 1 个文件。')) }}</p>
     <ul v-if="modelValue.length" class="photo-preview-list">

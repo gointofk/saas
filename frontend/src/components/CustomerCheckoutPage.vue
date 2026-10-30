@@ -291,7 +291,6 @@ function openOrderHistory() {
       <section v-if="checkoutStep === 3" class="payment-step-panel">
         <p class="panel-kicker">{{ t('Step 4 of 4') }}</p>
         <h2 class="address-title">{{ t('Pay for your order') }}</h2>
-        <p class="panel-intro">{{ t('Choose a payment channel for this order. Payment is recorded separately for each order.') }}</p>
         <div class="payment-step-order"><span>{{ t('Order') }} <strong>{{ orderNo }}</strong> · {{ t('is waiting for payment.') }}</span><strong>{{ money(orderTotal) }}</strong></div>
 
         <div v-if="!['unpaid', 'partially_paid'].includes(orderPaymentStatus || '')" class="payment-submitted-state">
@@ -313,9 +312,14 @@ function openOrderHistory() {
             @request="emit('requestPaymentLink')"
           />
           <template v-if="paymentMethod === 'crypto' && channels.length">
-          <p v-if="['pending_verification', 'partially_paid'].includes(orderPaymentStatus || '')">{{ t('Amount paid') }} {{ money(orderPaidAmount) }} · {{ t('Remaining to pay') }} {{ money(orderRemainingAmount) }}</p>
+          <section class="crypto-payment-flow" :aria-label="t('Cryptocurrency payment')">
+          <header class="crypto-payment-flow-heading">
+            <span class="crypto-payment-flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M18 7V5.5A2.5 2.5 0 0 0 15.5 3h-9A2.5 2.5 0 0 0 4 5.5V7m10.5 6.5H21"/><circle cx="15" cy="13.5" r=".8"/></svg></span>
+            <strong>{{ t('Cryptocurrency payment') }}</strong>
+          </header>
+          <p v-if="['pending_verification', 'partially_paid'].includes(orderPaymentStatus || '')" class="crypto-payment-balance">{{ t('Amount paid') }} {{ money(orderPaidAmount) }} <span aria-hidden="true">·</span> {{ t('Remaining to pay') }} {{ money(orderRemainingAmount) }}</p>
           <fieldset class="payment-channel-list">
-            <legend class="sr-only">{{ t('Choose a payment channel') }}</legend>
+            <legend>{{ t('Choose a payment channel') }}</legend>
             <label v-for="(channel, index) in channels" :key="channel.id" class="payment-channel-option" :class="{ selected: paymentChannel === channel.id }">
               <input autocomplete="off" :checked="paymentChannel === channel.id" type="radio" name="payment-channel" :value="channel.id" :disabled="paymentPending" @change="emit('update:paymentChannel', channel.id)">
               <span class="payment-channel-copy"><strong>{{ channel.name }}</strong><small>{{ channel.currencyCode }} · {{ channel.network }}</small></span>
@@ -326,8 +330,7 @@ function openOrderHistory() {
 
           <div v-if="selectedChannel" class="selected-channel-panel">
             <div class="selected-channel-heading">
-              <div><small>{{ t('Selected channel') }}</small><strong>{{ selectedChannel.name }}</strong><span>{{ selectedChannel.currencyCode }} · {{ selectedChannel.network }}</span></div>
-              <span class="channel-network-tag">{{ selectedChannel.network }}</span>
+              <div><strong>{{ selectedChannel.name }}</strong><span>{{ selectedChannel.currencyCode }} · {{ selectedChannel.network }}</span></div>
             </div>
             <div class="payment-transfer-grid">
               <button v-if="qrUrl" class="payment-qr-button" type="button" :aria-label="t('Enlarge payment QR code')" @click="qrPreviewOpen = true">
@@ -354,6 +357,7 @@ function openOrderHistory() {
           </div>
 
           <div class="payment-reference-fields">
+            <h3 class="payment-reference-heading">{{ t('After sending payment') }}</h3>
             <CustomerPaymentAmount :model-value="paymentAmount" :remaining="orderRemainingAmount ?? '0'" :disabled="paymentPending" :t="t" @update:model-value="emit('update:paymentAmount', $event)" />
             <label class="transaction-field">{{ t('Transaction ID / Tx hash') }}
               <input autocomplete="off" :value="transactionNo" maxlength="256" :disabled="paymentPending" :placeholder="t('Paste the transaction ID after sending')" @input="emit('update:transactionNo', ($event.target as HTMLInputElement).value)">
@@ -364,6 +368,7 @@ function openOrderHistory() {
             <button class="next-btn" type="button" :disabled="paymentPending || !paymentChannel || !transactionNo.trim() || !validPaymentAmount(paymentAmount, orderRemainingAmount ?? '0')" :aria-busy="paymentPending" @click="emit('submitPayment')"><span>{{ t(paymentPending ? 'Submitting…' : 'Verify payment') }}</span><strong v-if="orderTotal != null" class="payment-submit-total">{{ paymentAmountDue }}</strong></button>
             <button class="back-btn payment-later-btn" type="button" @click="emit('navigate', 'orders')">{{ t('Pay later / view order history') }}</button>
           </div>
+          </section>
           </template>
           <div v-if="paymentMethod === 'link'" class="payment-actions">
             <button class="back-btn payment-later-btn" type="button" @click="emit('navigate', 'orders')">{{ t('Pay later / view order history') }}</button>

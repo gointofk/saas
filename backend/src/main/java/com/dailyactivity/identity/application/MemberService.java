@@ -48,6 +48,7 @@ public class MemberService {
         accounts.requireMenu(p, "members");
         merchants.lock(p.merchantId());
         lockTargetMember(p, id);
+        protectMerchantAdministrator(p.merchantId(), id);
         accounts.validateMemberPermissions(p, r.permissions());
         validate(r, false);
         protectLastMemberManager(p, id, r.permissions(), true);
@@ -59,6 +60,7 @@ public class MemberService {
         accounts.requireMenu(p, "members");
         merchants.lock(p.merchantId());
         lockTargetMember(p, id);
+        protectMerchantAdministrator(p.merchantId(), id);
         if (!active) protectLastMemberManager(p, id, null, false);
         members.setActive(p.merchantId(), id, active, p.actor());
     }
@@ -67,6 +69,12 @@ public class MemberService {
         users.findByIdForUpdate("seller", id).filter(a -> a.seller() && a.merchantId() == p.merchantId())
                 .orElseThrow(() -> ApiException.notFound("Member not found."));
 
+    }
+
+    private void protectMerchantAdministrator(long merchantId, long id) {
+        MemberRepository.Member member = members.find(merchantId, id).orElseThrow(() -> ApiException.notFound("Member not found."));
+        if (member.merchantAdmin())
+            throw ApiException.forbidden("MERCHANT_ADMIN_PROTECTED", "The merchant admin account is managed by the platform.");
     }
 
     private void validate(MemberRequest r, boolean passwordRequired) {

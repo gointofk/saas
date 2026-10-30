@@ -63,17 +63,26 @@ public class JdbcCustomerRepository implements CustomerRepository {
     }
 
     @Override
-    public long createSelfRegistered(long merchantId, String email, String name, String passwordHash, String code, Instant verifiedAt) {
+    public long createSelfRegistered(long merchantId, String email, String name, String passwordHash, String code, Long referrerId, Instant verifiedAt) {
         try {
             KeyHolder h = new GeneratedKeyHolder();
             jdbc.update("INSERT INTO `user`(merchant_id,email,name,password_hash,code,customer_type,price_tier,active,referrer_id,commission_rate,email_verified_at,created_by_user_id,created_by_type,updated_by_user_id,updated_by_type) "
-                            + "VALUES(:merchantId,:email,:name,:passwordHash,:code,'regular','V1',1,NULL,NULL,:verifiedAt,NULL,'registration',NULL,'registration')",
+                            + "VALUES(:merchantId,:email,:name,:passwordHash,:code,'regular','V1',1,:referrerId,:commissionRate,:verifiedAt,NULL,'registration',NULL,'registration')",
                     new MapSqlParameterSource("merchantId", merchantId).addValue("email", email).addValue("name", name)
-                            .addValue("passwordHash", passwordHash).addValue("code", code).addValue("verifiedAt", Timestamp.from(verifiedAt)), h, new String[]{"id"});
+                            .addValue("passwordHash", passwordHash).addValue("code", code).addValue("referrerId", referrerId)
+                            .addValue("commissionRate", referrerId == null ? null : java.math.BigDecimal.ZERO)
+                            .addValue("verifiedAt", Timestamp.from(verifiedAt)), h, new String[]{"id"});
             return h.getKey().longValue();
         } catch (DuplicateKeyException e) {
             throw ApiException.conflict("CUSTOMER_IDENTIFIER_EXISTS", "Email or customer code is already in use.");
         }
+    }
+
+    @Override
+    public java.util.Optional<Long> lockActiveReferrerIdByCode(long merchantId, String code) {
+        return jdbc.query("SELECT id FROM `user` WHERE merchant_id=:merchantId AND code=:code AND active=1 AND deleted=0 FOR UPDATE",
+                new MapSqlParameterSource("merchantId", merchantId).addValue("code", code),
+                rows -> rows.next() ? java.util.Optional.of(rows.getLong("id")) : java.util.Optional.empty());
     }
 
     @Override

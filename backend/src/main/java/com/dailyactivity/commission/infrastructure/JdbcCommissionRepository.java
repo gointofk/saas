@@ -146,11 +146,6 @@ public class JdbcCommissionRepository implements CommissionRepository {
     private record SettlementCandidate(SettlementRequest request, long orderId) {}
 
     @Override
-    public List<Bill> bills(long merchantId, String type, String status, int page) {
-        return bills(merchantId, new BillFilter(type, status, null, null, null), page);
-    }
-
-    @Override
     public List<Bill> bills(long merchantId, BillFilter filter, int page) {
         String f = billFilters(filter);
         return jdbc.query("SELECT b.id,b.bill_no,b.bill_type,CASE b.bill_type WHEN 'order_receivable' THEN 'receivable' WHEN 'commission_payable' THEN 'payable' END direction,b.order_id,b.order_no_snapshot,b.customer_id,b.customer_name_snapshot,b.customer_email_snapshot,b.amount,b.settled_amount,b.status,b.order_created_at,b.settled_at,o.order_status,o.payment_status FROM billing_entry b JOIN sales_order o ON o.id=b.order_id AND o.merchant_id=b.merchant_id WHERE b.merchant_id=:merchantId AND o.audit_status='approved' AND o.order_status<>'cancelled'" + f + " ORDER BY b.order_created_at DESC,b.id DESC LIMIT 10 OFFSET :offset", billParams(filter).addValue("merchantId",merchantId).addValue("offset", (page - 1) * 10), (rs, row) -> {
@@ -160,19 +155,13 @@ public class JdbcCommissionRepository implements CommissionRepository {
     }
 
     @Override
-    public long billCount(long merchantId, String type, String status) {
-        return billCount(merchantId, new BillFilter(type, status, null, null, null));
-    }
-
-    @Override
     public long billCount(long merchantId, BillFilter filter) {
         return jdbc.queryForObject("SELECT COUNT(*) FROM billing_entry b JOIN sales_order o ON o.id=b.order_id AND o.merchant_id=b.merchant_id WHERE b.merchant_id=:merchantId AND o.audit_status='approved' AND o.order_status<>'cancelled'" + billFilters(filter), billParams(filter).addValue("merchantId",merchantId), Long.class);
     }
 
     @Override
     public BillSummary billSummary(long merchantId) {
-        String sql = "SELECT COALESCE(SUM(o.order_status<>'cancelled'),0) AS total_bills," +
-                "COALESCE(SUM(b.bill_type='order_receivable' AND o.order_status<>'cancelled'),0) AS order_bills," +
+        String sql = "SELECT COALESCE(SUM(b.bill_type='order_receivable' AND o.order_status<>'cancelled'),0) AS order_bills," +
                 "COALESCE(SUM(b.bill_type='order_receivable' AND o.order_status<>'cancelled' AND o.payment_status IN ('unpaid','pending_verification','partially_paid')),0) AS pending_orders," +
                 "COALESCE(SUM(CASE WHEN b.bill_type='order_receivable' AND o.order_status<>'cancelled' THEN o.total_amount ELSE 0 END),0) AS order_amount," +
                 "COALESCE(SUM(CASE WHEN b.bill_type='order_receivable' AND o.order_status<>'cancelled' THEN b.settled_amount ELSE 0 END),0) AS received_amount," +
@@ -185,7 +174,7 @@ public class JdbcCommissionRepository implements CommissionRepository {
                 "COALESCE(SUM(CASE WHEN b.bill_type='commission_payable' AND b.status='estimated' THEN b.amount ELSE 0 END),0) AS estimated_commission_amount " +
                 "FROM billing_entry b JOIN sales_order o ON o.id=b.order_id AND o.merchant_id=b.merchant_id WHERE b.merchant_id=:merchantId AND o.audit_status='approved'";
         return jdbc.queryForObject(sql, new MapSqlParameterSource().addValue("merchantId", merchantId), (rs, row) -> new BillSummary(
-                rs.getLong("total_bills"), rs.getLong("order_bills"), rs.getLong("pending_orders"),
+                rs.getLong("order_bills"), rs.getLong("pending_orders"),
                 rs.getBigDecimal("order_amount"), rs.getBigDecimal("received_amount"), rs.getBigDecimal("pending_receivable_amount"),
                 rs.getLong("commission_bills"), rs.getLong("payable_commission_bills"), rs.getBigDecimal("commission_amount"),
                 rs.getBigDecimal("settled_commission_amount"), rs.getBigDecimal("payable_commission_amount"), rs.getBigDecimal("estimated_commission_amount")));
@@ -198,6 +187,18 @@ public class JdbcCommissionRepository implements CommissionRepository {
             Timestamp settled = rows.getTimestamp("settled_at");
             return Optional.of(new Bill(rows.getLong("id"), rows.getString("bill_no"), rows.getString("bill_type"), rows.getString("direction"), rows.getLong("order_id"), rows.getString("order_no_snapshot"), rows.getLong("customer_id"), rows.getString("customer_name_snapshot"), rows.getString("customer_email_snapshot"), rows.getBigDecimal("amount"), rows.getBigDecimal("settled_amount"), rows.getString("status"), rows.getTimestamp("order_created_at").toInstant(), settled == null ? null : settled.toInstant(), rows.getString("order_status"), rows.getString("payment_status")));
         });
+    }
+
+    @Override
+    public CommissionDisableReadiness commissionDisableReadiness(long merchantId) {
+        String sql = "SELECT "
+                + "(SELECT COUNT(*) FROM commission_accrual WHERE merchant_id=:merchantId AND status IN ('estimated','payable')) outstanding_accrual_count,"
+                + "(SELECT COALESCE(SUM(commission_amount),0) FROM commission_accrual WHERE merchant_id=:merchantId AND status IN ('estimated','payable')) outstanding_amount,"
+                + "(SELECT COUNT(*) FROM sales_order WHERE merchant_id=:merchantId AND audit_status='pending' AND order_status<>'cancelled' "
+                + "AND commission_enabled_snapshot=1 AND referrer_id_snapshot IS NOT NULL AND commission_rate_snapshot>0) pending_eligible_order_count";
+        return jdbc.queryForObject(sql, new MapSqlParameterSource("merchantId", merchantId), (rs, row) ->
+                new CommissionDisableReadiness(rs.getLong("outstanding_accrual_count"), rs.getBigDecimal("outstanding_amount"),
+                        rs.getLong("pending_eligible_order_count")));
     }
 
     private String billFilters(BillFilter filter) {

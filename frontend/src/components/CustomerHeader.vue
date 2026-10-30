@@ -18,7 +18,7 @@ const emit = defineEmits<{
 <template>
   <header class="customer-header">
     <button class="brand brand-button" type="button" @click="emit('navigate', 'products')">
-      <img :src="storefrontBrand.logoUrl" alt="" class="brand-logo">
+      <img v-if="storefrontBrand.logoUrl" :src="storefrontBrand.logoUrl" alt="" class="brand-logo">
       <span class="brand-name">{{ storefrontBrand.name }}</span>
     </button>
     <nav class="customer-nav" :aria-label="t('Customer navigation')">

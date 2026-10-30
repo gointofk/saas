@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { CustomerAddress, CustomerProfile, CustomerReferral, CustomerReferralSummary } from '../types/customer'
 
-defineProps<{
+const props = defineProps<{
   tab: string
+  commissionEnabled: boolean
   customer: CustomerProfile
   profileName: string
   referrals: CustomerReferral[]
@@ -33,7 +35,9 @@ const emit = defineEmits<{
   changePassword: []
 }>()
 
-const tabs = ['profile', 'referrals', 'address', 'security']
+const tabs = computed(() => props.commissionEnabled
+  ? ['profile', 'referrals', 'address', 'security']
+  : ['profile', 'address', 'security'])
 </script>
 
 <template>
@@ -56,7 +60,7 @@ const tabs = ['profile', 'referrals', 'address', 'security']
         </div>
       </section>
 
-      <section v-else-if="tab === 'referrals'" class="panel active">
+      <section v-else-if="tab === 'referrals' && commissionEnabled" class="panel active">
         <div class="content-card">
           <h2 class="card-title">{{ t('My Referrals') }}</h2>
           <div class="referral-summary">

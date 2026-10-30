@@ -35,6 +35,7 @@ public class CommissionService {
     @Transactional(readOnly = true)
     public PageResponse<Map<String, Object>> admin(Principal p, String status, String query, Instant from, Instant to, Integer page) {
         accounts.seller(p);
+        accounts.requireCommissionEnabled(p.merchantId());
         int current = RequestValidation.page(page);
         if (from != null && to != null && from.isAfter(to))
             throw com.dailyactivity.common.ApiException.badRequest("INVALID_DATE_RANGE", "The start date must not be after the end date.");
@@ -50,6 +51,7 @@ public class CommissionService {
     @Transactional(readOnly = true)
     public Map<String, Object> summary(Principal p) {
         accounts.seller(p);
+        accounts.requireCommissionEnabled(p.merchantId());
         var summary = repository.summary(p.merchantId());
         return Map.of("count", summary.count(), "estimated", summary.estimatedCount(), "payable", summary.payableCount(),
                 "settled", summary.settledCount(), "commissionAmount", summary.commissionAmount(), "settledAmount", summary.settledAmount());
@@ -58,6 +60,7 @@ public class CommissionService {
     @Transactional(readOnly = true)
     public Map<String, Object> settlementDetail(Principal p, long id) {
         accounts.requireMenu(p, "commissions");
+        accounts.requireCommissionEnabled(p.merchantId());
         var s = repository.settlement(p.merchantId(), id).orElseThrow(() -> com.dailyactivity.common.ApiException.notFound("Commission settlement not found."));
         return settlementView(s);
     }
@@ -65,6 +68,7 @@ public class CommissionService {
     @Transactional(readOnly = true)
     public Map<String, Object> settlementDetailByAccrual(Principal p, long accrualId) {
         accounts.requireMenu(p, "commissions");
+        accounts.requireCommissionEnabled(p.merchantId());
         var s = repository.settlementByAccrual(p.merchantId(), accrualId).orElseThrow(() -> com.dailyactivity.common.ApiException.notFound("Commission settlement not found."));
         return settlementView(s);
     }
@@ -93,6 +97,7 @@ public class CommissionService {
     @Transactional(readOnly = true)
     public Map<String, Object> accrualOrder(Principal p, long accrualId) {
         accounts.requireMenu(p, "commissions");
+        accounts.requireCommissionEnabled(p.merchantId());
         var accrual = repository.findAccrual(p.merchantId(), accrualId).orElseThrow(() -> com.dailyactivity.common.ApiException.notFound("Commission record not found."));
         return orders.detail(p, accrual.orderId());
     }
@@ -100,6 +105,7 @@ public class CommissionService {
     @Transactional
     public Map<String, Object> settle(Principal p, SettlementRequest r) {
         accounts.requireMenu(p, "commissions");
+        accounts.requireCommissionEnabled(p.merchantId());
         if (r == null || !r.offlinePaidConfirmed())
             throw com.dailyactivity.common.ApiException.badRequest("OFFLINE_PAYMENT_CONFIRMATION_REQUIRED", "Confirm offline payment before settling commissions.");
         return Map.of("batchId", repository.settle(p.merchantId(), r.items(), r.remark(), p.userId()));
@@ -108,26 +114,15 @@ public class CommissionService {
     @Transactional(readOnly = true)
     public PageResponse<Map<String, Object>> customerSettlements(Principal p, Long referred, Integer page) {
         long id = accounts.customer(p).id();
+        accounts.requireCommissionEnabled(p.merchantId());
         int current = RequestValidation.page(page);
         return PageResponse.of(repository.settlements(p.merchantId(), id, referred, current).stream().map(this::settlement).toList(), current, repository.settlementCount(p.merchantId(), id, referred));
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<Map<String, Object>> bills(Principal p, String type, String status, Integer page) {
-        accounts.seller(p);
-        int current = RequestValidation.page(page);
-        return PageResponse.of(repository.bills(p.merchantId(), type, status, current).stream().map(this::bill).toList(), current, repository.billCount(p.merchantId(), type, status));
-    }
-
-    @Transactional(readOnly = true)
-    public Map<String, Object> billSummary(Principal p) {
-        accounts.seller(p);
-        return Map.of("receivable", repository.billCount(p.merchantId(), "order_receivable", null), "payable", repository.billCount(p.merchantId(), "commission_payable", null));
-    }
-
-    @Transactional(readOnly = true)
     public PageResponse<Map<String, Object>> customerCommissions(Principal p, long referred, Integer page) {
         long id = accounts.customer(p).id();
+        accounts.requireCommissionEnabled(p.merchantId());
         int current = RequestValidation.page(page);
         return PageResponse.of(repository.pageForReferred(p.merchantId(), id, referred, current).stream().map(this::accrual).toList(), current, repository.countForReferred(p.merchantId(), id, referred));
     }
@@ -169,27 +164,6 @@ public class CommissionService {
         value.put("settledAt", s.settledAt());
         value.put("remark", s.remark());
         return value;
-    }
-
-    private Map<String, Object> bill(CommissionRepository.Bill b) {
-        Map<String, Object> v = new LinkedHashMap<>();
-        v.put("id", b.id());
-        v.put("billNo", b.billNo());
-        v.put("billType", b.type());
-        v.put("direction", b.direction());
-        v.put("orderId", b.orderId());
-        v.put("orderNo", b.orderNo());
-        v.put("customerId", b.customerId());
-        v.put("customer", b.customer());
-        v.put("amount", b.amount());
-        v.put("settledAmount", b.settledAmount());
-        v.put("status", b.status());
-        v.put("orderCreatedAt", b.orderCreatedAt());
-        v.put("settledAt", b.settledAt());
-        v.put("orderStatus", b.orderStatus());
-        v.put("paymentStatus", b.paymentStatus());
-        v.put("fulfillmentSummary", orders.fulfillmentSummary(b.orderId()));
-        return v;
     }
 
     public record SettlementRequest(List<CommissionRepository.SettlementRequest> items, String remark,
