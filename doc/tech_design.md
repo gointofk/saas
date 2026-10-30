@@ -201,7 +201,7 @@ frontend/
 
 登录入口执行基础频率限制：Nginx 按真实客户端 IP 限速，单应用内按规范化 email/account 和可信回环 Nginx 写入的客户端 IP 做短时失败计数；建议 5 分钟内 10 次失败后短时限制，返回 429。内存计数是防滥用状态，不是登录会话。错误凭证、不存在账号和禁用账号统一文案。首个拥有全部菜单权限的 seller 用户由一次性受控初始化创建，不提交默认密码。
 
-### 3.4 商户上下文与平台身份（V1.8）
+### 3.4 商户上下文与平台身份（V1.9）
 
 买家 user.merchant_id 和卖家 seller.merchant_id 必填且不通过账号编辑改变；平台账号保存于 admin 表，不含 merchant_id，Java Principal/JWT 使用 merchantId=0 作为平台专属标识（不能作为全局业务查询范围）。平台 aud 固定为 platform，客户与卖家仍为 customer/admin。AuthFilter 同时校验实时账号、authVersion、商户状态、API 路径对应身份；平台仅能调用 /platform/**。
 
@@ -209,7 +209,11 @@ frontend/
 
 有效菜单只按本商户 seller_permission 成员授权计算；创建/修改成员仅校验固定菜单字典，不存在平台公共授权上限。每商户最后一个 members 持有者由商户行锁保护。平台账号不进入成员列表，不存在 user.merchant_management、merchantManagement 响应字段或特殊成员只读规则。平台引导使用 doc/bootstrap_platform.sql，由部署人员设置账号、姓名与 Argon2id 摘要后显式执行，无默认密码，不在启动时自动运行；平台账号没有业务启停/删除接口。
 
-创建商户、域名和主题配置、首管理员及其菜单和审计事件在同一事务提交。商户更新以行锁和 expectedUpdatedAt 检查并发冲突，域名唯一索引防并发重复。merchant.domain 使用 ASCII、最长 253，规范化小写并去掉末尾点；应用要求创建/编辑时非空。logo_url 仅接受站点相对路径或 HTTPS URL，平台配置静态图片地址；本期不新增 logo 上传。theme 仅允许 classic/forest/editorial，禁止任意 CSS 或 URL 注入。主题文件按标识分开放在 frontend/src/styles/themes/：classic.css 保存现有买家端基础样式，forest.css 与 editorial.css 分别保存对应主题覆盖规则；通过 frontend/src/styles.css 统一按基础样式、主题覆盖的顺序导入。商户后台等非主题样式放在对应组件或公共样式中。平台只管理商户配置；商品、价格、库存、COA 和文件均按商户隔离，所有目录 Repository 必须显式传入 merchantId。
+平台运营 API 可跨 merchant_id 聚合只读业务信息，并提供订单、买家和商户经营查询。所有 `/api/v1/platform/**` 响应设置 `Cache-Control: no-store`，包括认证过滤器直接返回的错误响应。全商户订单/买家分页、状态队列、审计和时间区间汇总使用按创建时间/状态排列的全局索引；商户限定查询继续使用现有 merchant_id 前缀索引。列表默认遮蔽订单/买家姓名和邮箱；读取详情必须 POST 访问用途（5～500 字），读取完整收件资料或买家联系资料须再次提交用途。详情读取与 `platform_data_access_event` 审计写入在同一事务；审计保存平台 admin ID、商户 ID、资源类型/ID、访问动作、用途和 UTC 时间，不保存被读取的联系方式。流量日志遮蔽平台搜索词 `q` 和访问用途 `purpose`。平台业务接口不修改订单、付款、买家账户、目录或资金事实，也不读取跨商户私有文件。Repository 对具体资源同时显式传入 merchant_id 和资源 ID；仅总览、经营分析、待处理统计和平台报表使用有意的全商户范围。商户停用不隐藏历史数据，但不会恢复该商户成员或买家的访问权限。
+
+创建商户、域名和主题配置、首管理员及其菜单和审计事件在同一事务提交。商户更新以行锁和 expectedUpdatedAt 检查并发冲突，域名唯一索引防并发重复。merchant.domain 使用 ASCII、最长 253，规范化小写并去掉末尾点；应用要求创建/编辑时非空。logo_url 仅接受站点相对路径或 HTTPS URL，平台配置静态图片地址；本期不新增 logo 上传。theme 仅允许 classic/forest/editorial，禁止任意 CSS 或 URL 注入。主题文件按标识分开放在 frontend/src/styles/themes/：classic.css 保存现有买家端基础样式，forest.css 与 editorial.css 分别保存对应主题覆盖规则；通过 frontend/src/styles.css 统一按基础样式、主题覆盖的顺序导入。商户后台等非主题样式放在对应组件或公共样式中。
+
+平台运营页面包含经营总览、待处理订单、订单中心、买家中心、商户分析、商户管理和平台审计。待审核队列取 `audit_status='pending' AND order_status<>'cancelled'`，待核款队列取 `payment_status='pending_verification' AND order_status<>'cancelled'`，待履约队列取已审核且 `order_status IN ('pending','packed')`；这些是状态队列，不表示超过业务 SLA。经营总览金额统计未取消订单，趋势按 UTC 统计最近 7 天；商户分析默认最近 30 天，结束时间按开区间解释，区间收款金额按 `payment_receipt.verified_at` 统计实际核实到账时间，并排除当前已取消订单。平台订单、买家、商户 CSV 最多 10000 行，订单和买家导出仍遮蔽姓名与邮箱，并执行 CSV 公式注入防护。平台仍只读查看跨商户经营数据，不修改商户订单、付款、买家账户、目录或资金事实；商品、价格、库存、COA 和文件按商户隔离，所有目录 Repository 必须显式传入 merchantId。
 
 
 ## 4. 状态、金额和快照
@@ -339,6 +343,8 @@ erDiagram
     merchant ||--o{ user : has_buyers
     merchant ||--o{ seller : has_members
     admin ||--o{ merchant_event : platform_actions
+    admin ||--o{ platform_data_access_event : reads_business_data
+    merchant ||--o{ platform_data_access_event : has_access_audit
     user ||--o{ customer_address : customer_owns
     user ||--o{ cart_item : customer_owns
     user ||--o{ sales_order : customer_places
@@ -412,7 +418,7 @@ erDiagram
 | `order_event_file` | `order_id`；`event_id`；`file_uuid CHAR(36)`；`stage VARCHAR(16)`；`sort_no` | U(event_id,file_uuid)，I(order_id,event_id)；仅追加，校验上传凭证、归属、用途与磁盘存在性 |
 | `payment_channel` | `name VARCHAR(32)`；`currency_code/network VARCHAR(32)`；`receiving_address VARCHAR(120)`；`instructions VARCHAR(240)?`；`additional_rate DECIMAL(5,2)?`（0–100，最多两位小数）；`qr_file_uuid CHAR(36)`；`active`；`sort_no INT`；推荐渠道为有效渠道按 sort_no/id 排序后的第一条 | U(merchant_id,name)；I(merchant_id,deleted,active,sort_no,id)；费率可空，不设推荐字段 |
 | `payment_submission` | order_id/customer_id/channel_id；channel_snapshot VARCHAR(256)；original_transaction_no VARCHAR(256)；declared_order_total DECIMAL(18,2)（申报时订单总额）；declared_amount DECIMAL(18,2)（本次抵扣金额）；status VARCHAR(16)（pending/confirmed）；submitted_at | I(order_id,status,id)；逐笔追加，事务锁订单保证同时最多一笔 pending；原申报不覆盖，无软删除 |
-| `payment_receipt` | order_id；submission_id?；channel_id/channel_snapshot；verified_transaction_no；received_amount DECIMAL(18,2)（本次核实抵扣订单款，不含附加费）；currency=USD；verified_by_user_id/verified_at；internal_note? | U(submission_id)，I(order_id,verified_at,id)；每单多笔，申报至多一次确认；NULL submission_id 允许多笔直接登记；`channel_id=0` 保留给虚拟 `Online payment link` 渠道 |
+| `payment_receipt` | order_id；submission_id?；channel_id/channel_snapshot；verified_transaction_no；received_amount DECIMAL(18,2)（本次核实抵扣订单款，不含附加费）；currency=USD；verified_by_user_id/verified_at；internal_note? | U(submission_id)，I(order_id,verified_at,id)，I(verified_at,order_id)；每单多笔，申报至多一次确认；NULL submission_id 允许多笔直接登记；`channel_id=0` 保留给虚拟 `Online payment link` 渠道；平台商户分析按 verified_at 过滤区间收款 |
 
 `paidAmount` 是接口字段，由该订单 `SUM(payment_receipt.received_amount)` 得到，不在订单表另存一份可被编辑覆盖的金额。`sales_order.payment_status` 为唯一支付状态列，与申报/收款事实同事务变更；查询不根据金额倒推并修正状态。不建立第二个 `payStatus` 或单独待验证布尔列。
 
@@ -486,13 +492,14 @@ WHERE id = :orderId AND customer_id = :customerId
 
 | 表/字段 | 约定 |
 | --- | --- |
-| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee DECIMAL(18,2)、注册和收款配置、创建/修改时间与操作人；不提供删除；平台配置对象，不是商户业务数据的超级查询入口 |
+| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee DECIMAL(18,2)、注册和收款配置、创建/修改时间与操作人；不提供删除；平台可配置商户并只读查询经营数据 |
 | category、product | 必填 merchant_id；名称与 SKU 按商户约束；库存和商品资料属于单一商户；写商品时校验类目同商户 |
 | product_tier_price、product_quantity_price | 不重复保存 merchant_id；经 product_id 关联商品后校验 merchant_id，所有查询和写入均以当前商户限定 |
 | coa_certificate、product_coa_link | 必填 merchant_id；COA、商品和绑定关系必须属于同一商户；COA 变更锁所属 merchant 行并校验商品/证书 |
 | file_asset | 必填 merchant_id，包括 purpose=coa 的文件；上传人商户必须与文件商户一致，签名和下载授权要求文件商户与当前客户/订单/渠道同商户 |
 | stock_movement | 必填 merchant_id；写入时从已校验订单或 seller 账号确定，并校验商品归属；库存主表仅能通过 merchant_id + product_id 读写 |
 | merchant_event | 仅追加：merchant_id、actor_type、actor_user_id、action、detail、created_at；只审计商户配置，不承载目录维护 |
+| platform_data_access_event | 仅追加：actor_user_id（admin.id）、merchant_id、resource_type/resource_id、access_type、purpose、created_at；记录平台读取订单/买家详情及联系方式的用途，不保存联系方式内容 |
 | user / seller / admin | 三张独立账号表；user/seller 的 merchant_id 必填，admin 无 merchant_id；按身份类型和 ID 读写认证状态 |
 | sales_order | 必填 merchant_id，下单从账号写入；订单号及唯一规则不变；时间/审核/支付/履约列表索引前置 merchant_id |
 | payment_channel | 必填 merchant_id；名称唯一索引为 (merchant_id,name)，排序/推荐限定本商户 |
@@ -803,6 +810,17 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | POST /api/v1/platform/merchants | 原商户字段，可选 registrationEnabled/mailSettings，连同首管理员事务创建；默认关闭注册 |
 | PUT /api/v1/platform/merchants/{id} | 原商户字段，可选 registrationEnabled/mailSettings/expectedUpdatedAt；smtpPassword 留空保留旧值，事务更新 |
 | POST /api/v1/platform/merchants/{id}/email-settings/test | 使用已保存配置发送测试邮件；仅平台身份可调用 |
+| GET /api/v1/platform/overview | 返回全商户和买家数量、未取消订单金额、累计已收金额、待处理状态计数和最近 7 天订单趋势 |
+| GET /api/v1/platform/orders?page=1 | 跨商户订单查询；可按 merchantId、q、订单/审核/付款状态和 UTC 时间筛选；列表遮蔽买家姓名与邮箱 |
+| POST /api/v1/platform/orders/{merchantId}/{orderId}/access | body `{purpose}`；写访问审计并返回订单只读详情，要求 5～500 字用途 |
+| POST /api/v1/platform/orders/{merchantId}/{orderId}/contact | body `{purpose}`；写 `contact_reveal` 审计并返回该订单收件资料及邮箱 |
+| GET /api/v1/platform/buyers?page=1 | 跨商户买家查询；可按 merchantId、q、active 和注册时间筛选；列表遮蔽姓名与邮箱 |
+| POST /api/v1/platform/buyers/{merchantId}/{customerId}/access | body `{purpose}`；写访问审计并返回买家只读概况及最近 10 笔订单 |
+| POST /api/v1/platform/buyers/{merchantId}/{customerId}/contact | body `{purpose}`；写 `contact_reveal` 审计并返回买家完整姓名、邮箱和验证信息 |
+| GET /api/v1/platform/tasks/{audit\|payment\|fulfillment}?page=1 | 按待审核、待核款、待履约业务状态列出订单；可用 merchantId 限定商户；不施加未定义的超时阈值 |
+| GET /api/v1/platform/merchant-performance?page=1 | 按 UTC 时间区间汇总商户订单金额、实际核实收款（按 `payment_receipt.verified_at`）、待履约、买家和新增买家；默认最近 30 天 |
+| GET /api/v1/platform/audit?page=1 | 分页查看平台数据访问和商户配置变更审计 |
+| POST /api/v1/platform/exports/{orders\|buyers\|merchants} | 同步生成当前筛选集合 CSV，最多 10000 行；买家姓名/邮箱遮蔽并防 CSV 公式注入 |
 | GET /api/v1/customer/storefront | 免登录，返回 name/logoUrl/theme/registrationEnabled；Cache-Control: no-store，不返回 SMTP 设置 |
 
 删除旧 /admin/merchants 与 merchant-settings API，不保留兼容入口。商户响应附带 domain/logoUrl/theme/registrationEnabled/mailSettings；SMTP 密码始终不回传。平台页面 `/platform/` 使用独立 localStorage 键 dailyactivity.platform.token；商家和买家认证键保持各自独立。买家入口在挂载 App 前读取品牌和注册开关，失败展示错误和重试；样式以受控 data-storefront-theme 选择 CSS，不改变共享业务组件和服务端规则。
@@ -1200,7 +1218,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 
 ### 14.1 交付与执行范围
 
-脚本：[doc/init_mysql56.sql](init_mysql56.sql)。包含本文件第 5 章全部 36 张表、完整字段、必要索引及固定行；不含环境账号口令、模拟业务数据、可登录默认 seller 用户。文件清单使用 `file_asset` 表；JWT 不建会话存储表。
+脚本：[doc/init_mysql56.sql](init_mysql56.sql)。包含本文件第 5 章全部 35 张表、完整字段、必要索引及固定行；不含环境账号口令、模拟业务数据、可登录默认 seller 用户。文件清单使用 `file_asset` 表；JWT 不建会话存储表。既有数据库不会自动创建新增的 `platform_data_access_event` 表或平台全局查询索引；部署前需按受控数据库变更流程一次性评估并执行 [platform_operations_ddl.sql](platform_operations_ddl.sql)，其中新增 `payment_receipt(verified_at,order_id)` 索引以支持平台区间收款统计。该脚本含 `ALTER TABLE`，MySQL 5.6 上可能占用额外磁盘并影响写入；执行前须核对目标库版本、运行窗口和剩余空间。脚本不是应用迁移框架且不会自动重试；本次未执行任何数据库 DDL。
 
 本系统尚未部署，不存在已有业务库或数据库升级脚本。此脚本只对新建空业务库初始化，使用普通 CREATE TABLE 而非 IF NOT EXISTS，执行前确认目标库为空。不会执行 DROP、DELETE、TRUNCATE、REPLACE，也不会重置已有配置。若执行中断，不使用 mysql --force 继续；由部署人员清理未完成的空库后重新执行完整脚本。MySQL DDL 隐式提交，因此不是整个文件的原子事务。
 

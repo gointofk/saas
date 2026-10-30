@@ -370,3 +370,70 @@ export const merchantApi = {
     request<Merchant>(`/platform/merchants/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'platform'),
   testEmail: (id: number, recipient: string) => request<void>(`/platform/merchants/${id}/email-settings/test`, { method: 'POST', body: JSON.stringify({ recipient }) }, 'platform'),
 }
+
+export type PlatformPage<T> = { items: T[]; page: number; pageSize: number; total: number; totalPages: number }
+export type PlatformOrder = {
+  id: number; merchantId: number; merchantName: string; merchantCode: string; orderNo: string
+  customerId: number; customerCodeSnapshot: string; buyerName: string; email: string
+  orderStatus: string; paymentStatus: string; auditStatus: string
+  subtotal: number | string; shippingFee: number | string; discountAmount: number | string
+  totalAmount: number | string; paidAmount: number | string; createdAt: string; updatedAt: string; city?: string
+  items?: Array<{ skuSnapshot?: string; sku?: string; name: string; productType?: string; type?: string; quantity: number; unitPrice: number | string; lineAmount: number | string }>
+  payments?: Array<{ kind: string; channelSnapshot: string; transactionNo: string; amount: number | string; status: string; occurredAt: string }>
+  events?: Array<{ action: string; fromStatus: string | null; toStatus: string | null; note: string | null; occurredAt: string; actorType: string; actorName: string }>
+}
+export type PlatformBuyer = {
+  id: number; merchantId: number; merchantName: string; merchantCode: string; customerCode: string
+  customerName: string; email: string; customerType: string; priceTier: string; active: boolean
+  createdAt: string; lastLoginAt: string | null; orderCount: number; orderAmount: number | string; openPaymentCount: number
+  recentOrders?: Array<{ orderNo: string; orderStatus: string; paymentStatus: string; auditStatus: string; totalAmount: number | string; createdAt: string }>
+}
+export type PlatformMerchantPerformance = {
+  merchantId: number; merchantCode: string; merchantName: string; active: boolean; domain: string
+  orderCount: number; grossAmount: number | string; receivedAmount: number | string; openOrderCount: number
+  buyerCount: number; newBuyerCount: number; lastOrderAt: string | null
+}
+export type PlatformOverview = {
+  merchantCount: number; activeMerchantCount: number; buyerCount: number; activeBuyerCount: number
+  orderCount: number; grossOrderAmount: number | string; receivedAmount: number | string
+  pendingAuditCount: number; pendingVerificationCount: number; pendingFulfillmentCount: number
+  trend: Array<{ day: string; orderCount: number; orderAmount: number | string }>
+  trendFrom: string; trendTo: string
+}
+export type PlatformAccessRequest = { purpose: string }
+export type PlatformOrderContact = {
+  merchantId: number; orderNo: string; customerName: string; email: string; recipientName: string; city: string
+  address: { street?: string; apt?: string | null; city?: string; region?: string | null; postalCode?: string; phone?: string }
+}
+export type PlatformBuyerContact = {
+  merchantId: number; id: number; customerCode: string; customerName: string; email: string
+  active: boolean; emailVerifiedAt: string | null; lastLoginAt: string | null; createdAt: string
+}
+export type PlatformAuditEntry = {
+  source: string; auditId: number; actorName: string; merchantId: number; merchantName: string
+  resourceType: string; resourceId: number; action: string; purpose: string; createdAt: string
+}
+export type PlatformOrderFilter = {
+  merchantId?: number | null; q?: string; orderStatus?: string; paymentStatus?: string; auditStatus?: string; from?: string; to?: string
+}
+export type PlatformBuyerFilter = { merchantId?: number | null; q?: string; active?: boolean | null; from?: string; to?: string }
+
+function platformQuery(values: Record<string, string | number | boolean | null | undefined>) {
+  const params = new URLSearchParams()
+  Object.entries(values).forEach(([key, value]) => { if (value !== null && value !== undefined && value !== '') params.set(key, String(value)) })
+  return params.toString()
+}
+
+export const platformApi = {
+  overview: () => request<PlatformOverview>('/platform/overview', {}, 'platform'),
+  orders: (filter: PlatformOrderFilter, page: number) => request<PlatformPage<PlatformOrder>>(`/platform/orders?${platformQuery({ ...filter, page })}`, {}, 'platform'),
+  orderAccess: (merchantId: number, orderId: number, body: PlatformAccessRequest) => request<PlatformOrder>(`/platform/orders/${merchantId}/${orderId}/access`, { method: 'POST', body: JSON.stringify(body) }, 'platform'),
+  orderContact: (merchantId: number, orderId: number, body: PlatformAccessRequest) => request<PlatformOrderContact>(`/platform/orders/${merchantId}/${orderId}/contact`, { method: 'POST', body: JSON.stringify(body) }, 'platform'),
+  buyers: (filter: PlatformBuyerFilter, page: number) => request<PlatformPage<PlatformBuyer>>(`/platform/buyers?${platformQuery({ ...filter, page })}`, {}, 'platform'),
+  buyerAccess: (merchantId: number, buyerId: number, body: PlatformAccessRequest) => request<PlatformBuyer>(`/platform/buyers/${merchantId}/${buyerId}/access`, { method: 'POST', body: JSON.stringify(body) }, 'platform'),
+  buyerContact: (merchantId: number, buyerId: number, body: PlatformAccessRequest) => request<PlatformBuyerContact>(`/platform/buyers/${merchantId}/${buyerId}/contact`, { method: 'POST', body: JSON.stringify(body) }, 'platform'),
+  tasks: (type: 'audit' | 'payment' | 'fulfillment', merchantId: number | null, page: number) => request<PlatformPage<PlatformOrder>>(`/platform/tasks/${type}?${platformQuery({ merchantId, page })}`, {}, 'platform'),
+  merchantPerformance: (from: string | null, to: string | null, page: number) => request<PlatformPage<PlatformMerchantPerformance> & { from: string; to: string }>(`/platform/merchant-performance?${platformQuery({ from, to, page })}`, {}, 'platform'),
+  audit: (page: number) => request<PlatformPage<PlatformAuditEntry>>(`/platform/audit?page=${page}`, {}, 'platform'),
+  export: (type: 'orders' | 'buyers' | 'merchants', body: Record<string, unknown>) => download(`/platform/exports/${type}`, { method: 'POST', body: JSON.stringify(body) }, 'platform'),
+}

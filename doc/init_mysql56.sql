@@ -1,7 +1,7 @@
 -- DailyActivity V1.9: 全量 MySQL 5.6.51 初始化
 -- 仅在预先创建的空业务库执行。数据库由 mysql 命令参数选择。
 -- 不含 CREATE DATABASE/USE，不修改用户账户，不导入 Demo 或默认密码。
--- 36 张 InnoDB 实体表；无视图、外键、触发器、存储过程、会话表。
+-- 35 张 InnoDB 实体表；无视图、外键、触发器、存储过程、会话表。
 -- 不含原生 JSON、生成列、CHECK、CTE 或 5.7/8.x 专有 SQL。
 -- 所有文件引用使用 file_asset.file_uuid；文件内容仍在本地磁盘，业务 JSON 按字段约定保存为 LONGTEXT 或有界 VARCHAR。
 -- 每个索引按 COMPACT 的 767 字节限制设计，唯一键不使用前缀缩短。
@@ -44,8 +44,24 @@ CREATE TABLE merchant_event (
   action VARCHAR(64) NOT NULL,
   detail LONGTEXT NOT NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  PRIMARY KEY (id), KEY idx_merchant_event (merchant_id,created_at,id)
+  PRIMARY KEY (id), KEY idx_merchant_event (merchant_id,created_at,id), KEY idx_merchant_event_platform_time (created_at,id)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 平台查看订单和买家详情、联系方式时记录访问用途；只追加，不提供删除入口。
+CREATE TABLE platform_data_access_event (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  actor_user_id BIGINT NOT NULL,
+  merchant_id BIGINT NOT NULL,
+  resource_type VARCHAR(32) NOT NULL,
+  resource_id BIGINT NOT NULL,
+  access_type VARCHAR(32) NOT NULL,
+  purpose VARCHAR(500) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  KEY idx_platform_access_time (created_at,id),
+  KEY idx_platform_access_actor (actor_user_id,created_at,id),
+  KEY idx_platform_access_resource (merchant_id,resource_type,resource_id,created_at)
+) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='平台跨商户业务数据访问用途审计';
 
 CREATE TABLE merchant_email_settings (
   merchant_id BIGINT NOT NULL,
@@ -96,7 +112,8 @@ CREATE TABLE `user` (
   PRIMARY KEY(id), UNIQUE KEY uk_user_email(merchant_id,email),
   UNIQUE KEY uk_user_customer_code(code), KEY idx_user_merchant(merchant_id,id),
   KEY idx_user_active(deleted,active,id), KEY idx_user_referrer(referrer_id,deleted,id),
-  KEY idx_user_customer_type(deleted,customer_type,id), KEY idx_user_last_login(deleted,last_login_at,id)
+  KEY idx_user_customer_type(deleted,customer_type,id), KEY idx_user_last_login(deleted,last_login_at,id),
+  KEY idx_platform_user_created(created_at,id)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE customer_registration_challenge (
@@ -335,7 +352,11 @@ CREATE TABLE `sales_order` (
   KEY `idx_order_customer_payment` (`customer_id`,`payment_status`,`created_at`,`id`),
   KEY `idx_order_payment_date` (`merchant_id`,`payment_status`,`created_at`,`id`),
   KEY `idx_order_status_date` (`merchant_id`,`order_status`,`created_at`,`id`),
-  KEY `idx_order_audit_date` (`merchant_id`,`audit_status`,`created_at`,`id`)
+  KEY `idx_order_audit_date` (`merchant_id`,`audit_status`,`created_at`,`id`),
+  KEY `idx_platform_order_created` (`created_at`,`id`),
+  KEY `idx_platform_order_audit` (`audit_status`,`created_at`,`id`),
+  KEY `idx_platform_order_payment` (`payment_status`,`created_at`,`id`),
+  KEY `idx_platform_order_fulfillment` (`audit_status`,`order_status`,`created_at`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单成交快照、独立履约与付款状态';
 
 -- 订单商品成交快照，移除行软删除
@@ -557,7 +578,8 @@ CREATE TABLE `payment_receipt` (
   `internal_note` VARCHAR(1000) NULL COMMENT '内部备注',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_receipt_submission` (`submission_id`),
-  KEY `idx_receipt_order` (`order_id`,`verified_at`,`id`)
+  KEY `idx_receipt_order` (`order_id`,`verified_at`,`id`),
+  KEY `idx_platform_receipt_verified` (`verified_at`,`order_id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='不可变逐笔收款事实，允许跨订单相同交易号';
 
 -- 当前COA元数据及当前文件 UUID，无证书版本实体

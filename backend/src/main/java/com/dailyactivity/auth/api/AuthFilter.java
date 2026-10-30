@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -39,6 +40,7 @@ public class AuthFilter extends OncePerRequestFilter {
     }
 
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
+        if (isPlatformRequest(request)) response.setHeader("Cache-Control", "no-store");
         try {
             String header = request.getHeader("Authorization");
             if (header == null || !header.startsWith("Bearer ")) throw ApiException.unauthorized("Authentication is required.");
@@ -54,14 +56,19 @@ public class AuthFilter extends OncePerRequestFilter {
             objectMapper.writeValue(response.getOutputStream(), Map.of("code", exception.code(), "message", exception.getMessage()));
         }
     }
+    private boolean isPlatformRequest(HttpServletRequest request) {
+        try {
+            var segments = pathSegments(request);
+            return segments.size() >= 3 && "api".equals(segments.get(0)) && "v1".equals(segments.get(1))
+                    && "platform".equals(segments.get(2));
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
     private String requestType(HttpServletRequest request) {
         try {
-            // Match MVC's decoded segments and matrix-parameter handling; never decode slashes into extra segments.
-            var segments = RequestPath.parse(request.getRequestURI(), request.getContextPath())
-                    .pathWithinApplication().elements().stream()
-                    .filter(PathContainer.PathSegment.class::isInstance)
-                    .map(element -> ((PathContainer.PathSegment) element).valueToMatch())
-                    .toList();
+            var segments = pathSegments(request);
             if (segments.size() < 3 || !"api".equals(segments.get(0)) || !"v1".equals(segments.get(1))) return null;
             return switch (segments.get(2)) {
                 case "platform" -> "platform";
@@ -72,6 +79,15 @@ public class AuthFilter extends OncePerRequestFilter {
         } catch (IllegalArgumentException exception) {
             throw ApiException.badRequest("INVALID_REQUEST_PATH", "Request path is invalid.");
         }
+    }
+
+    private List<String> pathSegments(HttpServletRequest request) {
+        // Match MVC's decoded segments and matrix-parameter handling; never decode slashes into extra path segments.
+        return RequestPath.parse(request.getRequestURI(), request.getContextPath())
+                .pathWithinApplication().elements().stream()
+                .filter(PathContainer.PathSegment.class::isInstance)
+                .map(element -> ((PathContainer.PathSegment) element).valueToMatch())
+                .toList();
     }
 
 }

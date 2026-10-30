@@ -17,6 +17,10 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(menuAuthorizationInterceptor).addPathPatterns("/api/v1/**");
+        registry.addInterceptor((request, response, handler) -> {
+            response.setHeader("Cache-Control", "no-store");
+            return true;
+        }).addPathPatterns("/api/v1/platform/**");
     }
 
     @Override

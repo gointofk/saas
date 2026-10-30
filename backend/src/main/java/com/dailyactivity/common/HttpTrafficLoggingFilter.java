@@ -36,6 +36,7 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
     private static final int MAX_REQUEST_BODY_BYTES = 64 * 1024;
     private static final int MAX_LOG_BODY_BYTES = 1024;
     private static final Set<String> SENSITIVE_PARTS = Set.of("password", "secret", "token", "authorization", "cookie", "signature", "sign", "key", "url", "email", "phone", "address", "recipient", "name", "note", "remark", "transaction", "account", "verificationcode", "registrationcode");
+    private static final Set<String> SENSITIVE_EXACT = Set.of("q", "purpose");
     private final ObjectMapper objectMapper;
 
     public HttpTrafficLoggingFilter(ObjectMapper objectMapper) {
@@ -153,6 +154,6 @@ public class HttpTrafficLoggingFilter extends OncePerRequestFilter {
 
     private boolean isSensitive(String name) {
         String normalized = name.toLowerCase(Locale.ROOT);
-        return SENSITIVE_PARTS.stream().anyMatch(normalized::contains);
+        return SENSITIVE_EXACT.contains(normalized) || SENSITIVE_PARTS.stream().anyMatch(normalized::contains);
     }
 }
