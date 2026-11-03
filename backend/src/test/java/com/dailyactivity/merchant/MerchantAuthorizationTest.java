@@ -5,6 +5,7 @@ import com.dailyactivity.auth.domain.Account;
 import com.dailyactivity.auth.domain.Principal;
 import com.dailyactivity.auth.domain.port.AccountRepository;
 import com.dailyactivity.common.ApiException;
+import com.dailyactivity.merchant.domain.ShippingFees;
 import com.dailyactivity.merchant.domain.port.MerchantRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class MerchantAuthorizationTest {
     @BeforeEach
     void activeMerchant() {
         when(users.findActiveById("seller",7)).thenReturn(Optional.of(account));
-        when(merchants.find(11)).thenReturn(Optional.of(new MerchantRepository.Merchant(11,"TEST","Test",true,BigDecimal.TEN,Instant.EPOCH)));
+        when(merchants.find(11)).thenReturn(Optional.of(new MerchantRepository.Merchant(11,"TEST","Test",true,ShippingFees.uniform(BigDecimal.TEN),Instant.EPOCH)));
         when(users.findPermissions(7)).thenReturn(Set.of("products","orders","members"));
     }
     @Test
@@ -45,7 +46,7 @@ class MerchantAuthorizationTest {
     }
     @Test
     void disabledMerchantInvalidatesOtherwiseActiveAccount() {
-        when(merchants.find(11)).thenReturn(Optional.of(new MerchantRepository.Merchant(11,"TEST","Test",false,BigDecimal.TEN,Instant.EPOCH)));
+        when(merchants.find(11)).thenReturn(Optional.of(new MerchantRepository.Merchant(11,"TEST","Test",false,ShippingFees.uniform(BigDecimal.TEN),Instant.EPOCH)));
         assertThatThrownBy(()->accounts.assertValid(seller)).isInstanceOf(ApiException.class);
     }
     @Test

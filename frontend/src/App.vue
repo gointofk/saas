@@ -114,7 +114,8 @@ const visibleProducts = computed(() => {
 })
 const cart = ref<CustomerCart>({ items: [], subtotal: '0.00', shippingFee: '0.00', total: '0.00' })
 const pendingCartProductIds = reactive(new Set<number>())
-let cartAddQueue: Promise<void> = Promise.resolve()
+const catalogCartQuantityOverrides = reactive<Record<number, number | null>>({})
+let cartMutationQueue: Promise<void> = Promise.resolve()
 const addresses = ref<CustomerAddress[]>([])
 const customerOrderSummary = ref<CustomerOrderSummary>({})
 const customerOrderSummaryCache = createRequestCache()
@@ -927,6 +928,10 @@ async function copyOrderDetails() {
 
 const pageTitle = computed(() => t(({ products: 'Products', certificates: 'Certificates of Analysis', cart: 'Shopping Cart', orders: 'Order History', referrals: 'Referrals & Commission', account: 'My Account', security: 'Security' }[customerPage.value] || 'Products')))
 const cartCount = computed(() => cart.value.items.reduce((sum, item) => sum + item.quantity, 0))
+const cartProductQuantities = computed<Record<number, number | null>>(() => ({
+  ...Object.fromEntries(cart.value.items.map(item => [item.productId, item.quantity])),
+  ...catalogCartQuantityOverrides,
+}))
 const visibleOrders = computed(() => orders.value.items || [])
 const orderPageNumbers = computed(() => {
   const pages = orders.value.totalPages || 1
@@ -1387,18 +1392,29 @@ async function loadCustomerReferrals() {
   await loadCustomerPage()
 }
 
-async function addToCart(product: CustomerProduct) {
-  if (pendingCartProductIds.has(product.id)) return
+async function updateCatalogCartQuantity(product: CustomerProduct, quantity: number) {
+  if (pendingCartProductIds.has(product.id) || !Number.isInteger(quantity) || quantity < 0 || quantity > product.stock) return
   pendingCartProductIds.add(product.id)
-  const add = async () => {
+  catalogCartQuantityOverrides[product.id] = quantity || null
+  checkoutQuote.value = null
+  const update = async () => {
     try {
-      const current = cart.value.items.find(item => item.productId === product.id)?.quantity || 0
-      cart.value = await request<CustomerCart>(`/customer/cart/items/${product.id}`, { method: 'PUT', body: JSON.stringify({ quantity: current + 1 }) })
-    } catch (error) { showFailure(error) }
-    finally { pendingCartProductIds.delete(product.id) }
+      if (quantity === 0) {
+        await request(`/customer/cart/items/${product.id}`, { method: 'DELETE' })
+        cart.value = await request<CustomerCart>('/customer/cart')
+      } else {
+        cart.value = await request<CustomerCart>(`/customer/cart/items/${product.id}`, { method: 'PUT', body: JSON.stringify({ quantity }) })
+      }
+    } catch (error) {
+      showFailure(error)
+      try { cart.value = await request<CustomerCart>('/customer/cart') } catch (refreshError) { showFailure(refreshError) }
+    } finally {
+      delete catalogCartQuantityOverrides[product.id]
+      pendingCartProductIds.delete(product.id)
+    }
   }
-  cartAddQueue = cartAddQueue.then(add, add)
-  await cartAddQueue
+  cartMutationQueue = cartMutationQueue.then(update, update)
+  await cartMutationQueue
 }
 
 async function setQuantity(item: CustomerCartItem, quantity: number) {
@@ -2992,9 +3008,7 @@ watch(adminSearch, () => {
     @change-language="changeLanguage"
     @sign-in="signIn"
     @registered="loginAccount = $event; loginPassword = ''; loginError = ''"
-  >
-    <SellerAccountSwitcher v-if="area === 'admin'" :disabled="busy" :t="t" @activated="activateSellerAccount" />
-  </LoginScreen>
+  />
 
   <div v-else-if="area === 'customer'" class="demo-customer-shell">
     <CustomerHeader
@@ -3016,12 +3030,13 @@ watch(adminSearch, () => {
       :visible-products="visibleProducts"
       :cart-pending="busy"
       :pending-cart-product-ids="pendingCartProductIds"
+      :cart-quantities="cartProductQuantities"
       :t="t"
       :money="money"
       @update:active-category="activeCategory = $event"
       @update:product-search="productSearch = $event"
       @open-certificate="openCertificate"
-      @add-to-cart="addToCart"
+      @update-cart-quantity="updateCatalogCartQuantity"
     />
     <CustomerCertificatesPage
       v-else-if="customerPage === 'certificates'"

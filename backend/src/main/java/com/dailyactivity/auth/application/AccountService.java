@@ -89,7 +89,8 @@ public class AccountService {
         Account account = users.findActiveById(principal.userType(), principal.userId()).orElseThrow(() -> ApiException.notFound("Account not found."));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("userType", account.userType());
-        if (!"platform".equals(account.userType())) result.put("merchant", merchants.find(account.merchantId()).orElseThrow());
+        if (!"platform".equals(account.userType()))
+            result.put("merchant", merchantIdentity(merchants.find(account.merchantId()).orElseThrow()));
         if (account.customer()) result.put("customer", customerView(account));
         else if (account.seller()) {
             result.put("member", sellerView(account));
@@ -173,11 +174,30 @@ public class AccountService {
     private Map<String, Object> loginResponse(Account account, JwtTokenService.IssuedToken token) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("accessToken", token.accessToken());
-        if (!"platform".equals(account.userType())) result.put("merchant", merchants.find(account.merchantId()).orElseThrow());
+        if (!"platform".equals(account.userType())) {
+            result.put("merchant", merchantIdentity(merchants.find(account.merchantId()).orElseThrow()));
+        }
         result.put("expiresAt", token.expiresAt());
         if (account.customer()) result.put("customer", customerView(account));
         else result.put("member", sellerView(account));
         return result;
+    }
+
+    private Map<String, Object> merchantIdentity(com.dailyactivity.merchant.domain.port.MerchantRepository.Merchant merchant) {
+        Map<String, Object> identity = new LinkedHashMap<>();
+        identity.put("id", merchant.id());
+        identity.put("code", merchant.code());
+        identity.put("name", merchant.name());
+        identity.put("active", merchant.active());
+        identity.put("updatedAt", merchant.updatedAt());
+        identity.put("domain", merchant.domain());
+        identity.put("logoUrl", merchant.logoUrl());
+        identity.put("theme", merchant.theme());
+        identity.put("registrationEnabled", merchant.registrationEnabled());
+        identity.put("commissionEnabled", merchant.commissionEnabled());
+        identity.put("cryptoEnabled", merchant.cryptoEnabled());
+        identity.put("onlinePaymentLinkEnabled", merchant.onlinePaymentLinkEnabled());
+        return identity;
     }
 
     private boolean accountMerchantActive(Account account) {
@@ -219,7 +239,8 @@ public class AccountService {
 
     public java.math.BigDecimal shippingFee(Principal p) {
         assertValid(p);
-        return merchants.find(p.merchantId()).orElseThrow().shippingFee();
+        Account customer = customer(p);
+        return merchants.find(p.merchantId()).orElseThrow().shippingFees().forTier(customer.priceTier());
     }
 
     public boolean commissionEnabled(long merchantId) {

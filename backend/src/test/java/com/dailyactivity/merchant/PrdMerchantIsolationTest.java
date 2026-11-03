@@ -10,6 +10,7 @@ import com.dailyactivity.file.application.FileService;
 import com.dailyactivity.identity.application.CustomerService;
 import com.dailyactivity.identity.application.MemberService;
 import com.dailyactivity.merchant.application.MerchantService;
+import com.dailyactivity.merchant.domain.ShippingFees;
 import com.dailyactivity.merchant.domain.port.MerchantRepository;
 import com.dailyactivity.order.application.OrderService;
 import com.dailyactivity.payment.application.PaymentService;
@@ -147,9 +148,9 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         var order=approved(b);
         assertThatThrownBy(()->orders.detail(platform,orderId(order))).isInstanceOf(ApiException.class);
         var existing=merchantRepository.find(b.seller().merchantId()).orElseThrow();
-        merchants.update(platform,existing.id(),new MerchantService.Update(existing.name(),true,existing.shippingFee(),existing.updatedAt(),existing.domain(),existing.logoUrl(),existing.theme()));
+        merchants.update(platform,existing.id(),new MerchantService.Update(existing.name(),true,existing.shippingFees(),existing.updatedAt(),existing.domain(),existing.logoUrl(),existing.theme()));
         assertThatCode(()->accounts.requireMenu(b.seller(),"products")).doesNotThrowAnyException();
-        var created=merchants.create(platform,new MerchantService.Create("NEW"+UUID.randomUUID().toString().substring(0,8),"New merchant",new BigDecimal("7.50"),"new-"+UUID.randomUUID(),"Initial admin",PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD,"new-"+UUID.randomUUID()+".test","/ytpeps-logo.svg","classic",false,null));
+        var created=merchants.create(platform,new MerchantService.Create("NEW"+UUID.randomUUID().toString().substring(0,8),"New merchant",ShippingFees.uniform(new BigDecimal("7.50")),"new-"+UUID.randomUUID(),"Initial admin",PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD,"new-"+UUID.randomUUID()+".test","/ytpeps-logo.svg","classic",false,null));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM seller WHERE merchant_id=?",Long.class,created.id())).isEqualTo(1);
         assertThat(jdbc.queryForList("SELECT menu_code FROM seller_permission WHERE seller_id=(SELECT id FROM seller WHERE merchant_id=? AND deleted=0) AND deleted=0",String.class,created.id()))
                 .contains("products","certificates","categories");
@@ -159,12 +160,12 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         var platform=PrdTestFixture.platform(jdbc);
         var b=other();
         var m=merchantRepository.find(b.seller().merchantId()).orElseThrow();
-        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),false,m.shippingFee(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
+        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),false,m.shippingFees(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
         assertThatThrownBy(()->accounts.assertValid(b.seller())).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->accounts.assertValid(b.customer())).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->accounts.customerLogin(b.customer().merchantId(), b.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD)).isInstanceOf(ApiException.class);
         var disabled=merchantRepository.find(m.id()).orElseThrow();
-        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),true,m.shippingFee(),disabled.updatedAt(),disabled.domain(),disabled.logoUrl(),disabled.theme()));
+        merchants.update(platform,m.id(),new MerchantService.Update(m.name(),true,m.shippingFees(),disabled.updatedAt(),disabled.domain(),disabled.logoUrl(),disabled.theme()));
         assertThatThrownBy(()->accounts.assertValid(b.customer())).isInstanceOf(ApiException.class);
         assertThat(accounts.customerLogin(b.customer().merchantId(), b.customerEmail(),PrdTestFixture.CUSTOMER_PASSWORD)).containsKey("accessToken");
     }
@@ -189,11 +190,14 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
     }
 
     @Test
-    void changingMerchantShippingFeeInvalidatesOldQuotes() {
+    void changingMerchantTierShippingFeeInvalidatesOldQuotes() {
         carts.set(data.customer(),data.productId(),1);
         var q=orders.quote(data.customer(),new OrderService.QuoteRequest(data.addressId(),List.of(new OrderService.CartRequest(data.productId(),1))));
         var m=merchantRepository.find(data.seller().merchantId()).orElseThrow();
-        merchants.update(PrdTestFixture.platform(jdbc),m.id(),new MerchantService.Update(m.name(),true,new BigDecimal("25.00"),m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
+        var fees = new ShippingFees(new BigDecimal("25.00"), new BigDecimal("5.00"), new BigDecimal("20.00"),
+                new BigDecimal("20.00"), new BigDecimal("20.00"), new BigDecimal("20.00"));
+        merchants.update(PrdTestFixture.platform(jdbc),m.id(),new MerchantService.Update(m.name(),true,fees,m.updatedAt(),m.domain(),m.logoUrl(),m.theme()));
+        assertThat(merchantRepository.find(m.id()).orElseThrow().shippingFees()).isEqualTo(fees);
         assertThatThrownBy(()->orders.create(data.customer(),new OrderService.CreateRequest((String)q.get("quoteToken"),"test",List.of(new OrderService.CartRequest(data.productId(),1)),data.addressId())))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("QUOTE_CHANGED");
     }
@@ -202,7 +206,7 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         var b=other();var m=merchantRepository.find(b.seller().merchantId()).orElseThrow();
         var existing=merchantRepository.find(data.seller().merchantId()).orElseThrow();
         assertThatThrownBy(()->merchants.update(PrdTestFixture.platform(jdbc),m.id(),
-                new MerchantService.Update("Changed",true,BigDecimal.ONE,m.updatedAt(),existing.domain(),m.logoUrl(),m.theme())))
+                new MerchantService.Update("Changed",true,ShippingFees.uniform(BigDecimal.ONE),m.updatedAt(),existing.domain(),m.logoUrl(),m.theme())))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("MERCHANT_DOMAIN_EXISTS");
     }
 

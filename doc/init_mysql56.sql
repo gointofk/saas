@@ -29,7 +29,12 @@ CREATE TABLE merchant (
   crypto_payment_enabled TINYINT NOT NULL DEFAULT 1,
   online_payment_link_enabled TINYINT NOT NULL DEFAULT 0,
   commission_enabled TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用佣金功能',
-  shipping_fee DECIMAL(18,2) NOT NULL,
+  shipping_fee_v1 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  shipping_fee_v2 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  shipping_fee_v3 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  shipping_fee_v4 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  shipping_fee_v5 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  shipping_fee_v6 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   created_by_user_id BIGINT NULL,
@@ -326,7 +331,7 @@ CREATE TABLE `sales_order` (
   `audit_remark` VARCHAR(1000) NULL COMMENT '审核备注',
   `currency` CHAR(3) NOT NULL DEFAULT 'USD' COMMENT '订单币种：仅USD',
   `subtotal` DECIMAL(18,2) NOT NULL COMMENT '商品小计',
-  `shipping_fee` DECIMAL(18,2) NOT NULL COMMENT '下单时统一运费快照',
+  `shipping_fee` DECIMAL(18,2) NOT NULL COMMENT '下单时按客户等级确定的运费快照',
   `discount_amount` DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT '审核编辑时给予的商品优惠额',
   `total_amount` DECIMAL(18,2) NOT NULL COMMENT '最终应付金额：商品小计加运费减优惠额',
   `address_snapshot` TEXT NOT NULL COMMENT '收货地址快照JSON',
@@ -743,7 +748,7 @@ CREATE TABLE `billing_entry` (
   KEY `idx_billing_type_status_date` (`bill_type`,`status`,`order_created_at`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='应收应付账单事实，状态与收款/结算事实同事务维护';
 
--- 固定菜单只在首次空库初始化时写入，不重置已存在数据。运费由 merchant.shipping_fee 保存，在商户支付管理页面维护。
+-- 固定菜单只在首次空库初始化时写入，不重置已存在数据。各等级运费由 merchant.shipping_fee_v1～shipping_fee_v6 保存，在平台商户管理页面维护。
 START TRANSACTION;
 
 INSERT INTO permission_menu

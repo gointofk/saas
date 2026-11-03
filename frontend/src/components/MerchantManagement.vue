@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppModal from './AppModal.vue'
-import { ApiRequestError, merchantApi, type Merchant, type MerchantPage, type MerchantMailSettingsInput } from '../lib/api'
+import { ApiRequestError, merchantApi, type Merchant, type MerchantPage, type MerchantMailSettingsInput, type MerchantShippingFees } from '../lib/api'
 import { useSellerTranslation } from '../lib/seller-locale'
 const t = useSellerTranslation()
 const emit = defineEmits<{ saved: [] }>()
@@ -22,7 +22,10 @@ const logoFileInput = ref<HTMLInputElement | null>(null)
 const testingMail = ref(false)
 const mailTestStatus = ref('')
 const mailExpanded = ref(false)
-const draft = reactive({ domain: '', logoUrl: '/ytpeps-logo.svg', theme: 'classic', code: '', name: '', active: true, shippingFee: '0.00', adminAccount: '', adminName: '', password: '', confirmation: '', registrationEnabled: false, commissionEnabled: true, cryptoEnabled: true, onlinePaymentLinkEnabled: false, smtpHost: '', smtpPort: '587', smtpUsername: '', smtpPassword: '', tlsMode: 'starttls' as 'starttls' | 'ssl', senderEmail: '', senderName: '', testRecipient: '' })
+const shippingTiers = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6'] as const
+type ShippingFeeDraft = Record<keyof MerchantShippingFees, string | number>
+function zeroShippingFees(): ShippingFeeDraft { return { v1: '0.00', v2: '0.00', v3: '0.00', v4: '0.00', v5: '0.00', v6: '0.00' } }
+const draft = reactive({ domain: '', logoUrl: '/ytpeps-logo.svg', theme: 'classic', code: '', name: '', active: true, shippingFees: zeroShippingFees(), adminAccount: '', adminName: '', password: '', confirmation: '', registrationEnabled: false, commissionEnabled: true, cryptoEnabled: true, onlinePaymentLinkEnabled: false, smtpHost: '', smtpPort: '587', smtpUsername: '', smtpPassword: '', tlsMode: 'starttls' as 'starttls' | 'ssl', senderEmail: '', senderName: '', testRecipient: '' })
 function message(e: unknown) { return e instanceof Error ? e.message : 'Request failed.' }
 async function load(page = result.value.page) {
   loading.value = true; error.value = ''
@@ -35,7 +38,8 @@ function setPage(page: number) {
 function open(item: Merchant | null = null) {
   editing.value = item; error.value = ''; mailTestStatus.value = ''
   mailExpanded.value = item?.registrationEnabled ?? false
-  Object.assign(draft, { domain: item?.domain || '', logoUrl: item?.logoUrl || '/ytpeps-logo.svg', theme: item?.theme || 'classic', code: item?.code || '', name: item?.name || '', active: item?.active ?? true, shippingFee: String(item?.shippingFee ?? '0.00'), adminAccount: '', adminName: '', password: '', confirmation: '', registrationEnabled: item?.registrationEnabled ?? false, commissionEnabled: item?.commissionEnabled ?? true, cryptoEnabled: item?.cryptoEnabled ?? true, onlinePaymentLinkEnabled: item?.onlinePaymentLinkEnabled ?? false, smtpHost: item?.mailSettings?.smtpHost || '', smtpPort: String(item?.mailSettings?.smtpPort || 587), smtpUsername: item?.mailSettings?.smtpUsername || '', smtpPassword: '', tlsMode: item?.mailSettings?.tlsMode || 'starttls', senderEmail: item?.mailSettings?.senderEmail || '', senderName: item?.mailSettings?.senderName || '', testRecipient: '' })
+  const shippingFees = Object.fromEntries(shippingTiers.map(tier => [tier, String(item?.shippingFees?.[tier] ?? '0.00')])) as ShippingFeeDraft
+  Object.assign(draft, { domain: item?.domain || '', logoUrl: item?.logoUrl || '/ytpeps-logo.svg', theme: item?.theme || 'classic', code: item?.code || '', name: item?.name || '', active: item?.active ?? true, shippingFees, adminAccount: '', adminName: '', password: '', confirmation: '', registrationEnabled: item?.registrationEnabled ?? false, commissionEnabled: item?.commissionEnabled ?? true, cryptoEnabled: item?.cryptoEnabled ?? true, onlinePaymentLinkEnabled: item?.onlinePaymentLinkEnabled ?? false, smtpHost: item?.mailSettings?.smtpHost || '', smtpPort: String(item?.mailSettings?.smtpPort || 587), smtpUsername: item?.mailSettings?.smtpUsername || '', smtpPassword: '', tlsMode: item?.mailSettings?.tlsMode || 'starttls', senderEmail: item?.mailSettings?.senderEmail || '', senderName: item?.mailSettings?.senderName || '', testRecipient: '' })
   modal.value = true
 }
 function close() { if (!saving.value && !testingMail.value && !uploadingLogo.value) { modal.value = false; draft.password = ''; draft.confirmation = ''; draft.smtpPassword = '' } }
@@ -86,15 +90,16 @@ const mailTestHint = computed(() => {
 async function save() {
   if (saving.value || testingMail.value || uploadingLogo.value) return
   error.value = ''
-  if (!draft.name.trim() || !/^\d+(\.\d{1,2})?$/.test(draft.shippingFee)) { error.value = t('请填写商户名称和有效运费。'); return }
+  if (!draft.name.trim() || !shippingTiers.every(tier => /^\d+(\.\d{1,2})?$/.test(String(draft.shippingFees[tier] ?? '').trim()))) { error.value = t('请填写商户名称及 V1 至 V6 的有效运费。'); return }
   const passwordRequested = !editing.value || Boolean(draft.password || draft.confirmation)
   if (passwordRequested && (!draft.password.trim() || draft.password.length < 12 || draft.password.length > 64 || draft.password !== draft.confirmation)) { error.value = t('密码须为 12–64 位，两次输入需一致。'); return }
   if (draft.registrationEnabled && (!draft.smtpHost.trim() || !draft.smtpUsername.trim() || !draft.senderEmail.trim() || !draft.senderName.trim() || (!draft.smtpPassword && !editing.value?.mailSettings?.passwordConfigured))) { mailExpanded.value = true; error.value = t('开放注册前请完整配置 SMTP 邮件信息。'); return }
   saving.value = true
   try {
     const mailSettings = mailSettingsPayload()
-    if (editing.value) await merchantApi.update(editing.value.id, { domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, name: draft.name.trim(), active: draft.active, shippingFee: draft.shippingFee, expectedUpdatedAt: editing.value.updatedAt, registrationEnabled: draft.registrationEnabled, commissionEnabled: draft.commissionEnabled, cryptoEnabled: draft.cryptoEnabled, onlinePaymentLinkEnabled: draft.onlinePaymentLinkEnabled, mailSettings, ...(passwordRequested ? { password: draft.password, confirmation: draft.confirmation } : {}) })
-    else await merchantApi.create({ code: draft.code.trim(), domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, name: draft.name.trim(), shippingFee: draft.shippingFee, adminAccount: draft.adminAccount.trim(), adminName: draft.adminName.trim(), password: draft.password, confirmation: draft.confirmation, registrationEnabled: draft.registrationEnabled, commissionEnabled: draft.commissionEnabled, cryptoEnabled: draft.cryptoEnabled, onlinePaymentLinkEnabled: draft.onlinePaymentLinkEnabled, mailSettings })
+    const shippingFees = Object.fromEntries(shippingTiers.map(tier => [tier, String(draft.shippingFees[tier] ?? '').trim()])) as MerchantShippingFees
+    if (editing.value) await merchantApi.update(editing.value.id, { domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, name: draft.name.trim(), active: draft.active, shippingFees, expectedUpdatedAt: editing.value.updatedAt, registrationEnabled: draft.registrationEnabled, commissionEnabled: draft.commissionEnabled, cryptoEnabled: draft.cryptoEnabled, onlinePaymentLinkEnabled: draft.onlinePaymentLinkEnabled, mailSettings, ...(passwordRequested ? { password: draft.password, confirmation: draft.confirmation } : {}) })
+    else await merchantApi.create({ code: draft.code.trim(), domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, name: draft.name.trim(), shippingFees, adminAccount: draft.adminAccount.trim(), adminName: draft.adminName.trim(), password: draft.password, confirmation: draft.confirmation, registrationEnabled: draft.registrationEnabled, commissionEnabled: draft.commissionEnabled, cryptoEnabled: draft.cryptoEnabled, onlinePaymentLinkEnabled: draft.onlinePaymentLinkEnabled, mailSettings })
     modal.value = false; draft.password = ''; draft.confirmation = ''; draft.smtpPassword = ''
     await load(); emit('saved')
   } catch (e) {
@@ -123,8 +128,8 @@ onMounted(() => load())
       <div class="card-head"><button class="btn platform-primary-button" :disabled="loading" @click="open()">{{ t('新增商户') }}</button><button class="btn btn-outline" :disabled="loading" @click="load()">{{ t('刷新') }}</button></div>
       <div class="card-body table-wrap" :aria-busy="loading">
         <p v-if="loading">{{ t('加载中…') }}</p>
-        <table v-else class="admin-table"><thead><tr><th>{{ t('商城 Logo') }}</th><th>{{ t('商户编号') }}</th><th>{{ t('商户名称') }}</th><th>{{ t('状态') }}</th><th>{{ t('买家注册') }}</th><th>{{ t('佣金机制') }}</th><th>{{ t('运费') }}</th><th>{{ t('操作') }}</th></tr></thead>
-          <tbody><tr v-for="item in result.items" :key="item.id"><td><span class="merchant-list-logo"><img :src="item.logoUrl || '/ytpeps-logo.svg'" :alt="item.name"></span></td><td>{{ item.code }}</td><td>{{ item.name }}<small class="merchant-domain">{{ item.domain }}</small></td><td>{{ t(item.active ? '启用' : '停用') }}</td><td>{{ t(item.registrationEnabled ? '开放' : '未开放') }}</td><td>{{ t(item.commissionEnabled ? '开启' : '关闭') }}</td><td>USD {{ item.shippingFee }}</td><td><button class="link-button" @click="open(item)">{{ t('编辑') }}</button></td></tr><tr v-if="!result.items.length"><td colspan="8">{{ t('暂无商户') }}</td></tr></tbody>
+        <table v-else class="admin-table"><thead><tr><th>{{ t('商城 Logo') }}</th><th>{{ t('商户编号') }}</th><th>{{ t('商户名称') }}</th><th>{{ t('状态') }}</th><th>{{ t('买家注册') }}</th><th>{{ t('佣金机制') }}</th><th>{{ t('等级运费') }}</th><th>{{ t('操作') }}</th></tr></thead>
+          <tbody><tr v-for="item in result.items" :key="item.id"><td><span class="merchant-list-logo"><img :src="item.logoUrl || '/ytpeps-logo.svg'" :alt="item.name"></span></td><td>{{ item.code }}</td><td>{{ item.name }}<small class="merchant-domain">{{ item.domain }}</small></td><td>{{ t(item.active ? '启用' : '停用') }}</td><td>{{ t(item.registrationEnabled ? '开放' : '未开放') }}</td><td>{{ t(item.commissionEnabled ? '开启' : '关闭') }}</td><td><span v-for="tier in shippingTiers" :key="tier">{{ tier.toUpperCase() }} USD {{ item.shippingFees[tier] }}<br></span></td><td><button class="link-button" @click="open(item)">{{ t('编辑') }}</button></td></tr><tr v-if="!result.items.length"><td colspan="8">{{ t('暂无商户') }}</td></tr></tbody>
         </table>
       </div>
       <div v-if="result.total" class="admin-pagination">
@@ -184,8 +189,10 @@ onMounted(() => load())
                       </div>
                     </div>
                   </div>
-                  <label class="form-group">{{ t('商城样式') }}<select v-model="draft.theme"><option value="classic">{{ t('经典') }}</option><option value="forest">{{ t('森林') }}</option><option value="editorial">{{ t('简约目录') }}</option></select></label>
-                  <label class="form-group">{{ t('运费') }} (USD)<input v-model="draft.shippingFee" required type="number" min="0" step="0.01"></label>
+                  <label class="form-group merchant-field-wide">{{ t('商城样式') }}<select v-model="draft.theme"><option value="classic">{{ t('经典') }}</option><option value="forest">{{ t('森林') }}</option><option value="editorial">{{ t('简约目录') }}</option></select></label>
+                </div>
+                <div class="form-grid merchant-shipping-fees-grid">
+                  <label v-for="tier in shippingTiers" :key="tier" class="form-group">{{ tier.toUpperCase() }} {{ t('等级运费') }} (USD)<input v-model="draft.shippingFees[tier]" required type="number" min="0" step="0.01"></label>
                 </div>
                 <div class="merchant-setting-row merchant-commission-setting">
                   <div><strong>{{ t('佣金机制') }}</strong></div>

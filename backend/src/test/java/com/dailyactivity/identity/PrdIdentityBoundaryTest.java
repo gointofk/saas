@@ -51,6 +51,30 @@ class PrdIdentityBoundaryTest extends PrdDatabaseTest {
     }
 
     @Test
+    @DisplayName("客户登录响应不公开其他等级的运费配置")
+    void customerLoginDoesNotExposeMerchantShippingFees() {
+        Map<String, Object> response = accounts.customerLogin(
+                data.customer().merchantId(), data.customerEmail(), PrdTestFixture.CUSTOMER_PASSWORD);
+
+        Map<?, ?> merchantIdentity = (Map<?, ?>) response.get("merchant");
+        assertThat(merchantIdentity.keySet().stream().map(String::valueOf).toList()).doesNotContain(
+                "shippingFee", "shippingFees",
+                "shipping_fee_v1", "shipping_fee_v2", "shipping_fee_v3",
+                "shipping_fee_v4", "shipping_fee_v5", "shipping_fee_v6");
+    }
+
+    @Test
+    @DisplayName("客户身份响应不公开各等级运费配置")
+    void customerMeDoesNotExposeMerchantShippingFees() {
+        Map<?, ?> merchantIdentity = (Map<?, ?>) accounts.me(customer()).get("merchant");
+
+        assertThat(merchantIdentity.keySet().stream().map(String::valueOf).toList()).doesNotContain(
+                "shippingFee", "shippingFees",
+                "shipping_fee_v1", "shipping_fee_v2", "shipping_fee_v3",
+                "shipping_fee_v4", "shipping_fee_v5", "shipping_fee_v6");
+    }
+
+    @Test
     @DisplayName("已停用客户不能登录，已有身份也立即失效")
     void disabledCustomerCannotLoginOrUseExistingPrincipal() {
         jdbc.update("UPDATE `user` SET active=0,auth_version=auth_version+1 WHERE id=?", data.customerId());

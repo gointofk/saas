@@ -191,7 +191,7 @@ frontend/
 
 ### 3.3 菜单权限及数据归属
 
-后台菜单码固定为 `order_audit`、`orders`、`commissions`、`bills`、`customers`、`products`、`certificates`、`categories`、`payment_channels`、`members`。每个商家后台账号都保存于 seller 表；拥有某菜单即拥有该菜单的全部操作，不设额外按钮授权或字段脱敏规则。商户 `commission_enabled` 是独立于成员菜单权限的功能开关；关闭时服务端拒绝佣金业务接口并隐藏佣金相关数据，重新开启后可恢复查看保留的历史记录。运费从 merchant.shipping_fee 读取，由平台管理员在商户管理页维护，不设独立商城设置菜单；`payment_channels` 权限仅管理本商户的收款渠道，客户可用的加密货币/线上支付链接开关由平台管理员在商户管理页控制。
+后台菜单码固定为 `order_audit`、`orders`、`commissions`、`bills`、`customers`、`products`、`certificates`、`categories`、`payment_channels`、`members`。每个商家后台账号都保存于 seller 表；拥有某菜单即拥有该菜单的全部操作，不设额外按钮授权或字段脱敏规则。商户 `commission_enabled` 是独立于成员菜单权限的功能开关；关闭时服务端拒绝佣金业务接口并隐藏佣金相关数据，重新开启后可恢复查看保留的历史记录。运费按 V1～V6 客户等级从 merchant.shipping_fee_v1～shipping_fee_v6 读取，由平台管理员在商户管理页维护，不设独立商城设置菜单；`payment_channels` 权限仅管理本商户的收款渠道，客户可用的加密货币/线上支付链接开关由平台管理员在商户管理页控制。
 
 商户 Admin 是拥有本商户获批菜单的 seller 用户；平台身份独立。每商户保留至少一个有效 members 持有者。客户等级仍为 V1～V6。
 
@@ -272,7 +272,7 @@ Java 全部使用 `BigDecimal`，数据库金额 `DECIMAL(18,2)`、百分比 `DE
 赠品单价 = 0.00 USD
 行金额 = 单价 × 正整数数量
 商品小计 S = 各有效行金额之和
-订单运费 F = 创建时本商户统一运费快照
+订单运费 F = 创建时按客户等级读取的本商户运费快照
 订单优惠 D = 审核编辑时给予的固定商品优惠额（默认 0.00）
 优惠前合计 G = S + F
 订单总额 / 最终应付 T = S + F - D
@@ -507,7 +507,7 @@ WHERE id = :orderId AND customer_id = :customerId
 
 | 表/字段 | 约定 |
 | --- | --- |
-| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee DECIMAL(18,2)、customer_registration_enabled、commission_enabled、crypto_payment_enabled、online_payment_link_enabled、收款配置、创建/修改时间与操作人；不提供删除；平台可配置商户并只读查询经营数据 |
+| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee_v1～shipping_fee_v6 DECIMAL(18,2)（对应 V1～V6）、customer_registration_enabled、commission_enabled、crypto_payment_enabled、online_payment_link_enabled、收款配置、创建/修改时间与操作人；不提供删除；平台可配置商户并只读查询经营数据 |
 | category、product | 必填 merchant_id；名称与 SKU 按商户约束；库存和商品资料属于单一商户；写商品时校验类目同商户 |
 | product_tier_price、product_quantity_price | 不重复保存 merchant_id；经 product_id 关联商品后校验 merchant_id，所有查询和写入均以当前商户限定 |
 | coa_certificate、product_coa_link | 必填 merchant_id；COA、商品和绑定关系必须属于同一商户；COA 变更锁所属 merchant 行并校验商品/证书 |
@@ -547,7 +547,7 @@ WHERE id = :orderId AND customer_id = :customerId
 
 报价接口按当前客户定价配置、商品/类目可售性、数量及运费配置计算，返回金额、业务快照字段和短期 `quoteToken`。quoteToken 是专用 HMAC 签名的 v3 报价载荷，含随机 nonce（建议 10 分钟有效），避免同一秒内重复请求生成相同令牌；使用独立密钥，不能作为登录 JWT 使用，服务端无需保存报价会话。载荷不得包含客户类型、定价等级或成本价，避免客户解码令牌获知商家内部资料。
 
-报价载荷包含版本号 2、客户 ID、地址 ID、签发/过期时刻、各商品的 ID/数量/SKU/名称/类型/priceRevision/适用单价，以及商品小计、运费和总额。服务端拒绝缺少版本号或版本不是 2 的旧报价；前端金额只是已展示报价，不能决定服务端成交价。库存是否充足在创建时重新判断，报价不预占库存。运费来自当前买家所属商户配置，订单只保存实际下单时的 shipping_fee。
+报价载荷包含版本号 2、客户 ID、地址 ID、签发/过期时刻、各商品的 ID/数量/SKU/名称/类型/priceRevision/适用单价，以及商品小计、按客户等级确定的运费和总额。服务端拒绝缺少版本号或版本不是 2 的旧报价；前端金额只是已展示报价，不能决定服务端成交价。库存是否充足在创建时重新判断，报价不预占库存。运费来自当前买家所属商户与客户等级的配置，订单只保存实际下单时的 shipping_fee。
 
 创建事务顺序：
 
@@ -640,7 +640,7 @@ COA 资料和完成快照只在短数据库事务内锁定相关业务行，不�
 
 ### 6.9 主数据修改和软删除
 
-运费保存在 merchant.shipping_fee，由平台管理员在商户管理页维护，保存后即时生效。配置变更只影响本商户的新报价和新订单；创建订单时锁定商户行，将运费写入 sales_order.shipping_fee，历史订单不改写。报价提交比较运费值，不保存配置版本或配置标识。
+运费按 V1～V6 分别保存在 merchant.shipping_fee_v1～shipping_fee_v6，由平台管理员在商户管理页维护，保存后即时生效。配置变更只影响对应等级的新报价和新订单；创建订单时锁定客户及商户行，按当前等级复核报价并将运费写入 sales_order.shipping_fee，历史订单不改写。报价提交比较实际运费值，不保存配置版本或配置标识。
 
 COA 转移在同一事务内锁定并重新读取当前绑定及相关商品/证书行；当前归属不符返回冲突，不能无提示抢占。确认转移后软删除旧关系，写 ended_at，新建有效关系同提交。删除 COA 同时结束有效绑定；不删文件或订单快照。
 
@@ -1131,7 +1131,7 @@ URL 统一使用 jdbc:mysql 协议，驱动类为 com.mysql.cj.jdbc.Driver，连
 
 经明确授权后，仅对全新空库执行 [init_mysql56.sql](init_mysql56.sql)。如需同时创建首个平台管理员，执行前在同一会话设置平台账号、姓名及 Argon2id 摘要变量；未设置时不创建账号。平台登录后创建商户及其首个卖家管理员。不提供默认密码，不由应用自动初始化。
 
-各商户分别准备自己的商品、库存、COA、客户和收款渠道后开放下单。商户运费存于 merchant.shipping_fee，开通时必填非负 USD 金额，之后由平台管理员在商户管理页维护。保存立即影响该商户的新报价，旧报价提交时须校验运费是否变化，已创建订单始终保留运费快照；修改旧 app.store.shipping-fee 或重启应用不会更新商户运费。
+各商户分别准备自己的商品、库存、COA、客户和收款渠道后开放下单。商户按 V1～V6 保存六档非负 USD 运费，开通时六档均须配置，之后由平台管理员在商户管理页维护。保存立即影响对应等级的新报价，旧报价提交时须校验实际运费是否变化，已创建订单始终保留运费快照；修改旧 app.store.shipping-fee 或重启应用不会更新商户运费。
 
 备份分成 MySQL 全量/binlog 与本地上传目录两部分，数据库备份不包含文件。文件采用只新增不覆盖：先取得数据库一致备份点，再复制截至复制时全部最终上传文件（可多于该时点引用集合），并生成文件清单/校验值；结合增量恢复时同步补齐恢复时点引用的文件。不能拿更晚的数据库配更早的文件目录而宣称恢复完整。
 
@@ -1220,7 +1220,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 
 | 原型来源 | 已核对逻辑 | 本方案对应 |
 | --- | --- | --- |
-| [customer/store.js](customer/store.js) | 共享 DemoStore、固定等级价、浏览器认证、地区运费与客户码生成 | 稳定客户 ID、服务端定价/JWT、配置文件统一运费、八位随机 Base36 code |
+| [customer/store.js](customer/store.js) | 共享 DemoStore、固定等级价、浏览器认证、地区运费与客户码生成 | 稳定客户 ID、服务端定价/JWT、按客户等级配置运费、八位随机 Base36 code |
 | [客户登录](customer/login_register.html)、[商家登录](seller/login.html) | 原型提供已开通账号登录；正式商城按商户开关显示邮箱注册入口；统一错误、独立入口 | 3、7.2；客户/后台 audience 分离 |
 | [商品目录](customer/index.html) | renderCategories/renderCatalog、加车、库存与价格 | 类目启停排序由服务端控制；移除预购承诺；本人等级价格 |
 | [COA 目录](customer/coas.html) | coaRows/renderCoas，商品×证书展开、商品级字段优先 | 证书自身元数据；业务引用鉴权、文件后端签名下载；完成时捕获快照 |
@@ -1230,7 +1230,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 | [商家后台](seller/index.html) | openSellerOrderEdit、openPayOperation、applyOrderOperation | 待验证/已付禁止改金额，收款事实独立；正式实现打包本节点必传图、发货运单必填且面单选填 |
 | [商家后台](seller/index.html) | commissionRowForOrder、批量结算、unifiedBillingRows、导出 | 订单级佣金快照、账单事实表与永久唯一结算；同步当前筛选导出 |
 | [商家后台](seller/index.html) | bindProductCoasToProduct、openCoaModal、类目/客户/权限/渠道 | 唯一有效 COA 绑定、元数据与文件不可混合、实时权限和应用层关联保障 |
-| [prd_v1.md](prd_v1.md) S-15、8～10 章 | Demo 尚未完整体现的统一运费、库存、软删除、快照和时间要求 | 以 PRD 已确认规则落地，不因原型缺入口而遗漏 |
+| [prd_v1.md](prd_v1.md) S-15、8～10 章 | Demo 尚未完整体现的等级运费、库存、软删除、快照和时间要求 | 以 PRD 已确认规则落地，不因原型缺入口而遗漏 |
 
 订单审核升级脚本与生产数据库操作尚未执行；不能把原型的 localStorage/sessionStorage 业务模拟、示例密码、估算成本或旧测试通过记录当作生产实现。
 
@@ -1259,7 +1259,7 @@ mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u ddl_operator -p dailyactiv
 
 1. 核对全部表为 InnoDB BASE TABLE，业务文本列为 utf8mb4_unicode_ci，file_asset.file_uuid 为 ASCII ascii_bin，无视图、外键、触发器、存储过程、生成列、原生 JSON 或二进制文件列。
 2. permission_menu 有 9 条固定菜单；file_asset 为空表但结构、UUID 主键、索引和状态字段必须存在。
-3. 商户开通时设置非负 shipping_fee；购物车/报价按账号归属读取，订单保存下单快照。旧 app.store.shipping-fee 已移除。
+3. 商户开通时设置 V1～V6 六档非负 shipping_fee；购物车/报价按账号归属及客户等级读取，订单保存下单运费快照。旧 app.store.shipping-fee 已移除。
 4. 核对软删除字段仅存在于支持软删除的表、永久唯一/有效关系唯一索引，以及所有复合索引字节长度 ≤767；付款交易号不单独建索引，按订单唯一关联读取。
 5. 在真实 MySQL 5.6 上验证建表、中文/四字节字符、DATETIME(6)、事务回滚、大小写归一化后的 Base36 code、分页 LIMIT 10 和重复结算/账单约束；新版本 MySQL 的成功不能替代 5.6 验证。
 6. 补充新验收：JWT exp-iat=2592000；Security 依赖为零；0% 不生成计提/应付/结算且接口拒绝绕过；所有分页均为 10；文件内容只在磁盘，`file_asset` 使用 file_uuid 主键且业务表全部保存 file_uuid；账单事实与订单、收款、佣金、结算事务一致；live 配置全部来自对应 YAML。

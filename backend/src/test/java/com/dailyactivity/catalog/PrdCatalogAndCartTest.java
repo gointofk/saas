@@ -46,7 +46,7 @@ class PrdCatalogAndCartTest extends PrdDatabaseTest {
     }
 
     @Test
-    @DisplayName("购物车拒绝非正整数和超过库存的数量，并返回商品小计与统一运费")
+    @DisplayName("购物车拒绝非正整数和超过库存的数量，并返回商品小计与等级运费")
     void cartValidatesQuantityAndCalculatesShippingSeparately() {
         // Arrange / Act
         Map<String, Object> cart = carts.set(customer(), data.productId(), 2);

@@ -6,6 +6,7 @@ import com.dailyactivity.auth.infrastructure.JwtTokenService;
 import com.dailyactivity.auth.infrastructure.PasswordHasher;
 import com.dailyactivity.common.ApiException;
 import com.dailyactivity.merchant.application.MerchantService;
+import com.dailyactivity.merchant.domain.ShippingFees;
 import com.dailyactivity.merchant.domain.port.MerchantRepository;
 import com.dailyactivity.support.PrdDatabaseTest;
 import com.dailyactivity.support.PrdTestFixture;
@@ -139,7 +140,7 @@ class PrdMerchantAdminPasswordTest extends PrdDatabaseTest {
         var other = PrdTestFixture.seed(jdbc, PrdTestFixture.merchant(jdbc, "FAIL" + UUID.randomUUID().toString().substring(0, 8)));
         var merchant = merchantRepository.find(seller().merchantId()).orElseThrow();
         String before = sellerHash(data.sellerId());
-        var request = new MerchantService.Update("Changed merchant", true, merchant.shippingFee(), merchant.updatedAt(),
+        var request = new MerchantService.Update("Changed merchant", true, merchant.shippingFees(), merchant.updatedAt(),
                 merchantRepository.find(other.seller().merchantId()).orElseThrow().domain(), merchant.logoUrl(), merchant.theme(), false, null, NEW_PASSWORD, NEW_PASSWORD);
 
         var nested = new TransactionTemplate(transactions);
@@ -151,7 +152,7 @@ class PrdMerchantAdminPasswordTest extends PrdDatabaseTest {
     }
 
     private MerchantService.Update update(MerchantRepository.Merchant merchant, String password, String confirmation) {
-        return new MerchantService.Update(merchant.name(), merchant.active(), merchant.shippingFee(), merchant.updatedAt(),
+        return new MerchantService.Update(merchant.name(), merchant.active(), merchant.shippingFees(), merchant.updatedAt(),
                 merchant.domain(), merchant.logoUrl(), merchant.theme(), null, null, password, confirmation);
     }
 

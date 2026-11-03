@@ -28,7 +28,7 @@ public final class PrdTestFixture {
     public static long merchant(JdbcTemplate jdbc, String code) {
         var ids = jdbc.queryForList("SELECT id FROM merchant WHERE code=?", Long.class, code);
         if (!ids.isEmpty()) return ids.get(0);
-        jdbc.update("INSERT INTO merchant(code,name,shipping_fee,domain) VALUES(?, 'Test Merchant',20.00,?)", code,code.toLowerCase()+".test");
+        jdbc.update("INSERT INTO merchant(code,name,shipping_fee_v1,shipping_fee_v2,shipping_fee_v3,shipping_fee_v4,shipping_fee_v5,shipping_fee_v6,domain) VALUES(?, 'Test Merchant',20.00,20.00,20.00,20.00,20.00,20.00,?)", code,code.toLowerCase()+".test");
         long id = jdbc.queryForObject("SELECT id FROM merchant WHERE code=?",Long.class,code);
         return id;
     }

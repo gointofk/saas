@@ -8,6 +8,7 @@ import com.dailyactivity.common.ApiException;
 import com.dailyactivity.identity.application.MemberService;
 import com.dailyactivity.identity.domain.port.MemberRepository;
 import com.dailyactivity.merchant.domain.port.MerchantRepository;
+import com.dailyactivity.merchant.domain.ShippingFees;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -66,7 +67,7 @@ class MemberServiceTest {
     private Principal actor(long id, boolean manager) {
         when(users.findActiveById("seller",id)).thenReturn(Optional.of(account(id, 11, manager)));
         when(users.findPermissions(id)).thenReturn(Set.of("members", "orders"));
-        when(merchants.find(11)).thenReturn(Optional.of(new MerchantRepository.Merchant(11, "TEST", "Test", true, BigDecimal.ZERO, Instant.EPOCH)));
+        when(merchants.find(11)).thenReturn(Optional.of(new MerchantRepository.Merchant(11, "TEST", "Test", true, ShippingFees.zero(), Instant.EPOCH)));
         return new Principal(id, "seller", 0, 11);
     }
 

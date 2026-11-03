@@ -6,6 +6,7 @@ import com.dailyactivity.auth.domain.Principal;
 import com.dailyactivity.auth.infrastructure.JwtTokenService;
 import com.dailyactivity.common.ApiException;
 import com.dailyactivity.merchant.application.StorefrontService;
+import com.dailyactivity.merchant.domain.ShippingFees;
 import com.dailyactivity.merchant.domain.port.MerchantRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ class StorefrontSecurityTest {
     private final MerchantRepository merchants=mock(MerchantRepository.class);
     private final StorefrontService storefront=new StorefrontService(merchants);
     private MerchantRepository.Merchant merchant(long id,boolean active) {
-        return new MerchantRepository.Merchant(id,"TEST","Shop",active,BigDecimal.TEN,Instant.EPOCH,"shop.test","/ytpeps-logo.svg","classic");
+        return new MerchantRepository.Merchant(id,"TEST","Shop",active,ShippingFees.uniform(BigDecimal.TEN),Instant.EPOCH,"shop.test","/ytpeps-logo.svg","classic");
     }
     @Test void normalizesDomainsAndRejectsUrls() {
         assertThat(StorefrontService.normalizeDomain(" SHOP.Test. ")).isEqualTo("shop.test");

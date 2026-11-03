@@ -1,6 +1,7 @@
 com/dailyactivity/order/domain/port/OrderRepository$PaymentReceiptInput.class
 com/dailyactivity/common/ErrorResponse.class
 com/dailyactivity/auth/api/AuthController$CustomerLoginRequest.class
+com/dailyactivity/merchant/domain/ShippingFees.class
 com/dailyactivity/order/domain/port/OrderRepository$CustomerOrderFilterSummary.class
 com/dailyactivity/order/application/OrderParcelService$ParcelItem.class
 com/dailyactivity/order/application/OrderService$CancelRequest.class

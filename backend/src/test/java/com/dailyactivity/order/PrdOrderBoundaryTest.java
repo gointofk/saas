@@ -46,6 +46,30 @@ class PrdOrderBoundaryTest extends PrdDatabaseTest {
     }
 
     @Test
+    @DisplayName("报价和订单按客户等级应用运费，并保存实际运费快照")
+    void shippingFeeUsesCustomerTierAndIsSnapshottedOnOrder() {
+        jdbc.update("UPDATE merchant SET shipping_fee_v1=10.00,shipping_fee_v2=5.00 WHERE id=?", customer().merchantId());
+        jdbc.update("UPDATE `user` SET price_tier='V1' WHERE id=?", data.customerId());
+        carts.set(data.customer(), data.productId(), 1);
+        var cartItems = List.of(new OrderService.CartRequest(data.productId(), 1));
+        var quoteRequest = new OrderService.QuoteRequest(data.addressId(), cartItems);
+
+        Map<String, Object> v1Quote = orders.quote(customer(), quoteRequest);
+        assertThat(v1Quote.get("shippingFee")).isEqualTo(new BigDecimal("10.00"));
+
+        jdbc.update("UPDATE `user` SET price_tier='V2' WHERE id=?", data.customerId());
+        Map<String, Object> v2Quote = orders.quote(customer(), quoteRequest);
+        assertThat(v2Quote.get("shippingFee")).isEqualTo(new BigDecimal("5.00"));
+
+        Map<String, Object> created = orders.create(customer(), new OrderService.CreateRequest(
+                (String) v2Quote.get("quoteToken"), "V2 shipping fee", cartItems, data.addressId()));
+
+        assertThat(created.get("shippingFee")).isEqualTo(new BigDecimal("5.00"));
+        assertThat(jdbc.queryForObject("SELECT shipping_fee FROM sales_order WHERE id=?", BigDecimal.class, orderId(created)))
+                .isEqualByComparingTo("5.00");
+    }
+
+    @Test
     @DisplayName("客户不能查看其他客户的订单")
     void orderDetailIsRestrictedToOwner() {
         long id = orderId(createOrder("ownership-order-1", 1));
