@@ -423,6 +423,7 @@ export const englishSellerText: Record<string, string> = {
   "＋ 新增客户": "＋ Add customer",
   "用户码": "Customer code",
   "用户": "User",
+  "推荐人": "Referrer",
   "最近登录": "Last sign-in",
   "推荐数": "Referrals",
   "总金额": "Total amount",

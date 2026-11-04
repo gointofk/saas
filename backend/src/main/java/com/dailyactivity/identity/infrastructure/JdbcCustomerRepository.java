@@ -28,6 +28,7 @@ public class JdbcCustomerRepository implements CustomerRepository {
 
     private String customerColumns() {
         return "u.id,u.code,u.name,u.email,u.customer_type,u.price_tier,u.active,u.referrer_id,u.commission_rate,"
+                + "(SELECT r.name FROM `user` r WHERE r.id=u.referrer_id AND r.merchant_id=u.merchant_id AND r.deleted=0) referrer_name,"
                 + "(SELECT COUNT(*) FROM sales_order o WHERE o.customer_id=u.id) order_count,"
                 + "(SELECT COUNT(*) FROM `user` r WHERE r.referrer_id=u.id AND r.deleted=0) referral_count,"
                 + "(SELECT COALESCE(SUM(o.total_amount),0) FROM sales_order o WHERE o.customer_id=u.id AND o.order_status<>'cancelled') total_amount,"
@@ -197,6 +198,6 @@ public class JdbcCustomerRepository implements CustomerRepository {
                 (Long) r.getObject("referrer_id"), r.getBigDecimal("commission_rate"), r.getLong("order_count"),
                 r.getLong("referral_count"), r.getBigDecimal("total_amount"), r.getLong("unpaid_count"),
                 r.getBigDecimal("unpaid_amount"), lastLogin == null ? null : lastLogin.toInstant(),
-                created == null ? null : created.toInstant());
+                created == null ? null : created.toInstant(), r.getString("referrer_name"));
     }
 }

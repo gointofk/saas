@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, provide, reactive, ref, watch } from 'vue'
-import { ApiRequestError, api, orderPaymentApi, orderParcelApi, type PaymentOrder, auditOrderApi, clearToken, download, getToken, request, setToken, pinAdminToken, type Area, type AuditEditableOrder } from './lib/api'
+import { ApiRequestError, api, orderPaymentApi, orderParcelApi, type AdminCustomer, type PaymentOrder, auditOrderApi, clearToken, download, getToken, request, setToken, pinAdminToken, type Area, type AuditEditableOrder } from './lib/api'
 import { chineseCustomerText } from './lib/customer-locale'
 import { sellerTranslationKey, translateSeller } from './lib/seller-locale'
 import AdminSidebar from './components/AdminSidebar.vue'
@@ -188,7 +188,7 @@ const adminOrderSummary = ref<AnyRecord>({})
 const adminOrderSummaryCache = createRequestCache()
 const adminProducts = ref<Page>({ items: [], total: 0, page: 1, totalPages: 1 })
 const adminProductPage = ref(1)
-const adminCustomers = ref<Page>({ items: [], total: 0, page: 1, totalPages: 1 })
+const adminCustomers = ref<Page<AdminCustomer>>({ items: [], total: 0, page: 1, totalPages: 1 })
 const adminCustomerPage = ref(1)
 let adminCustomerSearchTimer: number | undefined
 const commissions = ref<Page<FinanceListItem>>({ items: [], total: 0, page: 1, totalPages: 1 })
@@ -1910,7 +1910,7 @@ async function loadAdminPage() {
       if (adminSearch.value.trim()) query.set('q', adminSearch.value.trim())
       if (adminUserType.value !== 'all') query.set('customerType', adminUserType.value)
       if (adminUserPayment.value === 'unpaid') query.set('unpaid', 'true')
-      adminCustomers.value = await request<Page>(`/admin/customers?${query.toString()}`, {}, 'admin')
+      adminCustomers.value = await request<Page<AdminCustomer>>(`/admin/customers?${query.toString()}`, {}, 'admin')
       adminCustomerPage.value = adminCustomers.value.page
     }
     if (adminPage.value === 'finance' && adminMode.value === 'billing') {
@@ -3422,11 +3422,12 @@ watch(adminSearch, () => {
             </div>
             <div class="card-body table-wrap">
               <table class="admin-table">
-                <thead><tr><th>{{ t('用户码') }}</th><th>{{ t('用户') }}</th><th>{{ t('客户类型') }}</th><th>{{ t('最近登录') }}</th><th v-if="currentMerchant?.commissionEnabled">{{ t('推荐数') }}</th><th>{{ t('订单总数') }}</th><th>{{ t('总金额') }}</th><th>{{ t('待支付订单') }}</th><th>{{ t('待支付金额') }}</th><th>{{ t('操作') }}</th></tr></thead>
+                <thead><tr><th>{{ t('用户码') }}</th><th>{{ t('用户') }}</th><th>{{ t('推荐人') }}</th><th>{{ t('客户类型') }}</th><th>{{ t('最近登录') }}</th><th v-if="currentMerchant?.commissionEnabled">{{ t('推荐数') }}</th><th>{{ t('订单总数') }}</th><th>{{ t('总金额') }}</th><th>{{ t('待支付订单') }}</th><th>{{ t('待支付金额') }}</th><th>{{ t('操作') }}</th></tr></thead>
                 <tbody>
                   <tr v-for="item in adminCustomers.items" :key="item.id">
                     <td><div class="customer-code-cell"><span class="customer-tier-mark">{{ item.priceTier || 'V1' }}</span><span>{{ item.userCode }}</span></div></td>
                     <td><strong>{{ item.name }}</strong><small>{{ item.email }}</small></td>
+                    <td>{{ item.referrerName || '-' }}</td>
                     <td>{{ item.customerType === 'partner' ? t('合作伙伴') : t('固定客户') }}</td>
                     <td>{{ formatDateTime(item.lastLogin) }}</td>
                     <td v-if="currentMerchant?.commissionEnabled"><button class="link-button" type="button" :aria-label="t('查看 {0} 推荐的客户', [item.name])" @click="openCustomerReferrals(item)">{{ item.referralCount || 0 }}</button></td>

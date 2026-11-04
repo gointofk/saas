@@ -193,6 +193,7 @@ public class CustomerService {
         v.put("userCode", c.code());
         v.put("name", c.name());
         v.put("email", c.email());
+        v.put("referrerName", c.referrerName());
         v.put("customerType", c.customerType());
         v.put("priceTier", c.priceTier());
         v.put("active", c.active());

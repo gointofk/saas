@@ -337,6 +337,12 @@ export type AdminMember = {
   id: number; account: string; name: string; active: boolean; merchantAdmin: boolean
   permissions: string[]; updatedAt: string
 }
+export type AdminCustomer = {
+  id: number; userCode: string; name: string; email: string; referrerName: string | null
+  customerType: 'partner' | 'regular'; priceTier: 'V1' | 'V2' | 'V3' | 'V4' | 'V5' | 'V6'
+  active: boolean; orderCount: number; referralCount?: number; totalAmount: number | string
+  unpaidCount: number; unpaidAmount: number | string; lastLogin: string | null; createdAt: string
+}
 
 export type MerchantMailSettings = {
   smtpHost: string; smtpPort: number; smtpUsername: string; tlsMode: 'starttls' | 'ssl'

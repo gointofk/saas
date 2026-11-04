@@ -39,7 +39,14 @@ public interface CustomerRepository {
     record Customer(long id, String code, String name, String email, String customerType, String priceTier,
                     boolean active, Long referrerId, BigDecimal commissionRate, long orderCount,
                     long referralCount, BigDecimal totalAmount, long unpaidCount, BigDecimal unpaidAmount,
-                    Instant lastLoginAt, Instant createdAt) {
+                    Instant lastLoginAt, Instant createdAt, String referrerName) {
+        public Customer(long id, String code, String name, String email, String customerType, String priceTier,
+                        boolean active, Long referrerId, BigDecimal commissionRate, long orderCount,
+                        long referralCount, BigDecimal totalAmount, long unpaidCount, BigDecimal unpaidAmount,
+                        Instant lastLoginAt, Instant createdAt) {
+            this(id, code, name, email, customerType, priceTier, active, referrerId, commissionRate, orderCount,
+                    referralCount, totalAmount, unpaidCount, unpaidAmount, lastLoginAt, createdAt, null);
+        }
     }
 
     record CustomerInput(String email, String name, String passwordHash, String customerType, String priceTier,
