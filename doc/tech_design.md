@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本 / 日期 | V2.0 / 2026-10-31 |
-| 需求基线 | [prd_v1.md](prd_v1.md)，正文标注 V1.9；当前前端实现为 `frontend/src/App.vue` 单 SPA，客户/后台按 pathname 分区 |
+| 版本 / 日期 | V2.1 / 2026-11-07 |
+| 需求基线 | [prd_v1.md](prd_v1.md)，正文标注 V1.10；当前前端实现为 `frontend/src/App.vue` 单 SPA，客户/后台按 pathname 分区 |
 | 适用范围 | 商户目录与业务数据完全隔离的 SaaS 商城；低并发首版 |
 | 文档性质 | 可用于开发拆分、接口评审、数据库设计和验收的技术方案；不表示系统已经实现或测试通过 |
 | 规则优先级 | 本次用户技术要求 > PRD 已确认业务规则（B）> PRD 实施建议（E）> Demo 现状（D） |
@@ -332,7 +332,7 @@ Java 全部使用 `BigDecimal`，数据库金额 `DECIMAL(18,2)`、百分比 `DE
 
 买家 user 表仅保存商户、邮箱、姓名、密码、客户码、类型、等级、推荐关系、费率、状态和认证属性；seller 表保存商户、登录账号、姓名、密码、merchant_admin 标记、状态和认证属性；admin 表保存平台登录账号、姓名、密码、状态和认证属性。merchant_admin 默认 0，仅平台开通商户时创建的初始 seller 为 1。买家邮箱按 (merchant_id,email) 唯一，客户码在 user 表全局唯一；seller.account 和 admin.account 分别在各自表内唯一，可使用相同账号名。三表无共用身份主表、无 user_type 列。客户业务 customer_id/referrer_id 指向 user.id；seller_permission.seller_id 只指向 seller.id。
 
-商家后台建号仍使用原客户服务并按商家提供的资料创建；自助注册使用相同的 `user` 表与唯一约束，固定 `regular/V1`、立即启用并记录 `email_verified_at`。客户可选提交邀请码；佣金开启时按 Host 商户范围锁定查找有效 `user.code`，将其 ID 写入 `referrer_id`、`commission_rate=0`，邀请码不跨商户解析；无邀请码则保持无推荐人，佣金关闭时邀请码字段不展示且服务端拒绝非空值。邮箱由商家后台修改时清空该验证时间；现有商家创建账号不要求补验。每商户 SMTP 参数保存在 `merchant_email_settings`；密码以 AES-GCM 密文保存，公开商城配置及平台商户列表只返回是否已配置，不回传密文。`merchant.crypto_payment_enabled` 与 `merchant.online_payment_link_enabled` 分别控制客户可用的加密货币和线上链接方式，默认值分别为 1 和 0，由平台管理员在平台商户管理页维护；商家成员仅可维护具体收款渠道。
+商家后台建号仍使用原客户服务并按商家提供的资料创建；自助注册使用相同的 `user` 表与唯一约束，固定 `customer_type=regular`，价格等级取注册事务锁定的商户 `customer_registration_default_tier`，立即启用并记录 `email_verified_at`。该配置由平台管理员按商户设置为 V1～V6，新商户默认为 V1。客户可选提交邀请码；佣金开启时按 Host 商户范围锁定查找有效 `user.code`，将其 ID 写入 `referrer_id`、`commission_rate=0`，邀请码不跨商户解析且不影响注册默认等级；无邀请码则保持无推荐人，佣金关闭时邀请码字段不展示且服务端拒绝非空值。邮箱由商家后台修改时清空该验证时间；现有商家创建账号不要求补验。每商户 SMTP 参数保存在 `merchant_email_settings`；密码以 AES-GCM 密文保存，公开商城配置及平台商户列表只返回是否已配置，不回传密文。`merchant.crypto_payment_enabled` 与 `merchant.online_payment_link_enabled` 分别控制客户可用的加密货币和线上链接方式，默认值分别为 1 和 0，由平台管理员在平台商户管理页维护；商家成员仅可维护具体收款渠道。
 
 `customer_registration_challenge` 是短期认证数据，不是业务数据或会话表。每个商户/邮箱最多保留一条当前验证码摘要、有效期、重发时间、失败次数和消费时间；MySQL 行锁使并发验证码校验与账号创建串行。过期挑战由定时清理删除。
 
@@ -507,7 +507,7 @@ WHERE id = :orderId AND customer_id = :customerId
 
 | 表/字段 | 约定 |
 | --- | --- |
-| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee_v1～shipping_fee_v6 DECIMAL(18,2)（对应 V1～V6）、customer_registration_enabled、commission_enabled、crypto_payment_enabled、online_payment_link_enabled、收款配置、创建/修改时间与操作人；不提供删除；平台可配置商户并只读查询经营数据 |
+| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee_v1～shipping_fee_v6 DECIMAL(18,2)（对应 V1～V6）、customer_registration_enabled、customer_registration_default_tier CHAR(2)（V1～V6，默认 V1）、commission_enabled、crypto_payment_enabled、online_payment_link_enabled、收款配置、创建/修改时间与操作人；不提供删除；平台可配置商户并只读查询经营数据 |
 | category、product | 必填 merchant_id；名称与 SKU 按商户约束；库存和商品资料属于单一商户；写商品时校验类目同商户 |
 | product_tier_price、product_quantity_price | 不重复保存 merchant_id；经 product_id 关联商品后校验 merchant_id，所有查询和写入均以当前商户限定 |
 | coa_certificate、product_coa_link | 必填 merchant_id；COA、商品和绑定关系必须属于同一商户；COA 变更锁所属 merchant 行并校验商品/证书 |
@@ -708,7 +708,7 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | `GET /customer/storefront` | 品牌信息及 `registrationEnabled`；不返回 SMTP 配置 | MERCHANT / C-01 |
 | `POST /customer/auth/login` | email/password → accessToken、expiresAt、客户基本资料；不回密码 | C-01 |
 | `POST /customer/auth/registration-code` | email；按请求 Host 商户发送一次性 6 位邮件码；无账号枚举 | C-01 |
-| `POST /customer/auth/register` | email/name/password/confirmation/verificationCode/inviteCode?；邀请码须属于 Host 商户内启用客户，佣金开启时写入 `referrer_id` 且初始费率为 0；成功创建 `regular/V1` 买家并记录邮箱验证时间 | C-01 |
+| `POST /customer/auth/register` | email/name/password/confirmation/verificationCode/inviteCode?；事务锁定 Host 商户并读取 `customer_registration_default_tier` 创建 `regular` 买家；邀请码须属于同商户启用客户，佣金开启时写入 `referrer_id` 且初始费率为 0，邀请码不影响价格等级；记录邮箱验证时间 | C-01 |
 | `POST /admin/auth/login` | account/password → 后台 token、身份、菜单 | S-01 |
 | `POST /{customer\|admin}/auth/logout` | 当前 Bearer；锁账号行并提升认证版本 | C-01 / S-01 |
 | `GET /{customer\|admin}/me` | 当前有效身份与基础信息；客户响应不含客户类型和定价等级 | AUTH |
@@ -823,9 +823,9 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | POST /api/v1/platform/auth/login | 独立平台账号密码登录，失败限流，返回平台 JWT |
 | GET /api/v1/platform/me | 验证平台身份，返回 member，不返回商户或商家菜单 |
 | POST /api/v1/platform/auth/logout | 提升账号 authVersion，使既有平台令牌失效 |
-| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条；返回 administrator、注册/佣金/付款方式开关、SMTP 非密钥字段及 SMTP 密码是否已保存 |
-| POST /api/v1/platform/merchants | 原商户字段，可选 registrationEnabled/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings，连同首管理员事务创建；注册默认关闭，佣金和加密货币默认开启，线上支付链接默认关闭 |
-| PUT /api/v1/platform/merchants/{id} | 原商户字段，必填 expectedUpdatedAt，可选 registrationEnabled/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings/password/confirmation；关闭佣金前检查未结计提和待审核可计佣订单，校验通过才更新；付款方式开关也在此配置；管理员密码两项均留空不改，设置时校验并使旧登录失效；smtpPassword 留空保留旧值，事务更新 |
+| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条；返回 administrator、注册开关及 registrationDefaultTier、佣金/付款方式开关、SMTP 非密钥字段及 SMTP 密码是否已保存 |
+| POST /api/v1/platform/merchants | 原商户字段，可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings，连同首管理员事务创建；注册默认关闭，registrationDefaultTier 默认 V1，佣金和加密货币默认开启，线上支付链接默认关闭 |
+| PUT /api/v1/platform/merchants/{id} | 原商户字段，必填 expectedUpdatedAt，可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings/password/confirmation；registrationDefaultTier 只接受 V1～V6；关闭佣金前检查未结计提和待审核可计佣订单，校验通过才更新；付款方式开关也在此配置；管理员密码两项均留空不改，设置时校验并使旧登录失效；smtpPassword 留空保留旧值，事务更新 |
 | POST /api/v1/platform/merchants/{id}/email-settings/test | 使用已保存配置发送测试邮件；仅平台身份可调用 |
 | GET /api/v1/platform/overview | 返回全商户和买家数量、未取消订单金额、累计已收金额、待处理状态计数和最近 7 天订单趋势 |
 | GET /api/v1/platform/orders?page=1 | 跨商户订单查询；可按 merchantId、q、订单/审核/付款状态和 UTC 时间筛选；列表遮蔽买家姓名与邮箱 |

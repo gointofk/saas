@@ -26,6 +26,7 @@ CREATE TABLE merchant (
   theme VARCHAR(32) NOT NULL DEFAULT 'classic',
   active TINYINT NOT NULL DEFAULT 1,
   customer_registration_enabled TINYINT NOT NULL DEFAULT 0,
+  customer_registration_default_tier CHAR(2) NOT NULL DEFAULT 'V1' COMMENT '新自助注册客户默认价格等级：V1～V6',
   crypto_payment_enabled TINYINT NOT NULL DEFAULT 1,
   online_payment_link_enabled TINYINT NOT NULL DEFAULT 0,
   commission_enabled TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用佣金功能',

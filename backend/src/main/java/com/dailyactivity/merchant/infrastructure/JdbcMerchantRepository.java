@@ -22,7 +22,7 @@ public class JdbcMerchantRepository implements MerchantRepository {
                 r.getBigDecimal("shipping_fee_v6"));
         return new Merchant(r.getLong("id"), r.getString("code"), r.getString("name"), r.getBoolean("active"), fees,
                 r.getTimestamp("updated_at").toInstant(), r.getString("domain"), r.getString("logo_url"), r.getString("theme"),
-                r.getBoolean("customer_registration_enabled"), r.getBoolean("commission_enabled"),
+                r.getBoolean("customer_registration_enabled"), r.getString("customer_registration_default_tier"), r.getBoolean("commission_enabled"),
                 r.getBoolean("crypto_payment_enabled"), r.getBoolean("online_payment_link_enabled"));
     }
     public Optional<Merchant> find(long id) {
@@ -46,14 +46,14 @@ public class JdbcMerchantRepository implements MerchantRepository {
         return jdbc.query("SELECT * FROM merchant ORDER BY id LIMIT 10 OFFSET :offset", new MapSqlParameterSource("offset", (page-1)*10), (r,n) -> row(r));
     }
     public long count() { return jdbc.queryForObject("SELECT COUNT(*) FROM merchant", new MapSqlParameterSource(), Long.class); }
-    public long create(String code, String name, ShippingFees fees, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled, boolean commissionEnabled, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled) {
+    public long create(String code, String name, ShippingFees fees, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled, String registrationDefaultTier, boolean commissionEnabled, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled) {
         try {
             var key = new GeneratedKeyHolder();
-            jdbc.update("INSERT INTO merchant(code,name,shipping_fee_v1,shipping_fee_v2,shipping_fee_v3,shipping_fee_v4,shipping_fee_v5,shipping_fee_v6,domain,logo_url,theme,customer_registration_enabled,commission_enabled,crypto_payment_enabled,online_payment_link_enabled,created_by_user_id,updated_by_user_id) VALUES(:code,:name,:feeV1,:feeV2,:feeV3,:feeV4,:feeV5,:feeV6,:domain,:logo,:theme,:registrationEnabled,:commissionEnabled,:cryptoEnabled,:onlinePaymentLinkEnabled,:actor,:actor)",
+            jdbc.update("INSERT INTO merchant(code,name,shipping_fee_v1,shipping_fee_v2,shipping_fee_v3,shipping_fee_v4,shipping_fee_v5,shipping_fee_v6,domain,logo_url,theme,customer_registration_enabled,customer_registration_default_tier,commission_enabled,crypto_payment_enabled,online_payment_link_enabled,created_by_user_id,updated_by_user_id) VALUES(:code,:name,:feeV1,:feeV2,:feeV3,:feeV4,:feeV5,:feeV6,:domain,:logo,:theme,:registrationEnabled,:registrationDefaultTier,:commissionEnabled,:cryptoEnabled,:onlinePaymentLinkEnabled,:actor,:actor)",
                     new MapSqlParameterSource("code",code).addValue("name",name).addValue("feeV1",fees.v1()).addValue("feeV2",fees.v2())
                             .addValue("feeV3",fees.v3()).addValue("feeV4",fees.v4()).addValue("feeV5",fees.v5()).addValue("feeV6",fees.v6())
                             .addValue("domain",domain).addValue("logo",logoUrl).addValue("theme",theme)
-                            .addValue("registrationEnabled",registrationEnabled).addValue("commissionEnabled",commissionEnabled)
+                            .addValue("registrationEnabled",registrationEnabled).addValue("registrationDefaultTier",registrationDefaultTier).addValue("commissionEnabled",commissionEnabled)
                             .addValue("cryptoEnabled",cryptoEnabled).addValue("onlinePaymentLinkEnabled",onlinePaymentLinkEnabled)
                             .addValue("actor",actor),key,new String[]{"id"});
             return key.getKey().longValue();
@@ -71,6 +71,9 @@ public class JdbcMerchantRepository implements MerchantRepository {
     }
     public void updateRegistrationEnabled(long id, boolean enabled, long actor) {
         jdbc.update("UPDATE merchant SET customer_registration_enabled=:enabled,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE id=:id",new MapSqlParameterSource("id",id).addValue("enabled",enabled).addValue("actor",actor));
+    }
+    public void updateRegistrationDefaultTier(long id, String tier, long actor) {
+        jdbc.update("UPDATE merchant SET customer_registration_default_tier=:tier,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type='platform' WHERE id=:id",new MapSqlParameterSource("id",id).addValue("tier",tier).addValue("actor",actor));
     }
     public void updateCommissionEnabled(long id, boolean enabled, long actor) {
         jdbc.update("UPDATE merchant SET commission_enabled=:enabled,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE id=:id",new MapSqlParameterSource("id",id).addValue("enabled",enabled).addValue("actor",actor));

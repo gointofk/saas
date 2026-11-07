@@ -47,11 +47,14 @@ public class CustomerRegistrationTransaction {
             challenges.consume(merchantId, email);
             return Result.EMAIL_EXISTS;
         }
-        Long referrerId = resolveReferrer(merchantId, inviteCode);
+        var merchant = merchants.lock(merchantId);
+        if (!merchant.active()) throw ApiException.forbidden("This storefront is unavailable.");
+        if (!merchant.registrationEnabled()) throw ApiException.forbidden("Customer registration is not available for this storefront.");
+        Long referrerId = resolveReferrer(merchantId, inviteCode, merchant.commissionEnabled());
         String passwordHash = com.dailyactivity.auth.infrastructure.PasswordHasher.hash(password);
         for (int attempt = 0; attempt < 10; attempt++) {
             try {
-                customers.createSelfRegistered(merchantId, email, name, passwordHash, CustomerCodeGenerator.next(), referrerId, now);
+                customers.createSelfRegistered(merchantId, email, name, passwordHash, CustomerCodeGenerator.next(), merchant.registrationDefaultTier(), referrerId, now);
                 challenges.consume(merchantId, email);
                 return Result.CREATED;
             } catch (ApiException e) {
@@ -65,12 +68,9 @@ public class CustomerRegistrationTransaction {
         throw ApiException.conflict("CUSTOMER_CODE_UNAVAILABLE", "Unable to allocate a customer code. Try again later.");
     }
 
-    private Long resolveReferrer(long merchantId, String input) {
+    private Long resolveReferrer(long merchantId, String input, boolean commissionEnabled) {
         if (input == null || input.isBlank()) return null;
-        var merchant = merchants.lock(merchantId);
-        if (!merchant.active()) throw ApiException.forbidden("This storefront is unavailable.");
-        if (!merchant.registrationEnabled()) throw ApiException.forbidden("Customer registration is not available for this storefront.");
-        if (!merchant.commissionEnabled())
+        if (!commissionEnabled)
             throw ApiException.forbidden("COMMISSION_FEATURE_DISABLED", "Commission features are disabled for this merchant.");
         String code = input.trim().toUpperCase(Locale.ROOT);
         if (!code.matches("[0-9A-Z]{8}"))

@@ -14,7 +14,7 @@ public interface CustomerRepository {
 
     long create(long merchantId, CustomerInput input, String code, long actorId);
 
-    long createSelfRegistered(long merchantId, String email, String name, String passwordHash, String code, Long referrerId, Instant verifiedAt);
+    long createSelfRegistered(long merchantId, String email, String name, String passwordHash, String code, String priceTier, Long referrerId, Instant verifiedAt);
 
     java.util.Optional<Long> lockActiveReferrerIdByCode(long merchantId, String code);
 

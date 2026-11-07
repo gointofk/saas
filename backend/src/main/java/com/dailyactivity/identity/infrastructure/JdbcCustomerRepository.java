@@ -64,13 +64,13 @@ public class JdbcCustomerRepository implements CustomerRepository {
     }
 
     @Override
-    public long createSelfRegistered(long merchantId, String email, String name, String passwordHash, String code, Long referrerId, Instant verifiedAt) {
+    public long createSelfRegistered(long merchantId, String email, String name, String passwordHash, String code, String priceTier, Long referrerId, Instant verifiedAt) {
         try {
             KeyHolder h = new GeneratedKeyHolder();
             jdbc.update("INSERT INTO `user`(merchant_id,email,name,password_hash,code,customer_type,price_tier,active,referrer_id,commission_rate,email_verified_at,created_by_user_id,created_by_type,updated_by_user_id,updated_by_type) "
-                            + "VALUES(:merchantId,:email,:name,:passwordHash,:code,'regular','V1',1,:referrerId,:commissionRate,:verifiedAt,NULL,'registration',NULL,'registration')",
+                            + "VALUES(:merchantId,:email,:name,:passwordHash,:code,'regular',:priceTier,1,:referrerId,:commissionRate,:verifiedAt,NULL,'registration',NULL,'registration')",
                     new MapSqlParameterSource("merchantId", merchantId).addValue("email", email).addValue("name", name)
-                            .addValue("passwordHash", passwordHash).addValue("code", code).addValue("referrerId", referrerId)
+                            .addValue("passwordHash", passwordHash).addValue("code", code).addValue("priceTier", priceTier).addValue("referrerId", referrerId)
                             .addValue("commissionRate", referrerId == null ? null : java.math.BigDecimal.ZERO)
                             .addValue("verifiedAt", Timestamp.from(verifiedAt)), h, new String[]{"id"});
             return h.getKey().longValue();
