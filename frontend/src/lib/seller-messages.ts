@@ -574,6 +574,8 @@ export const englishSellerText: Record<string, string> = {
   "正在加载订单详情…": "Loading order details…",
   "重新加载": "Reload",
   "客户 / 收货人": "Customer / recipient",
+  "用户 email": "User email",
+  "复制用户 email": "Copy user email",
   "收货地址": "Shipping address",
   "买家备注": "Customer note",
   "复制商品详情：{0}": "Copy item details: {0}",
