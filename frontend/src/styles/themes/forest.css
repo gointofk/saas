@@ -1,0 +1,6 @@
+/* Forest: overrides the classic storefront baseline. */
+[data-storefront-theme="forest"] .demo-customer-shell,
+[data-storefront-theme="forest"] .customer-auth-screen { --color-primary:#22634b; --color-bg:#f3f7f1; background:#f3f7f1; }
+[data-storefront-theme="forest"] .customer-header { background:#e8f0e5; border-bottom:2px solid #22634b; }
+[data-storefront-theme="forest"] .brand-name { color:#22634b; font-family:Georgia,serif; }
+[data-storefront-theme="forest"] .customer-nav button.active { color:#22634b; border-color:#22634b; }

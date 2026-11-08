@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="DailyActivity">
+  <rect x="2" y="2" width="96" height="96" rx="26" fill="#123b36" />
+  <path d="M24 32h18c8 0 14 3 18 9 4-6 10-9 18-9h1v37h-4c-6 0-11 2-15 7-4-5-9-7-15-7H24z" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="6" />
+  <path d="M60 42v31" fill="none" stroke="#9bc9b3" stroke-linecap="round" stroke-width="5" />
+  <circle cx="77" cy="23" r="4" fill="#e5bb75" />
+</svg>

@@ -1,0 +1,18 @@
+/* Platform reuses the Seller theme; its final layer contains page-specific layouts. */
+@layer tokens, base, auth, customer, admin, responsive, buyer-theme, seller-theme, platform;
+
+@import "./styles/tokens.css";
+@import "./styles/base.css";
+@import "./styles/auth.css";
+@import "./styles/customer.css";
+@import "./styles/admin.css";
+@import "./styles/responsive.css";
+@import "./styles/responsive-checkout.css";
+@import "./styles/responsive-order-history.css";
+@import "./styles/platform.css";
+@import "./styles/themes/classic.css";
+@import "./styles/seller-theme.css";
+
+/* Merchant theme overrides load after the shared classic baseline. */
+@import "./styles/themes/forest.css";
+@import "./styles/themes/editorial.css";

@@ -1,0 +1,30 @@
+@layer tokens {
+:root {
+  --color-page: #f5f7f4;
+  --color-surface: #ffffff;
+  --color-ink: #20312d;
+  --color-muted: #667a72;
+  --color-line: #d8e1da;
+  --color-line-strong: #b9c9bf;
+  --color-primary: #1f5148;
+  --color-primary-strong: #174238;
+  --color-soft: #e8f2ec;
+  --color-accent: #b97452;
+  --color-accent-strong: #955637;
+  --color-accent-soft: #f3e5dc;
+  --color-danger: #a9433f;
+  --color-danger-soft: #f7e7e4;
+  --color-success: #307657;
+  --color-success-soft: #e5f1e8;
+  --color-warning: #955637;
+  --color-warning-soft: #f3e5dc;
+  --color-info: #1f5148;
+  --color-info-soft: #e8f2ec;
+  --shadow-soft: 0 14px 40px rgba(25, 54, 45, .09);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--color-ink);
+  background: var(--color-page);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+}

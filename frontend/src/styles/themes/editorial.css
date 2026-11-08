@@ -1,0 +1,8 @@
+/* Editorial: overrides the classic storefront baseline. */
+[data-storefront-theme="editorial"] .customer-header { flex-direction:column; align-items:stretch; gap:20px; padding-block:24px; }
+[data-storefront-theme="editorial"] .brand { justify-content:center; }
+[data-storefront-theme="editorial"] .brand-name { font-family:Georgia,serif; letter-spacing:.12em; font-size:30px; }
+[data-storefront-theme="editorial"] .customer-nav { justify-content:center; flex-wrap:wrap; }
+[data-storefront-theme="editorial"] .demo-customer-shell { background:#faf9f6; }
+[data-storefront-theme="editorial"] .customer-footer { border-top:2px solid #252525; }
+@media(max-width:640px){[data-storefront-theme="editorial"] .brand-name{font-size:24px}[data-storefront-theme="editorial"] .customer-header{padding-block:16px;gap:12px}}

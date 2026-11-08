@@ -1,0 +1,246 @@
+@layer platform {
+  /* Shared Seller classes provide the frame, tokens, controls, and table styles. */
+  .platform-console { line-height: 1.5; }
+  .platform-console :where(input, select, textarea) { min-width: 0; }
+  .platform-brand-mark, .platform-login-mark { display: grid; flex: 0 0 30px; width: 30px; height: 30px; place-items: center; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); color: var(--color-ink); font-size: 11px; font-weight: 600; letter-spacing: -.05em; }
+  .platform-nav-symbol { flex: 0 0 18px; height: 18px; }
+  .platform-nav-badge { font-variant-numeric: tabular-nums; }
+  .platform-topbar h1 { margin: 0; }
+  .platform-error { margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-danger-soft); color: var(--color-danger); font-size: 12px; }
+  .platform-loading { margin: 0; padding: 28px 16px; color: var(--color-muted); font-size: 12px; text-align: center; }
+
+  /* Group cumulative totals, current queues, and dated trends by their scope. */
+  .platform-overview-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 16px; }
+  .platform-panel { min-width: 0; }
+  .platform-overview-layout > .platform-panel { padding: 20px; }
+  .platform-panel-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 0 0 24px; }
+  .platform-panel-heading h2 { margin: 0; color: var(--color-ink); font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+  .platform-panel-heading p { margin: 5px 0 0; color: var(--color-muted); font-size: 12px; }
+  .platform-text-action { flex-shrink: 0; min-height: 28px; padding: 0; border: 0; background: none; color: var(--color-primary); font-size: 11px; white-space: nowrap; }
+  .platform-text-action:hover, .platform-link:hover { color: var(--color-primary-strong); text-decoration: underline; text-underline-offset: 3px; }
+  .platform-finance-panel { display: flex; flex-direction: column; }
+  .platform-finance-metrics { display: grid; flex: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 7px 0 32px; }
+  .platform-finance-metric { display: grid; min-width: 0; align-content: start; gap: 12px; }
+  .platform-finance-metric + .platform-finance-metric { padding-left: 24px; border-left: 1px solid var(--color-line); }
+  .platform-finance-metric > span { color: #424245; font-size: 12px; }
+  .platform-finance-metric > strong { color: var(--color-ink); font-size: clamp(24px, 2.15vw, 30px); font-weight: 600; line-height: 1.2; letter-spacing: -.045em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .platform-finance-metric > small { color: var(--color-muted); font-size: 11px; line-height: 1.7; }
+  .platform-finance-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-top: 16px; border-top: 1px solid var(--color-line); color: var(--color-muted); font-size: 12px; }
+  .platform-finance-foot strong { margin: 0 5px; color: var(--color-ink); font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .platform-finance-foot small { font-size: 11px; }
+  .platform-queue-panel .platform-panel-heading { padding-bottom: 10px; }
+  .platform-chart { display: grid; height: 195px; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 14px; }
+  .platform-chart-column { display: grid; min-width: 0; grid-template-rows: 18px 1fr 24px; justify-items: center; gap: 8px; }
+  .platform-chart-column > strong { color: var(--color-muted); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+  .platform-chart-track { display: flex; width: 100%; align-items: end; justify-content: center; border-bottom: 1px solid var(--color-line); background: repeating-linear-gradient(to bottom, transparent 0, transparent 38px, #edf0f3 39px, transparent 40px); }
+  .platform-chart-track span { width: min(24px, 60%); border-radius: 3px 3px 0 0; background: var(--color-primary); }
+  .platform-chart-column small { color: var(--color-muted); font-size: 10px; }
+  .platform-chart-empty { display: grid; height: 195px; place-items: center; margin: 0; color: var(--color-muted); font-size: 12px; }
+  .platform-chart-foot { display: flex; justify-content: space-between; gap: 16px; margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--color-line); color: var(--color-muted); font-size: 12px; }
+  .platform-chart-foot strong { color: var(--color-ink); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .platform-queue-row { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto 12px; align-items: center; gap: 14px; padding: 13px 0; border: 0; border-top: 1px solid var(--color-line); background: transparent; text-align: left; }
+  .platform-queue-row:hover { background: var(--color-page); }
+  .platform-queue-row strong, .platform-queue-row small { display: block; }
+  .platform-queue-row strong { color: var(--color-ink); font-size: 13px; font-weight: 500; }
+  .platform-queue-row small { margin-top: 3px; color: var(--color-muted); font-size: 11px; }
+  .platform-queue-row b { color: var(--color-ink); font-size: 21px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .platform-queue-arrow { color: #8a9098; font-size: 20px; }
+  .platform-scale-panel .platform-panel-heading { padding-bottom: 4px; }
+  .platform-scale-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 0; }
+  .platform-scale-row + .platform-scale-row { border-top: 1px solid var(--color-line); }
+  .platform-scale-row > div { display: grid; min-width: 0; gap: 6px; }
+  .platform-scale-row span { color: #424245; font-size: 12px; }
+  .platform-scale-row strong { color: var(--color-ink); font-size: 24px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .platform-scale-row strong small { font-size: 14px; font-weight: 400; }
+  .platform-scale-row small { color: var(--color-muted); font-size: 11px; }
+  .platform-overview-note { margin-top: 22px; color: var(--color-muted); font-size: 11px; line-height: 1.8; }
+  .platform-overview-note summary { width: fit-content; padding: 4px 0; cursor: pointer; }
+  .platform-overview-note summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+  .platform-overview-note p { max-width: 80ch; margin: 7px 0 0; }
+
+  /* Lists use the same separate filter card and data card as Seller. */
+  .platform-list-page { min-width: 0; }
+  .platform-filter-bar { display: flex; flex-wrap: wrap; align-items: end; gap: 14px 16px; }
+  .platform-filter-bar label, .platform-filter-field { display: grid; min-width: 0; gap: 7px; color: var(--color-muted); font-size: 11px; }
+  .platform-filter-bar label > input, .platform-filter-bar label > select { width: 145px; }
+  .platform-search { flex: 0 1 290px; }
+  .platform-date-range { display: flex; min-width: 0; gap: 12px; }
+  .platform-filter-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+  .platform-filter-note { margin: 0 auto 8px 0; color: var(--color-muted); font-size: 11px; }
+  .platform-table-toolbar { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; color: var(--color-muted); font-size: 11px; }
+  .platform-table { min-width: 1010px; font-variant-numeric: tabular-nums; }
+  .platform-table td strong { display: block; }
+  .platform-console .platform-audit-purpose { min-width: 280px; max-width: 560px; overflow-wrap: anywhere; white-space: normal; }
+  .platform-empty { padding: 38px 20px !important; color: var(--color-muted) !important; font-size: 12px; text-align: center; }
+  .platform-link { min-height: 30px; padding: 4px 0; white-space: nowrap; }
+  .platform-link + .platform-link { margin-left: 12px; }
+  .platform-status { display: inline-flex; align-items: center; min-height: 23px; padding: 3px 8px; border: 1px solid transparent; border-radius: 999px; background: var(--color-soft); color: var(--color-muted); font-size: 10px; font-weight: 500; white-space: nowrap; }
+  .platform-status-pending, .platform-status-unpaid, .platform-status-pending_verification { background: var(--color-warning-soft); color: #8a5d00; }
+  .platform-status-approved, .platform-status-paid, .platform-status-completed, .platform-status-received, .platform-status-active { background: var(--color-success-soft); color: var(--color-success); }
+  .platform-status-rejected { background: var(--color-danger-soft); color: var(--color-danger); }
+  .platform-status-partially_paid, .platform-status-packed, .platform-status-shipped { background: var(--color-info-soft); color: var(--color-info); }
+
+  .platform-console .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+  .platform-console .field-hint { color: var(--color-muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+  .platform-console .field-error { color: var(--color-danger); font-size: 12px; line-height: 1.6; }
+  .platform-console .close-button { color: var(--color-muted); }
+
+  /* Only the field area scrolls, so the editor's context and actions stay visible. */
+  .platform-console .modal-box.merchant-editor-modal { display: flex; width: min(880px, 100%); max-width: 880px; max-height: min(920px, calc(100dvh - 48px)); padding: 0; overflow: hidden; }
+  .merchant-editor { display: flex; width: 100%; min-height: 0; flex-direction: column; }
+  .merchant-editor-heading { display: flex; flex-shrink: 0; align-items: start; justify-content: space-between; gap: 20px; padding: 24px 28px; border-bottom: 1px solid var(--color-line); }
+  .platform-console .merchant-editor-heading .modal-title { margin: 0; }
+  .merchant-editor-heading p { margin: 7px 0 0; color: var(--color-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .merchant-editor-close { display: grid; flex: 0 0 32px; height: 32px; place-items: center; margin: -3px -8px 0 0; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--color-muted); font-size: 25px !important; font-weight: 300; line-height: 1; }
+  .merchant-editor-close:hover { background: var(--color-soft); color: var(--color-ink); }
+  .merchant-editor-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 28px; scrollbar-gutter: stable; }
+  .merchant-form-section { display: grid; grid-template-columns: 146px minmax(0, 1fr); gap: 28px; padding: 28px 0; }
+  .merchant-form-section + .merchant-form-section { border-top: 1px solid var(--color-line); }
+  .merchant-section-heading h3 { margin: 0; color: var(--color-ink); font-size: 14px; font-weight: 600; }
+  .merchant-section-heading p { margin: 8px 0 0; color: var(--color-muted); font-size: 11px; line-height: 1.8; }
+  .merchant-section-content { min-width: 0; }
+  .platform-console .merchant-editor .form-grid { gap: 16px 20px; }
+  .platform-console .merchant-editor .form-group { display: grid; min-width: 0; align-content: start; gap: 7px; margin: 0; }
+  .platform-console .merchant-editor .form-group :is(input, select) { height: 38px; }
+  .merchant-logo-field > label { color: var(--color-muted); font-size: 11px; }
+  .merchant-list-logo { display: grid; width: 42px; height: 42px; place-items: center; overflow: hidden; border: 1px solid var(--color-line); border-radius: 8px; background: #fff; }
+  .merchant-list-logo img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+  .merchant-logo-control { display: flex; min-width: 0; align-items: center; gap: 14px; }
+  .merchant-logo-preview { display: grid; flex: 0 0 76px; width: 76px; height: 76px; place-items: center; overflow: hidden; border: 1px solid var(--color-line); border-radius: 10px; background: #fff; }
+  .merchant-logo-preview img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+  .merchant-logo-actions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .merchant-logo-input { display: none !important; }
+  .merchant-logo-actions > span { color: var(--color-muted); font-size: 11px; }
+  .merchant-field-wide { grid-column: 1 / -1; }
+  .merchant-shipping-tier-list { display: grid; gap: 12px; }
+  .merchant-shipping-tier-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+  .merchant-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 20px; }
+  .merchant-setting-row > div { min-width: 0; }
+  .merchant-setting-row strong { color: #424245; font-size: 12px; font-weight: 500; }
+  .merchant-setting-row p { margin: 5px 0 0; color: var(--color-muted); font-size: 11px; line-height: 1.7; }
+  .platform-console .merchant-setting-row .checkbox-field { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin: 0; white-space: nowrap; }
+  .platform-console .merchant-setting-row input[type="checkbox"] { width: 15px; height: 15px; margin: 0; }
+  .platform-console .merchant-status-warning { color: var(--color-danger); }
+  .merchant-registration-setting { align-items: start; margin-top: 0; margin-bottom: 20px; }
+  .merchant-registration-setting .checkbox-field { padding-top: 2px; }
+  .merchant-commission-setting { margin-top: 20px; }
+  .merchant-admin-identity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; margin-bottom: 18px; padding: 12px 14px; border-radius: 8px; background: var(--color-page); }
+  .merchant-admin-identity span { flex-basis: 100%; margin-bottom: 2px; color: var(--color-muted); font-size: 11px; }
+  .merchant-admin-identity strong { color: var(--color-ink); font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+  .merchant-admin-identity small { color: var(--color-muted); font-size: 12px; overflow-wrap: anywhere; }
+  .platform-console .merchant-password-hint { margin: 10px 0 0; }
+  .merchant-mail-settings { border: 1px solid var(--color-line); border-radius: 10px; }
+  .merchant-mail-settings summary { display: flex; align-items: center; gap: 10px; padding: 13px 14px; border-radius: 8px; color: #424245; font-size: 12px; cursor: pointer; list-style: none; }
+  .merchant-mail-settings summary::-webkit-details-marker { display: none; }
+  .merchant-mail-settings summary::before { flex-shrink: 0; width: 6px; height: 6px; border-top: 1px solid currentColor; border-right: 1px solid currentColor; content: ""; transform: rotate(45deg); }
+  .merchant-mail-settings[open] summary::before { transform: rotate(135deg) translate(-1px, 1px); }
+  .merchant-mail-settings summary:hover { background: var(--color-page); }
+  .merchant-mail-settings summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+  .merchant-mail-settings summary small { margin-left: auto; color: var(--color-muted); font-size: 11px; }
+  .merchant-mail-body { padding: 0 14px 16px; }
+  .platform-console .merchant-mail-body > .field-hint:first-child { margin: 0 0 16px; }
+  .platform-console .merchant-mail-body .registration-test-row { margin-top: 18px; }
+  .platform-console .merchant-mail-body .registration-test-row .btn { min-height: 38px; }
+  .platform-console .merchant-mail-test-hint { margin: 8px 0 0; color: var(--color-muted); font-size: 12px; line-height: 1.45; }
+  .platform-console .merchant-mail-test-hint.is-warning { color: #805200; }
+  .merchant-mail-test-status { margin: 10px 0 0; color: var(--color-success); font-size: 12px; }
+  .merchant-editor-footer { flex-shrink: 0; padding: 16px 28px; border-top: 1px solid var(--color-line); background: #fff; }
+  .platform-console .merchant-editor-footer .field-error { margin: 0 0 12px; }
+  .platform-console .merchant-editor-footer .modal-actions { margin: 0; padding: 0; border: 0; }
+  .platform-console .merchant-editor-footer .modal-actions button { min-width: 88px; }
+
+  .platform-console .platform-purpose-modal { width: min(100%, 470px); padding: 28px; }
+  .platform-purpose-modal .modal-title { margin-bottom: 10px; }
+  .platform-modal-copy { margin: 0 0 20px; color: var(--color-muted); font-size: 12px; line-height: 1.7; }
+  .platform-console .platform-detail-modal { width: min(920px, calc(100vw - 40px)); max-width: 920px; padding: 28px; }
+  .platform-detail-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+  .platform-detail-heading h2 { margin: 0; color: var(--color-ink); font-size: 21px; font-weight: 600; letter-spacing: -.025em; }
+  .platform-kicker { margin: 0 0 7px; color: var(--color-muted); font-size: 12px; }
+  .platform-detail-status { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0; }
+  .platform-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px 18px; padding: 20px 0; border-top: 1px solid var(--color-line); border-bottom: 1px solid var(--color-line); }
+  .platform-detail-grid > div { display: grid; min-width: 0; gap: 6px; }
+  .platform-detail-grid span, .platform-detail-grid strong { overflow-wrap: anywhere; }
+  .platform-detail-grid span { color: var(--color-muted); font-size: 11px; }
+  .platform-detail-grid strong { color: var(--color-ink); font-size: 13px; font-weight: 500; }
+  .platform-detail-section { padding: 20px 0; border-bottom: 1px solid var(--color-line); }
+  .platform-detail-section h3, .platform-contact-reveal h3 { margin: 0 0 13px; color: var(--color-ink); font-size: 13px; font-weight: 600; }
+  .platform-detail-line { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; color: #424245; font-size: 12px; overflow-wrap: anywhere; }
+  .platform-detail-line strong { color: var(--color-ink); font-weight: 500; white-space: nowrap; }
+  .platform-detail-line small { display: block; margin-top: 5px; color: var(--color-muted); font-size: 11px; }
+  .platform-event-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding: 9px 0; color: #424245; font-size: 12px; }
+  .platform-event-line small { color: var(--color-muted); font-size: 11px; }
+  .platform-contact-reveal { margin-top: 20px; padding: 18px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-page); }
+  .platform-contact-reveal > p { margin: 0 0 14px; color: var(--color-muted); font-size: 12px; line-height: 1.7; }
+  .platform-contact-reveal form { display: flex; align-items: end; gap: 10px; }
+  .platform-contact-reveal form label { display: grid; min-width: 0; flex: 1; gap: 7px; color: var(--color-muted); font-size: 12px; }
+  .platform-contact-reveal form input { min-height: 36px; padding: 0 10px; border: 1px solid var(--color-line-strong); border-radius: 5px; background: #fff; }
+  .platform-contact-values { display: grid; gap: 8px; margin-bottom: 12px; color: #424245; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+  .platform-contact-values strong { color: var(--color-ink); font-weight: 500; }
+
+  .platform-login-mark { flex-basis: 34px; width: 34px; height: 34px; }
+  .platform-login-stage .auth-form .btn { min-height: 48px; }
+
+  @media (max-width: 1160px) {
+    .platform-overview-layout { grid-template-columns: minmax(0, 1fr) minmax(270px, .8fr); gap: 16px; }
+    .platform-overview-layout > .platform-panel { padding: 20px; }
+    .platform-finance-metrics { grid-template-columns: minmax(0, 1fr); gap: 18px; padding-top: 0; padding-bottom: 22px; }
+    .platform-finance-metric { gap: 7px; }
+    .platform-finance-metric + .platform-finance-metric { padding-left: 0; border-left: 0; }
+    .platform-finance-metric > strong { font-size: 28px; }
+    .platform-finance-foot { flex-wrap: wrap; gap: 4px 12px; }
+  }
+  @media (max-width: 960px) {
+    .platform-overview-layout { grid-template-columns: minmax(0, 1fr); }
+    .platform-finance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    .platform-finance-metric + .platform-finance-metric { padding-left: 20px; border-left: 1px solid var(--color-line); }
+    .platform-finance-metric > strong { font-size: 30px; }
+    .platform-scale-row { padding: 18px 0; }
+  }
+  @media (max-width: 700px) {
+    .merchant-form-section { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 24px 0; }
+    .merchant-section-heading p { margin-top: 4px; }
+    .platform-console .merchant-editor .form-grid { grid-template-columns: minmax(0, 1fr); }
+    .platform-console .merchant-editor .merchant-shipping-tier-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .merchant-setting-row { align-items: start; flex-wrap: wrap; gap: 12px; }
+    .merchant-setting-row > div { flex-basis: 100%; }
+    .merchant-commission-setting { align-items: center; flex-wrap: nowrap; }
+    .merchant-commission-setting > div { flex-basis: auto; }
+  }
+  @media (max-width: 760px) {
+    .platform-filter-bar { gap: 12px; }
+    .platform-filter-bar > label { flex: 1 1 130px; }
+    .platform-filter-bar > .platform-search { flex: 1 1 100%; }
+    .platform-filter-bar label > input, .platform-filter-bar label > select { width: 100%; }
+    .platform-date-range { flex: 1 1 100%; }
+    .platform-date-field { --seller-date-control-width: 100%; flex: 1; }
+    .platform-filter-actions { justify-content: end; width: 100%; }
+    .platform-filter-note { flex-basis: 100%; margin: 0; }
+    .platform-table-toolbar { flex-wrap: wrap; padding: 12px; }
+    .platform-console .modal-overlay { padding: 12px; }
+    .platform-console .modal-box.merchant-editor-modal { max-height: calc(100dvh - 24px); padding: 0; }
+    .merchant-editor-heading { padding: 20px; }
+    .merchant-editor-body { padding: 0 20px; }
+    .merchant-editor-footer { padding: 14px 20px; }
+    .merchant-editor-close { margin-right: -5px; }
+    .platform-console .form-grid, .platform-detail-grid { grid-template-columns: minmax(0, 1fr); }
+    .platform-console .platform-detail-modal { width: 100%; }
+    .platform-contact-reveal { padding: 15px; }
+    .platform-contact-reveal form { align-items: stretch; flex-direction: column; }
+  }
+  @media (max-width: 540px) {
+    .platform-overview-layout > .platform-panel { padding: 18px; }
+    .platform-panel-heading { gap: 10px; padding-bottom: 22px; }
+    .platform-panel-heading p { font-size: 11px; }
+    .platform-finance-metrics { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-bottom: 24px; }
+    .platform-finance-metric + .platform-finance-metric { padding-left: 0; border-left: 0; }
+    .platform-finance-metric > strong { font-size: 28px; }
+    .platform-chart { gap: 8px; height: 180px; }
+    .platform-chart-empty { height: 180px; }
+    .platform-chart-foot { flex-wrap: wrap; gap: 8px; }
+    .platform-overview-note { margin-top: 18px; }
+    .merchant-mail-settings summary { flex-wrap: wrap; gap: 10px; }
+    .merchant-mail-settings summary small { margin-left: 15px; }
+    .platform-console .modal-actions :is(button) { min-height: 42px; flex: 1; }
+    .platform-console .merchant-editor .form-group :is(input, select, textarea) { font-size: 16px; }
+  }
+}
