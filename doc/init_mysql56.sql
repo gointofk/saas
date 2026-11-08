@@ -36,6 +36,12 @@ CREATE TABLE merchant (
   shipping_fee_v4 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
   shipping_fee_v5 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
   shipping_fee_v6 DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  free_shipping_threshold_v1 DECIMAL(18,2) NULL COMMENT 'V1 满额免运费门槛；NULL 表示关闭',
+  free_shipping_threshold_v2 DECIMAL(18,2) NULL COMMENT 'V2 满额免运费门槛；NULL 表示关闭',
+  free_shipping_threshold_v3 DECIMAL(18,2) NULL COMMENT 'V3 满额免运费门槛；NULL 表示关闭',
+  free_shipping_threshold_v4 DECIMAL(18,2) NULL COMMENT 'V4 满额免运费门槛；NULL 表示关闭',
+  free_shipping_threshold_v5 DECIMAL(18,2) NULL COMMENT 'V5 满额免运费门槛；NULL 表示关闭',
+  free_shipping_threshold_v6 DECIMAL(18,2) NULL COMMENT 'V6 满额免运费门槛；NULL 表示关闭',
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   created_by_user_id BIGINT NULL,
@@ -749,7 +755,7 @@ CREATE TABLE `billing_entry` (
   KEY `idx_billing_type_status_date` (`bill_type`,`status`,`order_created_at`,`id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='应收应付账单事实，状态与收款/结算事实同事务维护';
 
--- 固定菜单只在首次空库初始化时写入，不重置已存在数据。各等级运费由 merchant.shipping_fee_v1～shipping_fee_v6 保存，在平台商户管理页面维护。
+-- 固定菜单只在首次空库初始化时写入，不重置已存在数据。各等级基础运费及可选免邮门槛由 merchant.shipping_fee_v1～shipping_fee_v6、free_shipping_threshold_v1～free_shipping_threshold_v6 保存，在平台商户管理页面维护。
 START TRANSACTION;
 
 INSERT INTO permission_menu

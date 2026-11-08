@@ -2,6 +2,7 @@ package com.dailyactivity.merchant.infrastructure;
 
 import com.dailyactivity.auth.domain.Actor;
 import com.dailyactivity.common.ApiException;
+import com.dailyactivity.merchant.domain.FreeShippingThresholds;
 import com.dailyactivity.merchant.domain.ShippingFees;
 import com.dailyactivity.merchant.domain.port.MerchantRepository;
 import org.springframework.dao.DuplicateKeyException;
@@ -20,7 +21,11 @@ public class JdbcMerchantRepository implements MerchantRepository {
         ShippingFees fees = new ShippingFees(r.getBigDecimal("shipping_fee_v1"), r.getBigDecimal("shipping_fee_v2"),
                 r.getBigDecimal("shipping_fee_v3"), r.getBigDecimal("shipping_fee_v4"), r.getBigDecimal("shipping_fee_v5"),
                 r.getBigDecimal("shipping_fee_v6"));
-        return new Merchant(r.getLong("id"), r.getString("code"), r.getString("name"), r.getBoolean("active"), fees,
+        FreeShippingThresholds thresholds = new FreeShippingThresholds(
+                r.getBigDecimal("free_shipping_threshold_v1"), r.getBigDecimal("free_shipping_threshold_v2"),
+                r.getBigDecimal("free_shipping_threshold_v3"), r.getBigDecimal("free_shipping_threshold_v4"),
+                r.getBigDecimal("free_shipping_threshold_v5"), r.getBigDecimal("free_shipping_threshold_v6"));
+        return new Merchant(r.getLong("id"), r.getString("code"), r.getString("name"), r.getBoolean("active"), fees, thresholds,
                 r.getTimestamp("updated_at").toInstant(), r.getString("domain"), r.getString("logo_url"), r.getString("theme"),
                 r.getBoolean("customer_registration_enabled"), r.getString("customer_registration_default_tier"), r.getBoolean("commission_enabled"),
                 r.getBoolean("crypto_payment_enabled"), r.getBoolean("online_payment_link_enabled"));
@@ -46,12 +51,18 @@ public class JdbcMerchantRepository implements MerchantRepository {
         return jdbc.query("SELECT * FROM merchant ORDER BY id LIMIT 10 OFFSET :offset", new MapSqlParameterSource("offset", (page-1)*10), (r,n) -> row(r));
     }
     public long count() { return jdbc.queryForObject("SELECT COUNT(*) FROM merchant", new MapSqlParameterSource(), Long.class); }
-    public long create(String code, String name, ShippingFees fees, String domain, String logoUrl, String theme, long actor, boolean registrationEnabled, String registrationDefaultTier, boolean commissionEnabled, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled) {
+    public long create(String code, String name, ShippingFees fees, FreeShippingThresholds thresholds, String domain,
+                       String logoUrl, String theme, long actor, boolean registrationEnabled,
+                       String registrationDefaultTier, boolean commissionEnabled, boolean cryptoEnabled,
+                       boolean onlinePaymentLinkEnabled) {
         try {
             var key = new GeneratedKeyHolder();
-            jdbc.update("INSERT INTO merchant(code,name,shipping_fee_v1,shipping_fee_v2,shipping_fee_v3,shipping_fee_v4,shipping_fee_v5,shipping_fee_v6,domain,logo_url,theme,customer_registration_enabled,customer_registration_default_tier,commission_enabled,crypto_payment_enabled,online_payment_link_enabled,created_by_user_id,updated_by_user_id) VALUES(:code,:name,:feeV1,:feeV2,:feeV3,:feeV4,:feeV5,:feeV6,:domain,:logo,:theme,:registrationEnabled,:registrationDefaultTier,:commissionEnabled,:cryptoEnabled,:onlinePaymentLinkEnabled,:actor,:actor)",
+            jdbc.update("INSERT INTO merchant(code,name,shipping_fee_v1,shipping_fee_v2,shipping_fee_v3,shipping_fee_v4,shipping_fee_v5,shipping_fee_v6,free_shipping_threshold_v1,free_shipping_threshold_v2,free_shipping_threshold_v3,free_shipping_threshold_v4,free_shipping_threshold_v5,free_shipping_threshold_v6,domain,logo_url,theme,customer_registration_enabled,customer_registration_default_tier,commission_enabled,crypto_payment_enabled,online_payment_link_enabled,created_by_user_id,updated_by_user_id) VALUES(:code,:name,:feeV1,:feeV2,:feeV3,:feeV4,:feeV5,:feeV6,:thresholdV1,:thresholdV2,:thresholdV3,:thresholdV4,:thresholdV5,:thresholdV6,:domain,:logo,:theme,:registrationEnabled,:registrationDefaultTier,:commissionEnabled,:cryptoEnabled,:onlinePaymentLinkEnabled,:actor,:actor)",
                     new MapSqlParameterSource("code",code).addValue("name",name).addValue("feeV1",fees.v1()).addValue("feeV2",fees.v2())
                             .addValue("feeV3",fees.v3()).addValue("feeV4",fees.v4()).addValue("feeV5",fees.v5()).addValue("feeV6",fees.v6())
+                            .addValue("thresholdV1",thresholds.v1()).addValue("thresholdV2",thresholds.v2())
+                            .addValue("thresholdV3",thresholds.v3()).addValue("thresholdV4",thresholds.v4())
+                            .addValue("thresholdV5",thresholds.v5()).addValue("thresholdV6",thresholds.v6())
                             .addValue("domain",domain).addValue("logo",logoUrl).addValue("theme",theme)
                             .addValue("registrationEnabled",registrationEnabled).addValue("registrationDefaultTier",registrationDefaultTier).addValue("commissionEnabled",commissionEnabled)
                             .addValue("cryptoEnabled",cryptoEnabled).addValue("onlinePaymentLinkEnabled",onlinePaymentLinkEnabled)
@@ -59,14 +70,18 @@ public class JdbcMerchantRepository implements MerchantRepository {
             return key.getKey().longValue();
         } catch (DuplicateKeyException e) { throw ApiException.conflict("MERCHANT_IDENTIFIER_EXISTS", "Merchant code or domain is already in use."); }
     }
-    public void update(long id, String name, ShippingFees fees, boolean active, long actor) {
+    public void update(long id, String name, ShippingFees fees, FreeShippingThresholds thresholds,
+                       boolean active, long actor) {
         if (!active) {
             jdbc.update("UPDATE `user` SET auth_version=auth_version+1 WHERE merchant_id=:id",new MapSqlParameterSource("id",id));
             jdbc.update("UPDATE seller SET auth_version=auth_version+1 WHERE merchant_id=:id",new MapSqlParameterSource("id",id));
         }
-        jdbc.update("UPDATE merchant SET name=:name,shipping_fee_v1=:feeV1,shipping_fee_v2=:feeV2,shipping_fee_v3=:feeV3,shipping_fee_v4=:feeV4,shipping_fee_v5=:feeV5,shipping_fee_v6=:feeV6,active=:active,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE id=:id",
+        jdbc.update("UPDATE merchant SET name=:name,shipping_fee_v1=:feeV1,shipping_fee_v2=:feeV2,shipping_fee_v3=:feeV3,shipping_fee_v4=:feeV4,shipping_fee_v5=:feeV5,shipping_fee_v6=:feeV6,free_shipping_threshold_v1=:thresholdV1,free_shipping_threshold_v2=:thresholdV2,free_shipping_threshold_v3=:thresholdV3,free_shipping_threshold_v4=:thresholdV4,free_shipping_threshold_v5=:thresholdV5,free_shipping_threshold_v6=:thresholdV6,active=:active,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor WHERE id=:id",
                 new MapSqlParameterSource("id",id).addValue("name",name).addValue("feeV1",fees.v1()).addValue("feeV2",fees.v2())
                         .addValue("feeV3",fees.v3()).addValue("feeV4",fees.v4()).addValue("feeV5",fees.v5()).addValue("feeV6",fees.v6())
+                        .addValue("thresholdV1",thresholds.v1()).addValue("thresholdV2",thresholds.v2())
+                        .addValue("thresholdV3",thresholds.v3()).addValue("thresholdV4",thresholds.v4())
+                        .addValue("thresholdV5",thresholds.v5()).addValue("thresholdV6",thresholds.v6())
                         .addValue("active",active).addValue("actor",actor));
     }
     public void updateRegistrationEnabled(long id, boolean enabled, long actor) {

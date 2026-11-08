@@ -353,6 +353,7 @@ export type MerchantMailSettingsInput = {
   tlsMode: 'starttls' | 'ssl'; senderEmail: string; senderName: string
 }
 export type MerchantShippingFees = Record<'v1' | 'v2' | 'v3' | 'v4' | 'v5' | 'v6', number | string>
+export type MerchantFreeShippingThresholds = Record<'v1' | 'v2' | 'v3' | 'v4' | 'v5' | 'v6', number | string | null>
 export type MerchantPricingTier = 'V1' | 'V2' | 'V3' | 'V4' | 'V5' | 'V6'
 export type MerchantIdentity = {
   id: number; code: string; name: string; active: boolean
@@ -361,10 +362,10 @@ export type MerchantIdentity = {
   cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean
 }
 export type MerchantAdministrator = { id: number; account: string; name: string; active: boolean }
-export type Merchant = MerchantIdentity & { registrationDefaultTier: MerchantPricingTier; shippingFees: MerchantShippingFees; mailSettings: MerchantMailSettings | null; administrator: MerchantAdministrator | null }
+export type Merchant = MerchantIdentity & { registrationDefaultTier: MerchantPricingTier; shippingFees: MerchantShippingFees; freeShippingThresholds: MerchantFreeShippingThresholds; mailSettings: MerchantMailSettings | null; administrator: MerchantAdministrator | null }
 export type MerchantPage = { items: Merchant[]; page: number; total: number; totalPages: number }
 export type MerchantCreate = {
-  code: string; name: string; shippingFees: MerchantShippingFees; domain: string; logoUrl: string; theme: string
+  code: string; name: string; shippingFees: MerchantShippingFees; freeShippingThresholds: MerchantFreeShippingThresholds; domain: string; logoUrl: string; theme: string
   adminAccount: string; adminName: string; password: string; confirmation: string
   registrationEnabled: boolean; registrationDefaultTier: MerchantPricingTier; commissionEnabled: boolean
   cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean
@@ -382,7 +383,7 @@ export const merchantApi = {
     const form = new FormData(); form.append('file', file)
     return request<{ logoUrl: string }>('/platform/merchant-logos', { method: 'POST', body: form }, 'platform')
   },
-  update: (id: number, body: { name: string; active: boolean; shippingFees: MerchantShippingFees; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string; registrationEnabled: boolean; registrationDefaultTier: MerchantPricingTier; commissionEnabled: boolean; cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean; mailSettings: MerchantMailSettingsInput | null; password?: string; confirmation?: string }) =>
+  update: (id: number, body: { name: string; active: boolean; shippingFees: MerchantShippingFees; freeShippingThresholds: MerchantFreeShippingThresholds; expectedUpdatedAt: string; domain: string; logoUrl: string; theme: string; registrationEnabled: boolean; registrationDefaultTier: MerchantPricingTier; commissionEnabled: boolean; cryptoEnabled: boolean; onlinePaymentLinkEnabled: boolean; mailSettings: MerchantMailSettingsInput | null; password?: string; confirmation?: string }) =>
     request<Merchant>(`/platform/merchants/${id}`, { method: 'PUT', body: JSON.stringify(body) }, 'platform'),
   testEmail: (id: number, recipient: string) => request<void>(`/platform/merchants/${id}/email-settings/test`, { method: 'POST', body: JSON.stringify({ recipient }) }, 'platform'),
 }

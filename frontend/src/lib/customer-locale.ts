@@ -1,4 +1,8 @@
 export const chineseCustomerText: Record<string, string> = {
+  'Shipping is based on your customer tier and free shipping threshold.': '运费按客户等级计算，商品金额达到免邮门槛即可免运费。',
+  'Free shipping applied.': '已达到免邮门槛，本单免运费。',
+  'Add {0} more to get free shipping.': '再购买 {0} 即可免运费。',
+  'Prices, shipping, or free shipping details changed. Review the updated order summary, then confirm.': '商品金额、运费或免邮信息已变化，请核对更新后的订单金额并确认。',
   'Order items and prices are locked. You can still update the shipping address and order note.': '订单商品明细和价格已锁定，仍可修改收货地址和订单备注。',
   'Order items and prices cannot be changed after approval.': '审核通过后不能修改商品明细和价格。',
   'Quantity pricing': '数量阶梯价', 'units': '件', 'unit': '件',

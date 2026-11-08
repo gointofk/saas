@@ -112,7 +112,8 @@
   .merchant-logo-input { display: none !important; }
   .merchant-logo-actions > span { color: var(--color-muted); font-size: 11px; }
   .merchant-field-wide { grid-column: 1 / -1; }
-  .merchant-shipping-fees-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .merchant-shipping-tier-list { display: grid; gap: 12px; }
+  .merchant-shipping-tier-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
   .merchant-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 20px; }
   .merchant-setting-row > div { min-width: 0; }
   .merchant-setting-row strong { color: #424245; font-size: 12px; font-weight: 500; }
@@ -199,7 +200,7 @@
     .merchant-form-section { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 24px 0; }
     .merchant-section-heading p { margin-top: 4px; }
     .platform-console .merchant-editor .form-grid { grid-template-columns: minmax(0, 1fr); }
-    .platform-console .merchant-editor .merchant-shipping-fees-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .platform-console .merchant-editor .merchant-shipping-tier-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .merchant-setting-row { align-items: start; flex-wrap: wrap; gap: 12px; }
     .merchant-setting-row > div { flex-basis: 100%; }
     .merchant-commission-setting { align-items: center; flex-wrap: nowrap; }

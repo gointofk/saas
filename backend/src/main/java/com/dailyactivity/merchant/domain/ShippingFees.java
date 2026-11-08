@@ -22,6 +22,10 @@ public record ShippingFees(BigDecimal v1, BigDecimal v2, BigDecimal v3,
         return Arrays.asList(v1, v2, v3, v4, v5, v6);
     }
 
+    public ShippingQuote quoteForTier(String tier, FreeShippingThresholds thresholds, BigDecimal subtotal) {
+        return ShippingQuote.calculate(forTier(tier), thresholds.forTier(tier), subtotal);
+    }
+
     public static ShippingFees zero() {
         BigDecimal zero = BigDecimal.ZERO.setScale(2);
         return new ShippingFees(zero, zero, zero, zero, zero, zero);

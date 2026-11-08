@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -237,10 +238,11 @@ public class AccountService {
             throw ApiException.forbidden("A permission exceeds this merchant's authorization.");
     }
 
-    public java.math.BigDecimal shippingFee(Principal p) {
+    public com.dailyactivity.merchant.domain.ShippingQuote shippingQuote(Principal p, BigDecimal subtotal) {
         assertValid(p);
         Account customer = customer(p);
-        return merchants.find(p.merchantId()).orElseThrow().shippingFees().forTier(customer.priceTier());
+        var merchant = merchants.find(p.merchantId()).orElseThrow();
+        return merchant.shippingFees().quoteForTier(customer.priceTier(), merchant.freeShippingThresholds(), subtotal);
     }
 
     public boolean commissionEnabled(long merchantId) {

@@ -40,6 +40,7 @@ com/dailyactivity/order/PrdOrderDiscountTest.class
 com/dailyactivity/order/JdbcOrderRepositoryTest.class
 com/dailyactivity/file/PrdFileServiceTest.class
 com/dailyactivity/catalog/QuantityPricingTest.class
+com/dailyactivity/merchant/ShippingFeesTest.class
 com/dailyactivity/support/PrdDatabaseTest.class
 com/dailyactivity/catalog/PrdCatalogAndCartTest.class
 com/dailyactivity/order/PrdOrderPaymentTest.class

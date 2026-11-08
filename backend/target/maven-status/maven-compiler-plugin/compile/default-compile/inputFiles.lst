@@ -83,7 +83,9 @@
 /Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/api/StorefrontController.java
 /Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/application/MerchantService.java
 /Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/application/StorefrontService.java
+/Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/domain/FreeShippingThresholds.java
 /Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/domain/ShippingFees.java
+/Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/domain/ShippingQuote.java
 /Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/domain/port/MerchantEmailSender.java
 /Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/domain/port/MerchantEmailSettingsRepository.java
 /Users/qijin.xu/Documents/project/saas/backend/src/main/java/com/dailyactivity/merchant/domain/port/MerchantRepository.java

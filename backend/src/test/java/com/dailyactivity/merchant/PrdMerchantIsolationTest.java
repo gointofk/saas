@@ -10,6 +10,7 @@ import com.dailyactivity.file.application.FileService;
 import com.dailyactivity.identity.application.CustomerService;
 import com.dailyactivity.identity.application.MemberService;
 import com.dailyactivity.merchant.application.MerchantService;
+import com.dailyactivity.merchant.domain.FreeShippingThresholds;
 import com.dailyactivity.merchant.domain.ShippingFees;
 import com.dailyactivity.merchant.domain.port.MerchantRepository;
 import com.dailyactivity.order.application.OrderService;
@@ -200,6 +201,32 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         assertThat(merchantRepository.find(m.id()).orElseThrow().shippingFees()).isEqualTo(fees);
         assertThatThrownBy(()->orders.create(data.customer(),new OrderService.CreateRequest((String)q.get("quoteToken"),"test",List.of(new OrderService.CartRequest(data.productId(),1)),data.addressId())))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo("QUOTE_CHANGED");
+    }
+    @Test
+    void freeShippingThresholdIsAppliedToQuoteAndOrderSnapshot() {
+        carts.set(data.customer(),data.productId(),1);
+        var quote=orders.quote(data.customer(),new OrderService.QuoteRequest(data.addressId(),List.of(new OrderService.CartRequest(data.productId(),1))));
+        BigDecimal subtotal=(BigDecimal)quote.get("subtotal");
+        var merchant=merchantRepository.find(data.seller().merchantId()).orElseThrow();
+        var thresholds=new FreeShippingThresholds(subtotal,null,null,null,null,null);
+        merchants.update(PrdTestFixture.platform(jdbc),merchant.id(),new MerchantService.Update(
+                merchant.name(),true,merchant.shippingFees(),thresholds,merchant.updatedAt(),merchant.domain(),
+                merchant.logoUrl(),merchant.theme(),merchant.registrationEnabled(),null,null,null,
+                merchant.commissionEnabled(),merchant.cryptoEnabled(),merchant.onlinePaymentLinkEnabled(),
+                merchant.registrationDefaultTier()));
+
+        assertThat(merchantRepository.find(merchant.id()).orElseThrow().freeShippingThresholds()).isEqualTo(thresholds);
+        assertThatThrownBy(()->orders.create(data.customer(),new OrderService.CreateRequest((String)quote.get("quoteToken"),
+                "old shipping quote",List.of(new OrderService.CartRequest(data.productId(),1)),data.addressId())))
+                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("QUOTE_CHANGED");
+
+        var currentQuote=orders.quote(data.customer(),new OrderService.QuoteRequest(data.addressId(),List.of(new OrderService.CartRequest(data.productId(),1))));
+        assertThat(currentQuote.get("shippingFee")).isEqualTo(new BigDecimal("0.00"));
+        assertThat(currentQuote.get("freeShippingApplied")).isEqualTo(true);
+        var order=orders.create(data.customer(),new OrderService.CreateRequest((String)currentQuote.get("quoteToken"),
+                "free shipping order",List.of(new OrderService.CartRequest(data.productId(),1)),data.addressId()));
+        assertThat(jdbc.queryForObject("SELECT shipping_fee FROM sales_order WHERE id=?",BigDecimal.class,orderId(order)))
+                .isEqualByComparingTo("0.00");
     }
     @Test
     void duplicateDomainIsRejected() {

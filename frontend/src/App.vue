@@ -112,7 +112,7 @@ const visibleProducts = computed(() => {
       .some(value => value.toLocaleLowerCase().includes(query))
   })
 })
-const cart = ref<CustomerCart>({ items: [], subtotal: '0.00', shippingFee: '0.00', total: '0.00' })
+const cart = ref<CustomerCart>({ items: [], subtotal: '0.00', shippingFee: '0.00', freeShippingThreshold: null, freeShippingApplied: false, amountToFreeShipping: null, total: '0.00' })
 const pendingCartProductIds = reactive(new Set<number>())
 const catalogCartQuantityOverrides = reactive<Record<number, number | null>>({})
 let cartMutationQueue: Promise<void> = Promise.resolve()
@@ -1480,6 +1480,8 @@ async function checkout() {
           || money(quote.subtotal) !== money(cart.value.subtotal)
           || money(quote.shippingFee) !== money(cart.value.shippingFee)
           || money(quote.total) !== money(cart.value.total)
+          || Boolean(quote.freeShippingApplied) !== Boolean(cart.value.freeShippingApplied)
+          || money(quote.amountToFreeShipping ?? 0) !== money(cart.value.amountToFreeShipping ?? 0)
           || cart.value.items.some(item => {
             const quoted = quotedItems.get(item.productId)
             return !quoted

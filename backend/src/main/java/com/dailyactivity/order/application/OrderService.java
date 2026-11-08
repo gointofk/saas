@@ -80,7 +80,6 @@ public class OrderService {
 
     @Transactional
     public Map<String, Object> quote(Principal principal, QuoteRequest request) {
-        BigDecimal shippingFee = accounts.shippingFee(principal);
         var customer = accounts.customer(principal);
         var address = addresses.findByIdForUpdate(customer.id(), request.addressId()).orElseThrow(() -> ApiException.notFound("Address not found."));
         if (request.cartItems() == null || request.cartItems().isEmpty())
@@ -97,18 +96,25 @@ public class OrderService {
             subtotal = subtotal.add(line);
             lines.add(new QuoteTokenService.QuoteLine(p.id(), item.quantity(), p.sku(), p.name(), p.productType(), unitPrice, p.priceRevision()));
         }
-        return quoteResponse(customer.id(), address, lines, subtotal, shippingFee);
+        return quoteResponse(customer.id(), address, lines, subtotal, accounts.shippingQuote(principal, subtotal));
     }
 
-    private Map<String, Object> quoteResponse(long customerId, AddressRepository.Address address, List<QuoteTokenService.QuoteLine> lines, BigDecimal subtotal, BigDecimal shipping) {
+    private Map<String, Object> quoteResponse(long customerId, AddressRepository.Address address,
+                                             List<QuoteTokenService.QuoteLine> lines, BigDecimal subtotal,
+                                             com.dailyactivity.merchant.domain.ShippingQuote shippingQuote) {
+        BigDecimal shipping = shippingQuote.shippingFee();
+        BigDecimal total = subtotal.add(shipping);
         long now = Instant.now().getEpochSecond();
-        var payload = new QuoteTokenService.QuotePayload(customerId, address.id(), now, now + quoteProperties.ttlSeconds(), lines, subtotal, shipping, subtotal.add(shipping), 3, java.util.UUID.randomUUID().toString());
+        var payload = new QuoteTokenService.QuotePayload(customerId, address.id(), now, now + quoteProperties.ttlSeconds(), lines, subtotal, shipping, total, 3, java.util.UUID.randomUUID().toString());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("quoteToken", quoteTokens.issue(payload));
         out.put("items", lines.stream().map(l -> Map.of("productId", l.productId(), "quantity", l.quantity(), "name", l.name(), "unitPrice", l.unitPrice(), "lineTotal", l.unitPrice().multiply(BigDecimal.valueOf(l.quantity())))).toList());
         out.put("subtotal", subtotal);
         out.put("shippingFee", shipping);
-        out.put("total", subtotal.add(shipping));
+        out.put("freeShippingThreshold", shippingQuote.freeShippingThreshold());
+        out.put("freeShippingApplied", shippingQuote.freeShippingApplied());
+        out.put("amountToFreeShipping", shippingQuote.amountToFreeShipping());
+        out.put("total", total);
         out.put("address", addressView(address));
         return out;
     }
@@ -118,7 +124,9 @@ public class OrderService {
         var customer = accounts.customerForUpdate(principal);
         boolean commissionEnabled = accounts.commissionEnabled(principal.merchantId());
         var q = quoteTokens.parse(request.quoteToken(), customer.id());
-        if (q.shippingFee().compareTo(accounts.shippingFee(principal)) != 0)
+        var currentShippingQuote = accounts.shippingQuote(principal, q.subtotal());
+        if (q.shippingFee().compareTo(currentShippingQuote.shippingFee()) != 0
+                || q.total().compareTo(q.subtotal().add(q.shippingFee())) != 0)
             throw ApiException.conflict("QUOTE_CHANGED", "Shipping fee changed; request a new quote.");
         String quoteHash = sha256(request.quoteToken());
         if (orders.quoteAlreadyUsed(quoteHash))

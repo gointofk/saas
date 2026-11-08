@@ -32,6 +32,7 @@ com/dailyactivity/file/application/FileService.class
 com/dailyactivity/commission/infrastructure/JdbcCommissionRepository$SettlementCandidate.class
 com/dailyactivity/config/ExportProperties.class
 com/dailyactivity/catalog/infrastructure/JdbcQuantityPriceRepository.class
+com/dailyactivity/merchant/domain/ShippingQuote.class
 com/dailyactivity/platform/domain/port/PlatformOperationsRepository$CustomerFilter.class
 com/dailyactivity/order/application/OrderService$AuditDecision.class
 com/dailyactivity/order/domain/OrderNumberCollisionException.class
@@ -181,6 +182,7 @@ com/dailyactivity/platform/api/PlatformOperationsController.class
 com/dailyactivity/certificate/domain/port/CertificateRepository$Input.class
 com/dailyactivity/inventory/domain/port/InventoryRepository.class
 com/dailyactivity/identity/application/RegistrationRateLimiter.class
+com/dailyactivity/merchant/domain/FreeShippingThresholds.class
 com/dailyactivity/order/application/OrderService$FileReference.class
 com/dailyactivity/file/application/MerchantLogoService.class
 com/dailyactivity/order/infrastructure/QuoteTokenService$QuoteLine.class

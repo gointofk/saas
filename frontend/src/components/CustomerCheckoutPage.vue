@@ -77,6 +77,11 @@ const displayItems = computed(() => {
     } as CustomerCartItem
   })
 })
+const shippingPreview = computed(() => props.checkoutStep === 2 && props.checkoutQuote
+  ? props.checkoutQuote : props.cart)
+function freeShippingNudge(amount: unknown) {
+  return props.t('Add {0} more to get free shipping.').replace('{0}', props.money(amount))
+}
 
 const qrUrl = ref('')
 const qrLoading = ref(false)
@@ -251,7 +256,13 @@ function openOrderHistory() {
         </div>
       </div>
 
-      <div v-if="checkoutStep === 0 && displayItems.length" id="cartTotalBlock" class="cart-total-card"><span>{{ t('Items total') }}</span><strong>{{ money(cart.subtotal) }}</strong></div>
+      <div v-if="checkoutStep === 0 && displayItems.length" id="cartTotalBlock" class="cart-total-card">
+        <div class="cart-total-row"><span>{{ t('Items total') }}</span><strong>{{ money(cart.subtotal) }}</strong></div>
+        <div class="cart-total-row"><span>{{ t('Shipping') }}</span><strong>{{ money(cart.shippingFee) }}</strong></div>
+        <p v-if="cart.freeShippingApplied" class="free-shipping-note" role="status">{{ t('Free shipping applied.') }}</p>
+        <p v-else-if="cart.amountToFreeShipping != null && Number(cart.amountToFreeShipping) > 0" class="free-shipping-note" role="status">{{ freeShippingNudge(cart.amountToFreeShipping) }}</p>
+        <div class="cart-total-row cart-total-final"><span>{{ t('Total') }}</span><strong>{{ money(cart.total) }}</strong></div>
+      </div>
 
       <section v-if="checkoutStep === 1" id="addressPanel" class="address-panel">
         <p class="panel-kicker">{{ t('Step 2 of 4') }}</p>
@@ -389,10 +400,12 @@ function openOrderHistory() {
 
       <div v-if="checkoutStep >= 1" id="totalsBlock" class="totals-card">
         <div class="summary-heading"><div><p class="summary-kicker">{{ t('At a glance') }}</p><h2 class="summary-title">{{ t('Order summary') }}</h2></div><span class="summary-mark" aria-hidden="true">✦</span></div>
-        <p v-if="checkoutStep === 2 && checkoutQuote" class="quote-review-notice" role="status">{{ t('Prices or shipping changed. Review the updated total, then confirm your order.') }}</p>
-        <p class="review-hint">{{ t(checkoutStep === 1 ? 'Shipping uses the store’s current flat rate.' : checkoutStep === 3 ? 'You can pay now or return to Order History and pay later.' : 'Review the address and place the order.') }}</p>
+        <p v-if="checkoutStep === 2 && checkoutQuote" class="quote-review-notice" role="status">{{ t('Prices, shipping, or free shipping details changed. Review the updated order summary, then confirm.') }}</p>
+        <p class="review-hint">{{ t(checkoutStep === 1 ? 'Shipping is based on your customer tier and free shipping threshold.' : checkoutStep === 3 ? 'You can pay now or return to Order History and pay later.' : 'Review the address and place the order.') }}</p>
         <div class="totals-row"><span>{{ t('Subtotal') }}</span><span>{{ money(checkoutStep === 3 ? orderSubtotal : checkoutStep === 2 && checkoutQuote ? checkoutQuote.subtotal : cart.subtotal) }}</span></div>
         <div class="totals-row"><span>{{ t('Shipping') }}</span><span>{{ money(checkoutStep === 3 ? orderShippingFee : checkoutStep === 2 && checkoutQuote ? checkoutQuote.shippingFee : cart.shippingFee) }}</span></div>
+        <p v-if="checkoutStep < 3 && shippingPreview.freeShippingApplied" class="free-shipping-note" role="status">{{ t('Free shipping applied.') }}</p>
+        <p v-else-if="checkoutStep < 3 && shippingPreview.amountToFreeShipping != null && Number(shippingPreview.amountToFreeShipping) > 0" class="free-shipping-note" role="status">{{ freeShippingNudge(shippingPreview.amountToFreeShipping) }}</p>
         <div v-if="checkoutStep === 3 && Number(orderDiscountAmount) > 0" class="totals-row"><span>{{ t('Discount') }}</span><span>−{{ money(orderDiscountAmount) }}</span></div>
         <div class="totals-row totals-total"><span>{{ t('Total') }}</span><span>{{ money(checkoutStep === 3 ? orderTotal : checkoutStep === 2 && checkoutQuote ? checkoutQuote.total : cart.total) }}</span></div>
       </div>

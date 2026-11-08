@@ -6,6 +6,7 @@ import com.dailyactivity.auth.infrastructure.PasswordHasher;
 import com.dailyactivity.common.ApiException;
 import com.dailyactivity.common.PageResponse;
 import com.dailyactivity.common.RequestValidation;
+import com.dailyactivity.merchant.domain.FreeShippingThresholds;
 import com.dailyactivity.merchant.domain.ShippingFees;
 import com.dailyactivity.identity.domain.port.MemberRepository;
 import com.dailyactivity.merchant.domain.port.MerchantRepository;
@@ -44,7 +45,9 @@ public class MerchantService {
     @Transactional
     public MerchantView create(Principal p, Create r) {
         accounts.requirePlatformAdmin(p);
-        validate(r.name(),r.shippingFees());
+        FreeShippingThresholds thresholds = r.freeShippingThresholds()==null
+                ? FreeShippingThresholds.disabled() : r.freeShippingThresholds();
+        validate(r.name(),r.shippingFees(),thresholds);
         String domain = StorefrontService.normalizeDomain(r.domain());
         StorefrontService.validateBranding(r.logoUrl(),r.theme());
         boolean registrationEnabled=Boolean.TRUE.equals(r.registrationEnabled());
@@ -63,21 +66,25 @@ public class MerchantService {
         if (r.password().length()<12 || r.password().length()>64)
             throw ApiException.badRequest("INVALID_PASSWORD","Password must be 12–64 characters.");
         String hash=PasswordHasher.hash(r.password());
-        long id=merchants.create(r.code().toUpperCase(Locale.ROOT),r.name().trim(),r.shippingFees(),domain,r.logoUrl(),r.theme(),p.userId(),registrationEnabled,registrationDefaultTier,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled);
+        long id=merchants.create(r.code().toUpperCase(Locale.ROOT),r.name().trim(),r.shippingFees(),thresholds,
+                domain,r.logoUrl(),r.theme(),p.userId(),registrationEnabled,registrationDefaultTier,
+                commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled);
         if(mail!=null) emailSettings.save(id,mail.settings(),mail.encryptedPassword());
         var permissions=List.of("order_audit","orders","commissions","bills","customers","products","certificates","categories","payment_channels","members");
         members.createMerchantAdministrator(id,new MemberRepository.MemberInput(r.adminAccount().trim().toLowerCase(Locale.ROOT),r.adminName().trim(),hash,permissions),p.actor());
-        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", registrationDefaultTier="+registrationDefaultTier+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", emailSettingsUpdated="+(mail!=null));
+        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", shippingFees="+r.shippingFees()+", freeShippingThresholds="+thresholds+", customerRegistrationEnabled="+registrationEnabled+", registrationDefaultTier="+registrationDefaultTier+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", emailSettingsUpdated="+(mail!=null));
         return view(merchants.find(id).orElseThrow());
     }
     @Transactional
     public MerchantView update(Principal p,long id,Update r) {
         accounts.requirePlatformAdmin(p);
-        validate(r.name(),r.shippingFees());
         String domain = StorefrontService.normalizeDomain(r.domain());
         StorefrontService.validateBranding(r.logoUrl(),r.theme());
         var existing=merchants.lock(id);
         checkVersion(existing,r.expectedUpdatedAt());
+        FreeShippingThresholds thresholds = r.freeShippingThresholds()==null
+                ? existing.freeShippingThresholds() : r.freeShippingThresholds();
+        validate(r.name(),r.shippingFees(),thresholds);
         boolean commissionEnabled=r.commissionEnabled()==null?existing.commissionEnabled():r.commissionEnabled();
         boolean cryptoEnabled=r.cryptoEnabled()==null?existing.cryptoEnabled():r.cryptoEnabled();
         boolean onlinePaymentLinkEnabled=r.onlinePaymentLinkEnabled()==null?existing.onlinePaymentLinkEnabled():r.onlinePaymentLinkEnabled();
@@ -108,7 +115,7 @@ public class MerchantService {
         PreparedEmailSettings mail=prepareEmailSettings(r.mailSettings(),stored,registrationEnabled);
         if(registrationEnabled) requireUsableMailSettings(mail,stored);
 
-        merchants.update(id,r.name().trim(),r.shippingFees(),r.active(),p.userId());
+        merchants.update(id,r.name().trim(),r.shippingFees(),thresholds,r.active(),p.userId());
         if(registrationEnabled!=existing.registrationEnabled()) merchants.updateRegistrationEnabled(id,registrationEnabled,p.userId());
         else if(r.registrationEnabled()!=null) merchants.updateRegistrationEnabled(id,registrationEnabled,p.userId());
         if(!registrationDefaultTier.equals(existing.registrationDefaultTier()) || r.registrationDefaultTier()!=null)
@@ -124,21 +131,27 @@ public class MerchantService {
             members.resetPassword(id,administrator.id(),passwordHash,p.actor());
             merchants.audit(id,p.actor(),"merchant_admin_password_reset","Administrator seller ID: "+administrator.id());
         }
-        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+"; after: name="+r.name()+", active="+r.active()+", shippingFees="+r.shippingFees()+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", registrationDefaultTier="+registrationDefaultTier+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", emailSettingsUpdated="+(mail!=null));
+        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+"; after: name="+r.name()+", active="+r.active()+", shippingFees="+r.shippingFees()+", freeShippingThresholds="+thresholds+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", registrationDefaultTier="+registrationDefaultTier+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", emailSettingsUpdated="+(mail!=null));
         return view(merchants.find(id).orElseThrow());
     }
     private void checkVersion(MerchantRepository.Merchant m,Instant version) {
         if (version==null || !version.equals(m.updatedAt())) throw ApiException.conflict("MERCHANT_CHANGED","Merchant settings changed. Refresh and try again.");
     }
-    private void validate(String name,ShippingFees fees) {
+    private void validate(String name,ShippingFees fees,FreeShippingThresholds thresholds) {
         if (name==null || name.isBlank() || name.trim().length()>100)
             throw ApiException.badRequest("INVALID_MERCHANT","Check the merchant name.");
         if (fees==null) throw ApiException.badRequest("INVALID_SHIPPING_FEES","Configure shipping fees for all customer tiers.");
         fees.values().forEach(this::validateFee);
+        if (thresholds==null) throw ApiException.badRequest("INVALID_FREE_SHIPPING_THRESHOLDS","Check free shipping thresholds for all customer tiers.");
+        thresholds.values().stream().filter(Objects::nonNull).forEach(this::validateThreshold);
     }
     private void validateFee(BigDecimal fee) {
         if (fee==null || fee.signum()<0 || fee.scale()>2 || fee.compareTo(new BigDecimal("9999999999999999.99"))>0)
             throw ApiException.badRequest("INVALID_SHIPPING_FEE","Shipping fee must be a non-negative amount with at most two decimals.");
+    }
+    private void validateThreshold(BigDecimal threshold) {
+        if (threshold.signum()<=0 || threshold.scale()>2 || threshold.compareTo(new BigDecimal("9999999999999999.99"))>0)
+            throw ApiException.badRequest("INVALID_FREE_SHIPPING_THRESHOLD","Free shipping threshold must be greater than zero and have at most two decimals.");
     }
     private String normalizeRegistrationDefaultTier(String tier) {
         String normalized=tier==null?"V1":tier.trim().toUpperCase(Locale.ROOT);
@@ -147,7 +160,7 @@ public class MerchantService {
         return normalized;
     }
     private MerchantView view(MerchantRepository.Merchant m) {
-        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFees(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme(),m.registrationEnabled(),m.registrationDefaultTier(),m.commissionEnabled(),m.cryptoEnabled(),m.onlinePaymentLinkEnabled(),emailSettings.find(m.id()).map(this::emailView).orElse(null),members.initialAdministrator(m.id()).orElse(null));
+        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFees(),m.freeShippingThresholds(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme(),m.registrationEnabled(),m.registrationDefaultTier(),m.commissionEnabled(),m.cryptoEnabled(),m.onlinePaymentLinkEnabled(),emailSettings.find(m.id()).map(this::emailView).orElse(null),members.initialAdministrator(m.id()).orElse(null));
     }
     private MerchantEmailSettingsView emailView(MerchantEmailSettingsRepository.StoredSettings s) {
         return new MerchantEmailSettingsView(s.smtpHost(),s.smtpPort(),s.smtpUsername(),s.tlsMode(),s.senderEmail(),s.senderName(),s.configured());
@@ -197,34 +210,40 @@ public class MerchantService {
     private record PreparedEmailSettings(MerchantEmailSettingsRepository.Settings settings,String encryptedPassword) {}
     public record TestEmailRequest(String recipient) {}
     public record MerchantEmailSettingsView(String smtpHost,int smtpPort,String smtpUsername,String tlsMode,String senderEmail,String senderName,boolean passwordConfigured) {}
-    public record MerchantView(long id,String code,String name,boolean active,ShippingFees shippingFees,Instant updatedAt,String domain,String logoUrl,String theme,boolean registrationEnabled,String registrationDefaultTier,boolean commissionEnabled,boolean cryptoEnabled,boolean onlinePaymentLinkEnabled,MerchantEmailSettingsView mailSettings,MemberRepository.InitialAdministrator administrator) {}
+    public record MerchantView(long id,String code,String name,boolean active,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,Instant updatedAt,String domain,String logoUrl,String theme,boolean registrationEnabled,String registrationDefaultTier,boolean commissionEnabled,boolean cryptoEnabled,boolean onlinePaymentLinkEnabled,MerchantEmailSettingsView mailSettings,MemberRepository.InitialAdministrator administrator) {}
     public record MailSettingsInput(String smtpHost,Integer smtpPort,String smtpUsername,String smtpPassword,String tlsMode,String senderEmail,String senderName) {}
-    public record Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+    public record Create(String code,String name,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+        public Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,registrationDefaultTier);
+        }
         public Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled) {
-            this(code,name,shippingFees,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,"V1");
+            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,"V1");
         }
         public Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled) {
-            this(code,name,shippingFees,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,null,null,"V1");
+            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,null,null,"V1");
         }
         public Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
-            this(code,name,shippingFees,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,true,null,null,"V1");
+            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,true,null,null,"V1");
         }
     }
-    public record Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+    public record Update(String name,boolean active,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+        public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,registrationDefaultTier);
+        }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled) {
-            this(name,active,shippingFees,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled) {
-            this(name,active,shippingFees,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,null,null,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,null,null,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
-            this(name,active,shippingFees,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,null,null,null,null,null,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,null,null,null,null,null,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme) {
-            this(name,active,shippingFees,expectedUpdatedAt,domain,logoUrl,theme,null,null,null,null,null,null,null,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,null,null,null,null,null,null,null,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation) {
-            this(name,active,shippingFees,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,null,null,null,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,null,null,null,null);
         }
     }
 }

@@ -191,7 +191,7 @@ frontend/
 
 ### 3.3 菜单权限及数据归属
 
-后台菜单码固定为 `order_audit`、`orders`、`commissions`、`bills`、`customers`、`products`、`certificates`、`categories`、`payment_channels`、`members`。每个商家后台账号都保存于 seller 表；拥有某菜单即拥有该菜单的全部操作，不设额外按钮授权或字段脱敏规则。商户 `commission_enabled` 是独立于成员菜单权限的功能开关；关闭时服务端拒绝佣金业务接口并隐藏佣金相关数据，重新开启后可恢复查看保留的历史记录。运费按 V1～V6 客户等级从 merchant.shipping_fee_v1～shipping_fee_v6 读取，由平台管理员在商户管理页维护，不设独立商城设置菜单；`payment_channels` 权限仅管理本商户的收款渠道，客户可用的加密货币/线上支付链接开关由平台管理员在商户管理页控制。
+后台菜单码固定为 `order_audit`、`orders`、`commissions`、`bills`、`customers`、`products`、`certificates`、`categories`、`payment_channels`、`members`。每个商家后台账号都保存于 seller 表；拥有某菜单即拥有该菜单的全部操作，不设额外按钮授权或字段脱敏规则。商户 `commission_enabled` 是独立于成员菜单权限的功能开关；关闭时服务端拒绝佣金业务接口并隐藏佣金相关数据，重新开启后可恢复查看保留的历史记录。运费按 V1～V6 客户等级从 merchant.shipping_fee_v1～shipping_fee_v6 及可选 free_shipping_threshold_v1～free_shipping_threshold_v6 读取，由平台管理员在商户管理页维护，不设独立商城设置菜单；`payment_channels` 权限仅管理本商户的收款渠道，客户可用的加密货币/线上支付链接开关由平台管理员在商户管理页控制。
 
 商户 Admin 是拥有本商户获批菜单的 seller 用户；平台身份独立。每商户保留至少一个有效 members 持有者。客户等级仍为 V1～V6。
 
@@ -272,7 +272,7 @@ Java 全部使用 `BigDecimal`，数据库金额 `DECIMAL(18,2)`、百分比 `DE
 赠品单价 = 0.00 USD
 行金额 = 单价 × 正整数数量
 商品小计 S = 各有效行金额之和
-订单运费 F = 创建时按客户等级读取的本商户运费快照
+订单运费 F = 创建时按客户等级及优惠前商品小计计算的实际运费快照；达到免邮门槛时为 0，否则为该等级基础运费
 订单优惠 D = 审核编辑时给予的固定商品优惠额（默认 0.00）
 优惠前合计 G = S + F
 订单总额 / 最终应付 T = S + F - D
@@ -507,7 +507,7 @@ WHERE id = :orderId AND customer_id = :customerId
 
 | 表/字段 | 约定 |
 | --- | --- |
-| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee_v1～shipping_fee_v6 DECIMAL(18,2)（对应 V1～V6）、customer_registration_enabled、customer_registration_default_tier CHAR(2)（V1～V6，默认 V1）、commission_enabled、crypto_payment_enabled、online_payment_link_enabled、收款配置、创建/修改时间与操作人；不提供删除；平台可配置商户并只读查询经营数据 |
+| merchant | id、全局唯一 code(32)、name(100)、domain ASCII(253) 非空唯一、logo_url(512)、theme(32)、active、shipping_fee_v1～shipping_fee_v6 DECIMAL(18,2)（V1～V6 基础运费）、free_shipping_threshold_v1～free_shipping_threshold_v6 DECIMAL(18,2) NULL（免邮门槛，NULL 关闭）、customer_registration_enabled、customer_registration_default_tier CHAR(2)（V1～V6，默认 V1）、commission_enabled、crypto_payment_enabled、online_payment_link_enabled、收款配置、创建/修改时间与操作人；不提供删除；平台可配置商户并只读查询经营数据 |
 | category、product | 必填 merchant_id；名称与 SKU 按商户约束；库存和商品资料属于单一商户；写商品时校验类目同商户 |
 | product_tier_price、product_quantity_price | 不重复保存 merchant_id；经 product_id 关联商品后校验 merchant_id，所有查询和写入均以当前商户限定 |
 | coa_certificate、product_coa_link | 必填 merchant_id；COA、商品和绑定关系必须属于同一商户；COA 变更锁所属 merchant 行并校验商品/证书 |
@@ -545,16 +545,16 @@ WHERE id = :orderId AND customer_id = :customerId
 
 ### 6.3 报价与创建订单
 
-报价接口按当前客户定价配置、商品/类目可售性、数量及运费配置计算，返回金额、业务快照字段和短期 `quoteToken`。quoteToken 是专用 HMAC 签名的 v3 报价载荷，含随机 nonce（建议 10 分钟有效），避免同一秒内重复请求生成相同令牌；使用独立密钥，不能作为登录 JWT 使用，服务端无需保存报价会话。载荷不得包含客户类型、定价等级或成本价，避免客户解码令牌获知商家内部资料。
+报价接口按当前客户定价配置、商品/类目可售性、数量及运费配置计算，返回金额、免邮状态、可选免邮门槛、距门槛金额和短期 `quoteToken`。实际运费按优惠前商品小计判断：启用门槛且小计大于等于门槛时为 0，否则为客户等级基础运费。quoteToken 是专用 HMAC 签名的 v3 报价载荷，含随机 nonce（建议 10 分钟有效），避免同一秒内重复请求生成相同令牌；使用独立密钥，不能作为登录 JWT 使用，服务端无需保存报价会话。载荷不得包含客户类型、定价等级或成本价，避免客户解码令牌获知商家内部资料。
 
-报价载荷包含版本号 2、客户 ID、地址 ID、签发/过期时刻、各商品的 ID/数量/SKU/名称/类型/priceRevision/适用单价，以及商品小计、按客户等级确定的运费和总额。服务端拒绝缺少版本号或版本不是 2 的旧报价；前端金额只是已展示报价，不能决定服务端成交价。库存是否充足在创建时重新判断，报价不预占库存。运费来自当前买家所属商户与客户等级的配置，订单只保存实际下单时的 shipping_fee。
+报价载荷包含版本号 3、客户 ID、地址 ID、签发/过期时刻、各商品的 ID/数量/SKU/名称/类型/priceRevision/适用单价，以及商品小计、按客户等级和免邮门槛计算的实际运费和总额。服务端拒绝缺少版本号或版本不是 3 的旧报价；前端金额只是已展示报价，不能决定服务端成交价。库存是否充足在创建时重新判断，报价不预占库存。订单只保存实际下单时的 `shipping_fee`。
 
 创建事务顺序：
 
 1. 锁定下单客户 `user` 行，重新验证启用状态；读取当前客户等级、推荐人及费率。校验报价签名、归属、过期时间、商品集合/数量和地址归属；不是只比对前端 total。
-3. 读取已锁定商户行中的运费，校验其为非负 USD 金额；校验报价中的运费值与当前配置一致，商户运费变更后旧报价返回 409 `QUOTE_CHANGED`，等待客户重新确认。
+3. 读取已锁定商户行中的等级基础运费和免邮门槛，按签名报价中的商品小计重新计算实际运费；报价实际运费与当前计算不一致时返回 409 `QUOTE_CHANGED`，等待客户重新确认。仅配置变化但实际运费仍相同的报价可以继续提交。
 4. 校验报价 SHA-256 尚未出现在 `sales_order.quote_token_hash`；同一报价已创建过订单则返回 409 `QUOTE_ALREADY_USED`。按 productId 升序锁定所选商品，检查新购商品有效、上架、正品、类目启用、数量及库存。校验当前价格/等级与报价一致，发现变化返回 409 `QUOTE_CHANGED` 及新报价，等待客户重新确认。此失败不落订单、不清车。
-5. 验证并复制完整地址、成交商品资料、运费及推荐关系快照。推荐人存在与关系变更遵循客户行锁；只锁定一层，不递归计算。
+5. 验证并复制完整地址、成交商品资料、实际运费及推荐关系快照。免邮门槛按优惠前商品小计判断；订单审核调整商品或优惠不重新计算运费。推荐人存在与关系变更遵循客户行锁；只锁定一层，不递归计算。
 6. 使用同一个事务时刻 `createdAt=Instant.now()`，按 UTC 取年月日并写订单 created_at。订单号为 `YYYYMMDD + 5 位随机数字`，例如 `2026100901235`，无 YT 前缀。uk_order_no 唯一索引仲裁并发碰撞；服务端从随机起点按与 100,000 互质的随机步长尝试候选，最多覆盖该 UTC 日期的全部 100,000 个后缀，耗尽返回 ORDER_NUMBER_EXHAUSTED。号码全平台永久唯一，取消不释放，业务日期不取浏览器时区或列表数量。
 7. 创建 pending/unpaid、audit_status=pending 订单和有效商品行；按 productId 聚合扣减库存并写一条对应流水。所有商品一起成功或回滚。此步骤不创建应收、佣金计提或账单。
 8. 创建 submitted 事件；订单推荐人与费率只保存为下单快照，尚不生成佣金计提。
@@ -640,7 +640,7 @@ COA 资料和完成快照只在短数据库事务内锁定相关业务行，不�
 
 ### 6.9 主数据修改和软删除
 
-运费按 V1～V6 分别保存在 merchant.shipping_fee_v1～shipping_fee_v6，由平台管理员在商户管理页维护，保存后即时生效。配置变更只影响对应等级的新报价和新订单；创建订单时锁定客户及商户行，按当前等级复核报价并将运费写入 sales_order.shipping_fee，历史订单不改写。报价提交比较实际运费值，不保存配置版本或配置标识。
+V1～V6 基础运费分别保存在 merchant.shipping_fee_v1～shipping_fee_v6；可选免邮门槛分别保存在 merchant.free_shipping_threshold_v1～free_shipping_threshold_v6，NULL 表示关闭。平台管理员在商户管理页维护，保存后即时生效。免邮按服务端计算的优惠前商品小计判断，达到门槛（含等于）后该订单实际运费为 0；否则使用等级基础运费。配置变更只影响对应等级的新报价和新订单；创建订单时锁定客户及商户行，按报价小计重算并校验实际运费，将实际金额写入 sales_order.shipping_fee，历史订单不改写。报价提交比较按当前配置计算的实际运费，不保存配置版本或配置标识。
 
 COA 转移在同一事务内锁定并重新读取当前绑定及相关商品/证书行；当前归属不符返回冲突，不能无提示抢占。确认转移后软删除旧关系，写 ended_at，新建有效关系同提交。删除 COA 同时结束有效绑定；不删文件或订单快照。
 
@@ -717,13 +717,13 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | `GET /customer/categories` | 仅启用；按 sortNo、id 稳定升序；仅返回前端使用的 `id/name` | C-02 |
 | `GET /customer/products` | 无查询参数；返回全部可见正品的 `id/categoryId/category/sku/name/description/price/stock/coas?`；`coas` 返回全部有效关联证书的 `{name,fileUuid,lot,testDate}`，不再重复返回首份证书的 `coa` 别名；不分页，搜索和分类筛选由前端完成。`fileUuid` 仅作客户签名 URL 接口的业务标识，客户点击 COA 后仍须先通过该接口校验访问范围。`price` 是当前客户的适用单价，响应不含价格等级、客户类型、成本价、基础价或其他等级价 | C-02 |
 | `GET /customer/certificates` | 无查询参数；返回全部客户可见的商品×证书行及证书自身元数据、商品 SKU 和原始文件名；不分页，搜索由前端本地完成 | C-03 |
-| `GET /customer/cart` | 当前行、报价、失效原因；不静默过滤失效项 | C-04 |
+| `GET /customer/cart` | 当前行、S/F/T、可选 `freeShippingThreshold`、`freeShippingApplied`、`amountToFreeShipping`、失效原因；按优惠前商品小计和当前客户等级计算运费，不静默过滤失效项 | C-04 |
 | `PUT /customer/cart/items/{productId}` | quantity；锁定本人购物车行后设置目标数量 | C-04 |
 | `DELETE /customer/cart/items/{id}` | 锁定本人购物车行后物理删除 | C-04 |
 | `GET/POST /customer/addresses` | 列表/新增完整地址 | C-11 |
 | `PUT/DELETE /customer/addresses/{id}` | 完整地址/软删除；锁客户及地址行后校验归属 | C-11 |
 | `PUT /customer/addresses/{id}/default` | 锁客户及地址集合后原子切换默认 | C-11 |
-| `POST /customer/order-quotes` | cartItems 的 ID/数量、addressId → quoteToken、S/F/T、价格/配置业务快照 | C-05 |
+| `POST /customer/order-quotes` | cartItems 的 ID/数量、addressId → quoteToken、S/F/T、免邮状态/门槛/差额、价格/配置业务快照 | C-05 |
 | `POST /customer/orders` | quoteToken、buyerNote；客户行锁，报价摘要唯一消费，订单/库存/购物车事务原子提交 | C-05 |
 | `GET /customer/orders` | 本人订单，多条件交集，分页；包含由订单事件派生的 `paymentLinkRequested`；不返回内部审核字段 | C-07 |
 | `GET /customer/orders/summary` | 本人全部订单汇总，包含 `payableOrders` 与 `payableTotal`，按非取消且未支付状态汇总；`scope=allAuthorized` | C-07 |
@@ -823,9 +823,9 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | POST /api/v1/platform/auth/login | 独立平台账号密码登录，失败限流，返回平台 JWT |
 | GET /api/v1/platform/me | 验证平台身份，返回 member，不返回商户或商家菜单 |
 | POST /api/v1/platform/auth/logout | 提升账号 authVersion，使既有平台令牌失效 |
-| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条；返回 administrator、注册开关及 registrationDefaultTier、佣金/付款方式开关、SMTP 非密钥字段及 SMTP 密码是否已保存 |
-| POST /api/v1/platform/merchants | 原商户字段，可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings，连同首管理员事务创建；注册默认关闭，registrationDefaultTier 默认 V1，佣金和加密货币默认开启，线上支付链接默认关闭 |
-| PUT /api/v1/platform/merchants/{id} | 原商户字段，必填 expectedUpdatedAt，可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings/password/confirmation；registrationDefaultTier 只接受 V1～V6；关闭佣金前检查未结计提和待审核可计佣订单，校验通过才更新；付款方式开关也在此配置；管理员密码两项均留空不改，设置时校验并使旧登录失效；smtpPassword 留空保留旧值，事务更新 |
+| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条；返回 administrator、V1～V6 shippingFees/freeShippingThresholds、注册开关及 registrationDefaultTier、佣金/付款方式开关、SMTP 非密钥字段及 SMTP 密码是否已保存 |
+| POST /api/v1/platform/merchants | 原商户字段及可选 freeShippingThresholds（缺省为六档关闭），可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings，连同首管理员事务创建；注册默认关闭，registrationDefaultTier 默认 V1，佣金和加密货币默认开启，线上支付链接默认关闭 |
+| PUT /api/v1/platform/merchants/{id} | 原商户字段，必填 expectedUpdatedAt；freeShippingThresholds 可省略（沿用现值），各档可传 null 关闭，非空必须为正 USD 且最多两位小数；可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings/password/confirmation；registrationDefaultTier 只接受 V1～V6；关闭佣金前检查未结计提和待审核可计佣订单，校验通过才更新；付款方式开关也在此配置；管理员密码两项均留空不改，设置时校验并使旧登录失效；smtpPassword 留空保留旧值，事务更新 |
 | POST /api/v1/platform/merchants/{id}/email-settings/test | 使用已保存配置发送测试邮件；仅平台身份可调用 |
 | GET /api/v1/platform/overview | 返回全商户和买家数量、未取消订单金额、累计已收金额、待处理状态计数和最近 7 天订单趋势 |
 | GET /api/v1/platform/orders?page=1 | 跨商户订单查询；可按 merchantId、q、订单/审核/付款状态和 UTC 时间筛选；列表遮蔽买家姓名与邮箱 |
@@ -842,7 +842,7 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 
 卖家登录页在商户域名可解析时复用公开 storefront 品牌；后台登录成功后从 `/admin/me` 的 merchant 对象读取最新 name/logoUrl，显示在卖家导航并更新页面标题和 favicon。共享后台域名在验证账号前无法确定所属商户，保持平台默认品牌；认证成功后切换为该商户品牌，不通过未认证账号查询接口枚举商户。
 
-删除旧 /admin/merchants 与 merchant-settings API，不保留兼容入口。商户响应附带 domain/logoUrl/theme/registrationEnabled/commissionEnabled/mailSettings；SMTP 密码始终不回传。客户资料、推荐信息、佣金与结算 API、佣金账单数据和佣金导出均由服务端按商户开关隐藏或拒绝，不能仅依赖前端导航隐藏；关闭期间不允许修改推荐关系或费率，原设置保留并在重开后恢复。平台页面 `/platform/` 使用独立 localStorage 键 dailyactivity.platform.token；商家和买家认证键保持各自独立。买家入口在挂载 App 前读取品牌、注册和佣金开关，失败展示错误和重试；样式以受控 data-storefront-theme 选择 CSS，不改变共享业务组件和服务端规则。商户与订单新增字段均直接维护在完整初始化 SQL 中，不提供增量 DDL。
+删除旧 /admin/merchants 与 merchant-settings API，不保留兼容入口。商户响应附带 domain/logoUrl/theme/registrationEnabled/commissionEnabled/shippingFees/freeShippingThresholds/mailSettings；SMTP 密码始终不回传。客户资料、推荐信息、佣金与结算 API、佣金账单数据和佣金导出均由服务端按商户开关隐藏或拒绝，不能仅依赖前端导航隐藏；关闭期间不允许修改推荐关系或费率，原设置保留并在重开后恢复。平台页面 `/platform/` 使用独立 localStorage 键 dailyactivity.platform.token；商家和买家认证键保持各自独立。买家入口在挂载 App 前读取品牌、注册和佣金开关，失败展示错误和重试；样式以受控 data-storefront-theme 选择 CSS，不改变共享业务组件和服务端规则。商户与订单新增字段均直接维护在完整初始化 SQL 中，不提供增量 DDL。
 
 
 ## 8. 查询、统计、时间与 CSV
@@ -1131,7 +1131,7 @@ URL 统一使用 jdbc:mysql 协议，驱动类为 com.mysql.cj.jdbc.Driver，连
 
 经明确授权后，仅对全新空库执行 [init_mysql56.sql](init_mysql56.sql)。如需同时创建首个平台管理员，执行前在同一会话设置平台账号、姓名及 Argon2id 摘要变量；未设置时不创建账号。平台登录后创建商户及其首个卖家管理员。不提供默认密码，不由应用自动初始化。
 
-各商户分别准备自己的商品、库存、COA、客户和收款渠道后开放下单。商户按 V1～V6 保存六档非负 USD 运费，开通时六档均须配置，之后由平台管理员在商户管理页维护。保存立即影响对应等级的新报价，旧报价提交时须校验实际运费是否变化，已创建订单始终保留运费快照；修改旧 app.store.shipping-fee 或重启应用不会更新商户运费。
+各商户分别准备自己的商品、库存、COA、客户和收款渠道后开放下单。商户按 V1～V6 保存六档非负 USD 基础运费，开通时六档均须配置；可选门槛留空关闭，非空门槛必须为正且最多两位小数。平台管理员在商户管理页维护。保存立即影响对应等级的新报价，旧报价提交时按当前门槛及报价商品小计校验实际运费，已创建订单始终保留运费快照；修改旧 app.store.shipping-fee 或重启应用不会更新商户运费。
 
 备份分成 MySQL 全量/binlog 与本地上传目录两部分，数据库备份不包含文件。文件采用只新增不覆盖：先取得数据库一致备份点，再复制截至复制时全部最终上传文件（可多于该时点引用集合），并生成文件清单/校验值；结合增量恢复时同步补齐恢复时点引用的文件。不能拿更晚的数据库配更早的文件目录而宣称恢复完整。
 
@@ -1180,7 +1180,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 | 建号/身份 | 商家后台建号与商户开放时的邮箱自助注册并存；随机八位大写 Base36 code、比较不区分大小写、唯一冲突重试、软删除不重用；email/account 由应用 trim 并转为小写后唯一 | AC-01/21/23/29/30/39/40/68/74/96 |
 | JWT 与撤权 | 无 HttpSession/会话表；退出/改密/停用后旧 JWT 在下一请求失败；撤权后旧页 403，客户 token 不可调后台 | AC-02/39/51/60/74 |
 | 目录/定价 | 正品零价拒绝、空等级价回默认、赠品不开放客户采购、类目排序/停用生效 | AC-03～06/32/33/41 |
-| 报价与编号 | 同一 quoteToken 最多创建一个订单并返回 `QUOTE_ALREADY_USED`；订单号符合 `YYYYMMDD + 5 位数字` 且依靠唯一索引防止重复；配置文件运费变化需重确认，未配置不能下单 | AC-07～10/65/68/73/76 |
+| 报价与编号 | 同一 quoteToken 最多创建一个订单并返回 `QUOTE_ALREADY_USED`；订单号符合 `YYYYMMDD + 5 位数字` 且依靠唯一索引防止重复；运费或门槛变化造成实际运费变化时需重确认 | AC-07～10/65/68/73/76 |
 | 库存 | 10→7→5→10→10；多商品不足整体回滚；发货不再扣库存；下架不阻止旧单合法操作 | AC-09/17/19/20/24/69/77 |
 | 金额与收款 | 所有入口 S+F-D；优惠在尚无收款的待审核订单可设置；付款申报不锁定审核正品和优惠额；审核通过后商品明细和金额冻结；同总额换行也失败；逐笔追加 receipt，同一申报只确认一次，交易号跨订单可重复 | AC-11～14/18/25/37/38/41/62/70/71/75/84～86 |
 | 付款/履约独立 | 未付款可完成，完成后可付款核验；无核验拒绝、退款、客户收货或回退接口 | AC-26～28/61/63 |
@@ -1259,7 +1259,7 @@ mysql --default-character-set=utf8mb4 -h 127.0.0.1 -u ddl_operator -p dailyactiv
 
 1. 核对全部表为 InnoDB BASE TABLE，业务文本列为 utf8mb4_unicode_ci，file_asset.file_uuid 为 ASCII ascii_bin，无视图、外键、触发器、存储过程、生成列、原生 JSON 或二进制文件列。
 2. permission_menu 有 9 条固定菜单；file_asset 为空表但结构、UUID 主键、索引和状态字段必须存在。
-3. 商户开通时设置 V1～V6 六档非负 shipping_fee；购物车/报价按账号归属及客户等级读取，订单保存下单运费快照。旧 app.store.shipping-fee 已移除。
+3. 商户开通时设置 V1～V6 六档非负 shipping_fee，可选配置免邮门槛；购物车/报价按账号归属、客户等级及优惠前商品小计计算，订单保存下单实际运费快照。旧 app.store.shipping-fee 已移除。
 4. 核对软删除字段仅存在于支持软删除的表、永久唯一/有效关系唯一索引，以及所有复合索引字节长度 ≤767；付款交易号不单独建索引，按订单唯一关联读取。
 5. 在真实 MySQL 5.6 上验证建表、中文/四字节字符、DATETIME(6)、事务回滚、大小写归一化后的 Base36 code、分页 LIMIT 10 和重复结算/账单约束；新版本 MySQL 的成功不能替代 5.6 验证。
 6. 补充新验收：JWT exp-iat=2592000；Security 依赖为零；0% 不生成计提/应付/结算且接口拒绝绕过；所有分页均为 10；文件内容只在磁盘，`file_asset` 使用 file_uuid 主键且业务表全部保存 file_uuid；账单事实与订单、收款、佣金、结算事务一致；live 配置全部来自对应 YAML。

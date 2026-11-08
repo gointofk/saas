@@ -21,6 +21,7 @@
 /Users/qijin.xu/Documents/project/saas/backend/src/test/java/com/dailyactivity/merchant/MerchantTokenTest.java
 /Users/qijin.xu/Documents/project/saas/backend/src/test/java/com/dailyactivity/merchant/PrdMerchantAdminPasswordTest.java
 /Users/qijin.xu/Documents/project/saas/backend/src/test/java/com/dailyactivity/merchant/PrdMerchantIsolationTest.java
+/Users/qijin.xu/Documents/project/saas/backend/src/test/java/com/dailyactivity/merchant/ShippingFeesTest.java
 /Users/qijin.xu/Documents/project/saas/backend/src/test/java/com/dailyactivity/merchant/StorefrontSecurityTest.java
 /Users/qijin.xu/Documents/project/saas/backend/src/test/java/com/dailyactivity/order/JdbcOrderRepositoryTest.java
 /Users/qijin.xu/Documents/project/saas/backend/src/test/java/com/dailyactivity/order/OrderDiscountTest.java

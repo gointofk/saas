@@ -49,6 +49,9 @@ export type CustomerCart = {
   items: CustomerCartItem[]
   subtotal: number | string
   shippingFee: number | string
+  freeShippingThreshold?: number | string | null
+  freeShippingApplied?: boolean
+  amountToFreeShipping?: number | string | null
   total: number | string
 }
 
@@ -127,6 +130,9 @@ export type CustomerOrderQuote = {
   }>
   subtotal: number | string
   shippingFee: number | string
+  freeShippingThreshold?: number | string | null
+  freeShippingApplied?: boolean
+  amountToFreeShipping?: number | string | null
   total: number | string
 }
 

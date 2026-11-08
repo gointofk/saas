@@ -7,6 +7,7 @@ import com.dailyactivity.catalog.domain.port.CatalogRepository;
 import com.dailyactivity.catalog.domain.port.QuantityPriceRepository;
 import com.dailyactivity.catalog.domain.QuantityPricing;
 import com.dailyactivity.common.ApiException;
+import com.dailyactivity.merchant.domain.ShippingQuote;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,12 +44,17 @@ public class CartService {
         }).toList();
         BigDecimal subtotal = items.stream().map(i -> (BigDecimal) i.get("lineTotal")).reduce(BigDecimal.ZERO, BigDecimal::add);
         boolean hasInvalid = items.stream().anyMatch(i -> i.get("invalidReason") != null);
-        BigDecimal shipping = items.isEmpty() || hasInvalid ? BigDecimal.ZERO : accounts.shippingFee(p);
+        ShippingQuote shippingQuote = items.isEmpty() || hasInvalid
+                ? new ShippingQuote(BigDecimal.ZERO.setScale(2), null, false, null)
+                : accounts.shippingQuote(p, subtotal);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("items", items);
         out.put("subtotal", subtotal);
-        out.put("shippingFee", shipping);
-        out.put("total", subtotal.add(shipping));
+        out.put("shippingFee", shippingQuote.shippingFee());
+        out.put("freeShippingThreshold", shippingQuote.freeShippingThreshold());
+        out.put("freeShippingApplied", shippingQuote.freeShippingApplied());
+        out.put("amountToFreeShipping", shippingQuote.amountToFreeShipping());
+        out.put("total", subtotal.add(shippingQuote.shippingFee()));
         return out;
     }
 
