@@ -47,5 +47,6 @@ app:
     ttl-seconds: 72000
   file:
     signed-url-seconds: 3600
+    public-coa-base-url: ${PUBLIC_COA_BASE_URL:}
   export:
     max-rows: 10000

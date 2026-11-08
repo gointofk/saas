@@ -29,12 +29,12 @@
 | Spring 组件 | Spring MVC、Validation、JDBC | 不包含 Spring Security 或 Actuator；认证使用自定义 Filter 和菜单拦截器 |
 | JWT / 密码 | JJWT 0.12.6、argon2-jvm 2.11 | 库负责标准签名/密码哈希，业务自行实现身份和权限，不自行发明加密算法 |
 | 数据访问 | Spring JDBC（JdbcTemplate / NamedParameterJdbcTemplate）+ 参数化 SQL | 显式 SQL，便于控制软删除、联合查询、行锁及统计；不采用自动级联删除 |
-| 数据库初始化 | Maven、全量 SQL 脚本 | 仅对全新空库执行 `doc/init_mysql56.sql`；应用不负责建表或变更表结构 |
+| 数据库初始化 | Maven、全量 SQL 脚本 | 仅对全新空库执行 `doc/init_mysql56.sql`；既有数据库的索引升级由 `doc/upgrade_public_coa_indexes.sql` 人工执行；应用不负责建表或变更表结构 |
 | 数据库 | MySQL 5.6.51、InnoDB | utf8mb4_unicode_ci、COMPACT 行格式，按 767 字节索引上限设计 |
 | JDBC 驱动 | mysql:mysql-connector-java:8.0.27 | MySQL 官方 Connector/J；为 MySQL 5.6 显式锁版，com.mysql.cj.jdbc.Driver |
 | 前端 | Vue 3、TypeScript、Vite | 当前为一个同时承载客户侧和后台的 SPA；路由由 `App.vue` 根据 pathname 和 `history.pushState` 管理；依赖锁文件固定版本 |
 | Web 服务 | Nginx | HTTPS、静态资源、SPA 回退、API 反向代理 |
-| 文件 | 服务器本地磁盘 + 后端短时签名下载 | `file_asset` 以应用生成的 `file_uuid` 作为稳定主键，保存文件清单、类型、大小和 SHA-256；业务表统一引用 `file_uuid`；文件内容不进 MySQL |
+| 文件 | 本地磁盘；买家可见 COA 固定公开 URL + CDN，其他附件后端短时签名下载 | `file_asset` 以应用生成的 `file_uuid` 作为稳定主键，保存文件清单、类型、大小和 SHA-256；业务表统一引用 `file_uuid`；文件内容不进 MySQL |
 
 版本基线以当前仓库 `pom.xml`、`frontend/package.json` 和锁文件为准。后端直接依赖 Spring Boot 3.5.6、MySQL Connector/J 8.0.27、JJWT 0.12.6、argon2-jvm 2.11；测试使用 Spring Boot Test 3.5.6 管理的测试依赖。数据库保持 MySQL 5.6.51。实际发布须记录精确版本和构建摘要，并在目标 JDK 17 与 MySQL 5.6 环境验证连接、事务、字符集、时间和重连。
 
@@ -70,12 +70,12 @@ flowchart LR
     B --> S[JWT 校验与当前账号权限]
     S --> D[业务服务 / 事务 / 查询]
     D --> M[(MySQL 实体表)]
-    B -->|鉴权后签发短时 URL / 下载| F[服务器本地文件目录]
+    B -->|公开 COA 固定 URL / 私有文件签名下载| F[服务器本地文件目录]
 ```
 
 首版一个后端应用、一个 MySQL 数据库，不依赖 Redis、消息队列、服务注册中心、分布式锁或搜索引擎。业务成功响应必须在数据库事务提交后返回。客户端刷新或重新进入读取最新数据，不要求推送。
 
-客户静态站点位于 `/`，后台位于 `/admin/`，二者由同一个 `frontend/dist` SPA 通过 pathname 区分，API 位于 `/api/v1/`。可同域部署避免跨域配置；客户和后台使用独立认证存储键。静态 HTML/JS 可以公开获取，业务数据和价格由服务端鉴权。文件由后端业务接口鉴权后签发短时 HMAC URL，浏览器通过该 URL 获取内容；URL 到期后失效，详见第 9 章。Nginx 只反向代理文件下载接口，不直接映射上传目录。
+客户静态站点位于 `/`，后台位于 `/admin/`，二者由同一个 `frontend/dist` SPA 通过 pathname 区分，API 位于 `/api/v1/`。可同域部署避免跨域配置；客户和后台使用独立认证存储键。静态 HTML/JS 可以公开获取，业务数据和价格由服务端鉴权。当前可售商品、未完成订单当前 COA（即使商品已下架）和完成快照中的 COA 通过固定公开 URL 读取；二维码、履约照片及面单继续使用短时 HMAC URL，详见第 9 章。Nginx 只反向代理文件下载接口，不直接映射上传目录。
 
 ### 2.2 后端分层
 
@@ -104,6 +104,7 @@ backend/
   src/main/resources/application-live.yml
 doc/
   init_mysql56.sql   # 完整空库初始化
+  upgrade_public_coa_indexes.sql # 既有数据库的单次人工索引升级
 frontend/
   src/App.vue        # 客户侧和后台页面、pathname 路由
   src/lib/api.ts     # API、Bearer 和请求期间按钮禁用
@@ -153,7 +154,7 @@ frontend/
 
 认证链路自行实现，不引入 Spring Security：
 
-1. 使用 Spring Web 的 `OncePerRequestFilter`（不是 Security 组件）覆盖 `/api/v1/**`；明确放行客户、商家、平台三个登录接口、客户商城品牌配置及买家注册验证码/注册接口、短时签名文件内容接口、预检 OPTIONS 及健康探活路径（若部署提供）；未知 API 默认认证。公开注册接口仍须按请求 Host 解析唯一商户并检查其注册开关。
+1. 使用 Spring Web 的 `OncePerRequestFilter`（不是 Security 组件）覆盖 `/api/v1/**`；明确放行客户、商家、平台三个登录接口、客户商城品牌配置及买家注册验证码/注册接口、固定 UUID 的公开 COA 内容接口、短时签名文件内容接口、预检 OPTIONS 及健康探活路径（若部署提供）；未知 API 默认认证。公开注册接口仍须按请求 Host 解析唯一商户并检查其注册开关。
 2. 通过独立 JWT 库校验固定算法、签名、iss/aud/sub、iat/exp、30 天时长；查询账号状态、auth_version。
 3. 不可变 RequestPrincipal 放 request attribute，自定义参数解析器提供给 Controller；不调用 request.getSession，不产生 JSESSIONID，不在跨请求共享对象保存身份。
 4. HandlerInterceptor 解析 `@RequireMenu`，读取当前权限；服务层再校验敏感写操作和资源归属。当前未标注 `@RequireMenu` 的 Handler 默认放行，因此敏感业务必须由 Application Service 显式调用 `requireMenu`；未引入“启动时检查所有 Handler”的机制。
@@ -191,7 +192,7 @@ frontend/
 
 ### 3.3 菜单权限及数据归属
 
-后台菜单码固定为 `order_audit`、`orders`、`commissions`、`bills`、`customers`、`products`、`certificates`、`categories`、`payment_channels`、`members`。每个商家后台账号都保存于 seller 表；拥有某菜单即拥有该菜单的全部操作，不设额外按钮授权或字段脱敏规则。商户 `commission_enabled` 是独立于成员菜单权限的功能开关；关闭时服务端拒绝佣金业务接口并隐藏佣金相关数据，重新开启后可恢复查看保留的历史记录。运费按 V1～V6 客户等级从 merchant.shipping_fee_v1～shipping_fee_v6 及可选 free_shipping_threshold_v1～free_shipping_threshold_v6 读取，由平台管理员在商户管理页维护，不设独立商城设置菜单；`payment_channels` 权限仅管理本商户的收款渠道，客户可用的加密货币/线上支付链接开关由平台管理员在商户管理页控制。
+后台菜单码固定为 `order_audit`、`orders`、`commissions`、`bills`、`customers`、`products`、`certificates`、`categories`、`payment_channels`、`members`。每个商家后台账号都保存于 seller 表；拥有某菜单即拥有该菜单的全部操作，不设额外按钮授权或字段脱敏规则。商户 `commission_enabled` 是独立于成员菜单权限的功能开关；关闭时服务端拒绝佣金业务接口并隐藏佣金相关数据，重新开启后可恢复查看保留的历史记录。运费按 V1～V6 客户等级从 merchant.shipping_fee_v1～shipping_fee_v6 及可选 free_shipping_threshold_v1～free_shipping_threshold_v6 读取，由平台管理员在商户管理页维护，不设独立商城设置菜单；`payment_channels` 权限仅管理本商户的收款渠道，客户可用的加密货币/线上支付链接开关及可选 WhatsApp 售后号码也由平台管理员在商户管理页控制。
 
 商户 Admin 是拥有本商户获批菜单的 seller 用户；平台身份独立。每商户保留至少一个有效 members 持有者。客户等级仍为 V1～V6。
 
@@ -211,7 +212,7 @@ frontend/
 
 平台运营 API 可跨 merchant_id 聚合只读业务信息，并提供订单、买家和商户经营查询。所有 `/api/v1/platform/**` 响应设置 `Cache-Control: no-store`，包括认证过滤器直接返回的错误响应。全商户订单/买家分页、状态队列、审计和时间区间汇总使用按创建时间/状态排列的全局索引；商户限定查询继续使用现有 merchant_id 前缀索引。列表默认遮蔽订单/买家姓名和邮箱；读取详情必须 POST 访问用途（5～500 字），读取完整收件资料或买家联系资料须再次提交用途。详情读取与 `platform_data_access_event` 审计写入在同一事务；审计保存平台 admin ID、商户 ID、资源类型/ID、访问动作、用途和 UTC 时间，不保存被读取的联系方式。流量日志遮蔽平台搜索词 `q` 和访问用途 `purpose`。平台业务接口不修改订单、付款、买家账户、目录或资金事实，也不读取跨商户私有文件。Repository 对具体资源同时显式传入 merchant_id 和资源 ID；仅总览、经营分析、待处理统计和平台报表使用有意的全商户范围。商户停用不隐藏历史数据，但不会恢复该商户成员或买家的访问权限。
 
-创建商户、域名和主题配置、首管理员及其菜单和审计事件在同一事务提交；初始 seller 同时写入 `merchant_admin=1`，普通成员创建时写入 `merchant_admin=0`。平台编辑商户的 Update DTO 兼容新增可选 password/confirmation；两项均省略或为空串时不改密，否则校验 12～64 字符、非全空白且两次一致。MerchantService 在平台鉴权、商户行锁和 expectedUpdatedAt 检查后按 `merchant_admin=1` 定位初始管理员，再将商户配置、seller 密码摘要/auth_version 自增及 merchant_admin_password_reset 审计同事务提交；标记账号不存在或已软删除时不回退其他成员。改密 SQL 同时限定 merchant_id 和 seller.id，使用 Argon2id，只改变该账号密码与认证版本；账号状态、权限和其他账号不变。商户响应新增 administrator（id/account/name/active 或 null），只在平台商户管理返回，不含密码摘要；密码请求字段沿用日志脱敏，审计只记录目标 seller ID。商户更新以行锁和 expectedUpdatedAt 检查并发冲突，域名唯一索引防并发重复。merchant.domain 使用 ASCII、最长 253，规范化小写并去掉末尾点；应用要求创建/编辑时非空。新 Logo 由平台上传 JPEG/PNG 图片（最大 5 MiB），后端按图片魔数和解码结果校验后以随机 UUID 保存在 `app.file.root/merchant-logos/`，`merchant.logo_url` 保存 `/api/v1/files/merchant-logos/{uuid}/content`；商城通过公开只读接口读取该图片，Logo 不进入商户私有 `file_asset`，更换 Logo 使用新 UUID，旧图片保留以免破坏缓存中的引用。历史站点相对路径和 HTTPS Logo 地址仍可读取。theme 仅允许 classic/forest/editorial，禁止任意 CSS 或 URL 注入。主题文件按标识分开放在 frontend/src/styles/themes/：classic.css 保存现有买家端基础样式，forest.css 与 editorial.css 分别保存对应主题覆盖规则；通过 frontend/src/styles.css 统一按基础样式、主题覆盖的顺序导入。商户后台等非主题样式放在对应组件或公共样式中。
+创建商户、域名和主题配置、首管理员及其菜单和审计事件在同一事务提交；初始 seller 同时写入 `merchant_admin=1`，普通成员创建时写入 `merchant_admin=0`。平台编辑商户的 Update DTO 兼容新增可选 password/confirmation；两项均省略或为空串时不改密，否则校验 12～64 字符、非全空白且两次一致。MerchantService 在平台鉴权、商户行锁和 expectedUpdatedAt 检查后按 `merchant_admin=1` 定位初始管理员，再将商户配置、seller 密码摘要/auth_version 自增及 merchant_admin_password_reset 审计同事务提交；标记账号不存在或已软删除时不回退其他成员。改密 SQL 同时限定 merchant_id 和 seller.id，使用 Argon2id，只改变该账号密码与认证版本；账号状态、权限和其他账号不变。商户响应新增 administrator（id/account/name/active 或 null），只在平台商户管理返回，不含密码摘要；密码请求字段沿用日志脱敏，审计只记录目标 seller ID。商户更新以行锁和 expectedUpdatedAt 检查并发冲突，域名唯一索引防并发重复。`merchant.whatsapp_number` 可空，仅平台商户管理可更新；配置值须为国际格式 `+` 开头、7～15 位数字，可包含空格、括号、点和连字符，清空后买家端隐藏售后入口。公开商城配置返回该号码，买家端页脚及每笔订单将号码清洗为数字后生成 `https://wa.me/` 链接。merchant.domain 使用 ASCII、最长 253，规范化小写并去掉末尾点；应用要求创建/编辑时非空。新 Logo 由平台上传 JPEG/PNG 图片（最大 5 MiB），后端按图片魔数和解码结果校验后以随机 UUID 保存在 `app.file.root/merchant-logos/`，`merchant.logo_url` 保存 `/api/v1/files/merchant-logos/{uuid}/content`；商城通过公开只读接口读取该图片，Logo 不进入商户私有 `file_asset`，更换 Logo 使用新 UUID，旧图片保留以免破坏缓存中的引用。历史站点相对路径和 HTTPS Logo 地址仍可读取。theme 仅允许 classic/forest/editorial，禁止任意 CSS 或 URL 注入。主题文件按标识分开放在 frontend/src/styles/themes/：classic.css 保存现有买家端基础样式，forest.css 与 editorial.css 分别保存对应主题覆盖规则；通过 frontend/src/styles.css 统一按基础样式、主题覆盖的顺序导入。商户后台等非主题样式放在对应组件或公共样式中。
 
 平台运营页面包含经营总览、待处理订单、订单中心、买家中心、商户分析、商户管理和平台审计。平台界面同时使用 `.platform-console` 和商家后台 `.demo-seller-shell` 样式上下文，直接复用 `seller-theme.css` 的系统字体、颜色变量、232px 侧栏、72px 顶栏、14px 圆角卡片、胶囊按钮、表格、分页和弹窗；`frontend/src/styles/platform.css` 只维护平台专属布局与总览、详情、商户表单分区。登录页复用商家登录卡片样式；列表使用独立筛选卡片与数据卡片，复用 `SellerSearchField` 搜索刷新及 `CustomerDatePicker` 日期选择，选择日期后按当前筛选从第一页查询，日期仍按 UTC 边界传给平台 API。两端只共享展示样式和无身份组件，平台认证、商户范围与访问审计继续独立。内容区直接展示业务面板，不再重复显示页级说明文案；与侧栏和顶部栏的间距为桌面 16px、窄屏 12px。经营总览按交易概况、待处理订单、近七天趋势和商户/买家规模分组，分别标明累计金额、含取消记录的全部订单数、UTC 七天趋势及当前启用/全部账号数量。商户新增/编辑表单按基本信息、商城设置、管理员账号、注册与邮件分区，商城 Logo 使用上传控件并显示预览；标题、错误提示及保存操作固定在弹窗上下方，只有字段区滚动，SMTP 配置可折叠，开启注册或邮件校验失败时自动展开。列表、筛选、分页和弹窗统一控件与字号；760px 及以下按商家后台切换横向导航，总览及表单改为单列、筛选换行，宽表格在容器内滚动。待审核队列取 `audit_status='pending' AND order_status<>'cancelled'`，待核款队列取 `payment_status='pending_verification' AND order_status<>'cancelled'`，待履约队列取已审核且 `order_status IN ('pending','packed')`；这些是状态队列，不表示超过业务 SLA。经营总览金额统计未取消订单，趋势按 UTC 统计最近 7 天；商户分析默认最近 30 天，结束时间按开区间解释，区间收款金额按 `payment_receipt.verified_at` 统计实际核实到账时间，并排除当前已取消订单。平台订单、买家、商户 CSV 最多 10000 行，订单和买家导出仍遮蔽姓名与邮箱，并执行 CSV 公式注入防护。平台仍只读查看跨商户经营数据，不修改商户订单、付款、买家账户、目录或资金事实；商品、价格、库存、COA 和文件按商户隔离，所有目录 Repository 必须显式传入 merchantId。
 
@@ -431,7 +432,7 @@ erDiagram
 | `coa_certificate` | `merchant_id`；`name VARCHAR(200)`；`lot VARCHAR(100)?`；`purity VARCHAR(32)?`；`fill VARCHAR(64)?`；`test_date DATE?`；`current_file_uuid CHAR(36)` | I(merchant_id,deleted,created_at,id)；COA 文件必须属于同一商户；编辑不改创建人，无 COA 业务版本实体 |
 | `product_coa_link` | `merchant_id`；`product_id/coa_id`；`created_by_user_id/created_at`（绑定人/时刻）；`ended_at?` | U(merchant_id,coa_id,deleted)，I(merchant_id,product_id,deleted,coa_id)；商品、COA 和绑定商户必须一致；一个商品可有多份有效 COA，一 COA 最多一有效商品绑定，转移软删除旧行并新建 |
 | `order_item_coa_snapshot` | `order_id/order_item_id/product_id/coa_id/source_link_id`；`name/lot/purity/fill/test_date_snapshot`；`file_uuid CHAR(36)`；`linked_by_user_id/linked_at_snapshot`；`captured_at` | U(order_item_id,coa_id)，I(order_id,order_item_id)；完成时追加，不覆盖 |
-| `file_asset` | 必填 `merchant_id`；`file_uuid CHAR(36)`；`stored_file_name VARCHAR(64)`；`original_file_name VARCHAR(255)`；`purpose`；`media_type`；`size_bytes`；`sha256`；`status`（`available` 才可引用/签发）；`created_by_user_id`（上传人）；`uploaded_at` | PK(file_uuid)、U(stored_file_name)；包括 COA 文件在内均归属一个商户，签名 URL 只能对该商户的已授权业务签发 |
+| `file_asset` | 必填 `merchant_id`；`file_uuid CHAR(36)`；`stored_file_name VARCHAR(64)`；`original_file_name VARCHAR(255)`；`purpose`；`media_type`；`size_bytes`；`sha256`；`status`（`available` 才可引用/读取）；`created_by_user_id`（上传人）；`uploaded_at` | PK(file_uuid)、U(stored_file_name)；COA 文件的业务元数据和写入仍按商户隔离；当前可售商品、未完成订单当前关联及已完成订单快照中的 COA 内容可公开读取，其他用途继续按原授权流程 |
 | `commission_accrual` | `order_id`；`referrer_id/referred_customer_id`；双方姓名快照；`rate DECIMAL(5,2)`；`base_amount/commission_amount DECIMAL(18,2)`；`status VARCHAR(16)` | U(order_id)，I(referrer_id,status,id)，I(status,order_id)，I(referred_customer_id,order_id)；状态 estimated/payable/settled/void；仅推荐费率 > 0 创建，不设软删除 |
 | `commission_settlement_batch` | `batch_no VARCHAR(64)`；`order_count INT`；`total_base/total_commission`；`settled_by_user_id/settled_at`；`remark VARCHAR(1000)?` | U(batch_no)；I(merchant_id,settled_at,id)；单笔也生成一条批次 |
 | `commission_settlement` | `batch_id/accrual_id/order_id`；`order_no_snapshot`；`referrer_id/referred_customer_id`；双方姓名快照；`base_amount/rate/commission_amount`；结算人/时刻/备注经 batch_id 读取批次 | U(order_id)，U(accrual_id)，I(batch_id,id)，I(merchant_id,referrer_id,batch_id,id)，I(merchant_id,referred_customer_id,batch_id,id)；事实永久唯一、不可改 |
@@ -503,6 +504,8 @@ WHERE id = :orderId AND customer_id = :customerId
 5. 金额、订单、文件和佣金逻辑不依赖级联；所有父子存在性、所有权和状态关系在同一业务事务内验证并锁定。
 6. 应用数据库账号仅对 `cart_item`、`product_tier_price` 授予 DELETE，以支持购物车和等级价物理删除；其他表仅授予所需的 SELECT/INSERT/UPDATE，不授予 DROP/TRUNCATE/ALTER/CREATE VIEW。
 
+`coa_certificate(current_file_uuid,merchant_id,deleted)` 支持当前文件 UUID 的公开资格查询；`order_item_coa_snapshot(file_uuid,order_id)` 支持完成快照文件 UUID 查询。两个索引同时列入空库初始化脚本。既有数据库如缺少上述索引，需由数据库管理员确认索引不存在后，人工执行 `doc/upgrade_public_coa_indexes.sql`；此 SQL 未由应用自动执行，也未在本次代码修改中运行。全新空库只执行完整初始化脚本，不再执行该升级 SQL。
+
 ### 5.10 SaaS 商户隔离数据模型（V1.9）
 
 | 表/字段 | 约定 |
@@ -511,7 +514,7 @@ WHERE id = :orderId AND customer_id = :customerId
 | category、product | 必填 merchant_id；名称与 SKU 按商户约束；库存和商品资料属于单一商户；写商品时校验类目同商户 |
 | product_tier_price、product_quantity_price | 不重复保存 merchant_id；经 product_id 关联商品后校验 merchant_id，所有查询和写入均以当前商户限定 |
 | coa_certificate、product_coa_link | 必填 merchant_id；COA、商品和绑定关系必须属于同一商户；COA 变更锁所属 merchant 行并校验商品/证书 |
-| file_asset | 必填 merchant_id，包括 purpose=coa 的文件；上传人商户必须与文件商户一致，签名和下载授权要求文件商户与当前客户/订单/渠道同商户 |
+| file_asset | 必填 merchant_id，包括 purpose=coa 的文件；上传及业务引用校验上传人商户与文件商户一致。COA 公开内容接口是唯一免登录例外，只返回当前可售正品/启用类目关联、未完成订单当前关联（不受商品上架状态限制）或已完成订单快照引用的 COA；二维码和履约附件继续检查客户/订单/渠道归属 |
 | stock_movement | 必填 merchant_id；写入时从已校验订单或 seller 账号确定，并校验商品归属；库存主表仅能通过 merchant_id + product_id 读写 |
 | merchant_event | 仅追加：merchant_id、actor_type、actor_user_id、action、detail、created_at；只审计商户配置，不承载目录维护 |
 | platform_data_access_event | 仅追加：actor_user_id（admin.id）、merchant_id、resource_type/resource_id、access_type、purpose、created_at；记录平台读取订单/买家详情及联系方式的用途，不保存联系方式内容 |
@@ -521,7 +524,7 @@ WHERE id = :orderId AND customer_id = :customerId
 | billing_entry、commission_accrual、commission_settlement_batch、commission_settlement | 必填 merchant_id；订单产生的事实从订单归属写入，结算批次要求全部订单同商户 |
 | seller_permission | 商户成员独立菜单授权；平台无 merchant_permission，也不为商户授予目录管理权限 |
 
-所有商户共享同一应用实例和数据库基础设施，业务目录通过 merchant_id 逻辑隔离；不为每个商户复制部署或数据库。商品、类目、COA、文件、价格、库存和库存流水都必须按归属范围收敛。跨商户结算在写批次前校验全部候选并整体拒绝。订单行、付款事实、包裹、事件、附件及完成 COA 快照继续按订单归属隔离。
+所有商户共享同一应用实例和数据库基础设施，业务目录通过 merchant_id 逻辑隔离；不为每个商户复制部署或数据库。商品、类目、COA 元数据、文件上传、价格、库存和库存流水都必须按归属范围收敛。买家可见 COA 内容可通过固定公开 URL 读取，其他商户私有文件保持隔离。跨商户结算在写批次前校验全部候选并整体拒绝。订单行、付款事实、包裹、事件和履约附件继续按订单归属隔离。
 
 ## 6. 事务、并发与重复操作防护
 
@@ -626,7 +629,7 @@ paidAmount 汇总收款事实，remainingAmount=total-paidAmount；取消单 rem
 
 COA 资料和完成快照只在短数据库事务内锁定相关业务行，不覆盖上传字节、用户确认和导出过程。完成失败整体回滚，不能出现 completed 但没有执行快照捕获。
 
-未完成订单查询用单条关联 SQL 或一个 `REPEATABLE READ` 只读事务取得一致 COA 集合；已完成只读 snapshot 表和不可变文件，不再连接当前证书决定显示内容。取消仍读最新有效 COA，没有完成快照。
+未完成订单查询用单条关联 SQL 或一个 `REPEATABLE READ` 只读事务取得一致 COA 集合，不以商品当前是否上架、类目是否启用作为访问门禁；已完成只读 snapshot 表和不可变文件，不再连接当前证书决定显示内容。取消仍读最新有效 COA，没有完成快照。公开文件接口允许读取当前可售商品 COA、被未完成订单当前有效关联引用的 COA（即使商品已不在目录中）及完成快照引用的 COA。
 
 ### 6.8 单笔与批量佣金结算
 
@@ -697,7 +700,7 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | 429 | TOO_MANY_REQUESTS | 显示稍后重试及 Retry-After |
 | 500 / 503 | INTERNAL_ERROR / TEMPORARILY_UNAVAILABLE | 响应不暴露堆栈；服务端按 requestId 记录完整异常和堆栈；未知写结果刷新资源或列表以读取当前业务状态 |
 
-当前创建接口主要返回 200 和 JSON，更新/删除无响应体时由 Spring 返回 200；只有退出显式返回 204。`ErrorResponse` 和所有 HTTP 响应头均带服务端生成的 `requestId`（`X-Request-Id`），可用它关联客户端错误与服务端日志；不采信客户端提供的 request ID。CSV 导出返回 UTF-8 BOM 二进制流；上传返回 fileUuid/uploadToken；文件字节由后端签名下载接口鉴权并流式返回。
+当前创建接口主要返回 200 和 JSON，更新/删除无响应体时由 Spring 返回 200；只有退出显式返回 204。`ErrorResponse` 和所有 HTTP 响应头均带服务端生成的 `requestId`（`X-Request-Id`），可用它关联客户端错误与服务端日志；不采信客户端提供的 request ID。CSV 导出返回 UTF-8 BOM 二进制流；上传返回 fileUuid/uploadToken；公开 COA 和私有文件内容均由后端流式返回，私有文件仍须短时签名。
 
 ### 7.2 认证与客户 API
 
@@ -715,8 +718,8 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | `PATCH /customer/me/profile` | name；其他字段拒绝；锁定客户行后更新 | C-10 |
 | `PUT /customer/me/password` | oldPassword/newPassword/confirmation；改密后全部重新登录 | C-12 |
 | `GET /customer/categories` | 仅启用；按 sortNo、id 稳定升序；仅返回前端使用的 `id/name` | C-02 |
-| `GET /customer/products` | 无查询参数；返回全部可见正品的 `id/categoryId/category/sku/name/description/price/stock/coas?`；`coas` 返回全部有效关联证书的 `{name,fileUuid,lot,testDate}`，不再重复返回首份证书的 `coa` 别名；不分页，搜索和分类筛选由前端完成。`fileUuid` 仅作客户签名 URL 接口的业务标识，客户点击 COA 后仍须先通过该接口校验访问范围。`price` 是当前客户的适用单价，响应不含价格等级、客户类型、成本价、基础价或其他等级价 | C-02 |
-| `GET /customer/certificates` | 无查询参数；返回全部客户可见的商品×证书行及证书自身元数据、商品 SKU 和原始文件名；不分页，搜索由前端本地完成 | C-03 |
+| `GET /customer/products` | 无查询参数；返回全部可见正品的 `id/categoryId/category/sku/name/description/price/stock/coas?`；`coas` 返回全部有效关联证书的 `{name,fileUuid,publicUrl,lot,testDate}`，不再重复返回首份证书的 `coa` 别名；不分页，搜索和分类筛选由前端完成。`publicUrl` 指向固定公开 COA 文件路径，不需要额外签名请求；`price` 是当前客户的适用单价，响应不含价格等级、客户类型、成本价、基础价或其他等级价 | C-02 |
+| `GET /customer/certificates` | 无查询参数；返回全部客户可见的商品×证书行及证书自身元数据、商品 SKU、原始文件名和固定 `publicUrl`；不分页，搜索由前端本地完成 | C-03 |
 | `GET /customer/cart` | 当前行、S/F/T、可选 `freeShippingThreshold`、`freeShippingApplied`、`amountToFreeShipping`、失效原因；按优惠前商品小计和当前客户等级计算运费，不静默过滤失效项 | C-04 |
 | `PUT /customer/cart/items/{productId}` | quantity；锁定本人购物车行后设置目标数量 | C-04 |
 | `DELETE /customer/cart/items/{id}` | 锁定本人购物车行后物理删除 | C-04 |
@@ -727,7 +730,7 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | `POST /customer/orders` | quoteToken、buyerNote；客户行锁，报价摘要唯一消费，订单/库存/购物车事务原子提交 | C-05 |
 | `GET /customer/orders` | 本人订单，多条件交集，分页；包含由订单事件派生的 `paymentLinkRequested`；不返回内部审核字段 | C-07 |
 | `GET /customer/orders/summary` | 本人全部订单汇总，包含 `payableOrders` 与 `payableTotal`，按非取消且未支付状态汇总；`scope=allAuthorized` | C-07 |
-| `GET /customer/orders/{id}` | 本人快照（含 `buyerNote`、`paymentLinkRequested`）、真实状态、客户可见事件（不含内部审核事件）、附件 UUID 列表及 `signedFileUrls` 映射、COA、allowedActions；签名 URL 随详情返回，并逐文件检查客户访问范围 | C-07 |
+| `GET /customer/orders/{id}` | 本人快照（含 `buyerNote`、`paymentLinkRequested`）、真实状态、客户可见事件（不含内部审核事件）、附件 UUID 列表及私有附件 `signedFileUrls` 映射；已完成订单项返回完成时保存的 COA 快照和固定 `publicUrl`；履约附件继续逐文件检查客户访问范围并签名 | C-07 |
 | `PATCH /customer/orders/{id}` | 正品行数量、addressId、buyerNote、expectedUpdatedAt；锁订单后检查更新时间与状态 | C-08 |
 | `POST /customer/orders/{id}/cancel` | reason?、expectedUpdatedAt；锁订单后检查更新时间与状态 | C-09 |
 | `GET /customer/payment-options` | `cryptoEnabled`、`onlinePaymentLinkEnabled` 和当前启用的加密货币渠道；关闭加密货币时渠道数组为空 | C-06 |
@@ -803,12 +806,13 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | `POST /api/v1/admin/files` | multipart 文件、purpose、orderId/stage/parcelUuid?；包裹照片 purpose=order_fulfillment，绑定订单/包裹/阶段；面单 purpose=order_shipping_label 且 stage=shipped、parcelUuid 必填；校验菜单及实际文件；订单附件单文件上限 15 MiB，COA/二维码维持 5 MiB；生成 fileUuid，落本地盘并写 `file_asset`，返回 fileUuid、uploadToken；重复上传会生成新文件 |
 | `POST /api/v1/platform/merchant-logos` | 平台身份上传 JPEG/PNG Logo，最大 5 MiB；服务端按文件内容校验并写入 `app.file.root/merchant-logos/`，返回站点相对 `logoUrl`，商户表单保存该地址 |
 | `GET /api/v1/files/merchant-logos/{uuid}/content` | 公开读取通过平台上传接口生成的 UUID Logo；仅按 UUID 定位 PNG/JPEG 文件，返回固定图片 MIME 和 `nosniff`，不接受路径或文件名输入 |
-| `GET /api/v1/admin/files/{fileUuid}/signed-url`、`GET /api/v1/customer/files/{fileUuid}/signed-url` | 后台校验 seller 身份及用途菜单（COA 要求 products 或 certificates，履约附件要求 orders，二维码要求 payment_channels）；客户校验 COA 商品/订单访问范围、本人订单的履约照片及快递面单关联，或当前启用收款渠道对二维码文件的引用。订单详情直接返回事件附件签名 URL，使用详情接口已完成的菜单和订单归属校验；GET /api/v1/admin/orders 不查询履约附件，不返回 previewImages，订单列表不设图片列；包裹详情与附件接口仍按原权限提供图片和面单；上传接口也按 purpose 校验菜单 |
+| `GET /api/v1/public/coas/{fileUuid}` | 无需登录；仅返回用途为 `coa` 且被当前可售正品/启用类目关联、未完成订单当前有效关联（含商品已下架/移出目录的订单）或已完成订单 COA 快照引用的文件；UUID 对应不可变内容，响应 `Cache-Control: public, max-age=31536000, immutable` 和 SHA-256 ETag，供 CDN 按固定路径缓存；不缓存错误响应 |
+| `GET /api/v1/admin/files/{fileUuid}/signed-url`、`GET /api/v1/customer/files/{fileUuid}/signed-url` | 兼容现有受保护文件访问：后台按身份及用途菜单校验；客户校验 COA 商品/订单访问范围、本人订单履约附件关联，或当前启用收款渠道对二维码文件的引用。买家可见 COA 前端使用公开 URL，不再请求 customer signed-url；履约照片及面单继续签名。订单详情直接返回事件附件签名 URL，使用详情接口已完成的菜单和订单归属校验；GET /api/v1/admin/orders 不查询履约附件，不返回 previewImages，订单列表不设图片列；包裹详情与附件接口仍按原权限提供图片和面单；上传接口也按 purpose 校验菜单 |
 | `GET /api/v1/files/{fileUuid}/content` | 使用短时签名参数访问；后端校验签名、用途、路径、过期时间和 `file_asset` 状态后流式返回，不接受目录遍历 |
 | `POST /api/v1/admin/exports/{orders\|commissions\|bills}/count` | 请求体与导出共用当前 `filter`；校验对应菜单权限，返回匹配记录数、实际 CSV 数据行数及最大行数，不生成文件 |
 | `POST /api/v1/admin/exports/{orders\|commissions\|bills}` | 请求体为当前 `filter`；对应菜单校验后即时查询并同步返回 CSV，服务端限制最多 10000 条输出明细行；不保存导出任务或选择状态 |
 
-原文件流 API 由上述单项签名 URL 接口或已授权的订单详情接口在完成身份、菜单及数据归属校验后生成短时下载 URL。订单详情保留原附件 UUID 列表并增加 UUID→URL 的 `signedFileUrls` 映射，避免前端再逐文件调用签名接口。当前 HMAC 输入包含 `fileUuid`、服务端文件名、用途、GET 路径和过期时间；默认 `app.file.signed-url-seconds=3600`（1 小时）。URL 是短时 bearer 凭证，过期后必须重新获取；浏览器不需要把长期 JWT 放到 `<img>` 或 `<iframe>` 的 URL 中。
+COA 文件使用固定公开 URL，不经过签名接口；公开路径只允许读取当前可售商品关联、任一未完成订单（含已取消订单）当前有效关联或已完成订单快照引用的 COA。未完成订单对当前 COA 的访问不依赖商品是否仍上架或仍在目录中。CDN 缓存可能在商品下架、解除绑定或证书软删除后继续提供已缓存内容，公开内容不能保证即时撤回。二维码、履约图片和面单仍由单项签名 URL 接口或已授权的订单详情接口在完成身份、菜单及数据归属校验后生成短时下载 URL。订单详情保留私有附件 UUID 列表并增加 UUID→URL 的 `signedFileUrls` 映射。其 HMAC 输入包含 `fileUuid`、服务端文件名、用途、GET 路径和过期时间；默认 `app.file.signed-url-seconds=3600`（1 小时）。
 
 上传凭证采用独立用途的 HMAC 签名，包含 fileUuid、purpose、orderId/stage、包裹操作的 parcelUuid、上传人和过期时刻（当前 24 小时）；大小及哈希保存于文件清单；不作为 JWT 登录凭证。`file_asset` 是文件清单事实源，持久化 file_uuid、原始文件名、服务端文件名、用途、MIME、大小、SHA-256、上传者和状态；业务表只保存 file_uuid，业务详情按 UUID 查询清单并生成 signedUrl。业务提交验证凭证、用途、当前操作者、`file_asset` 状态及文件存在性，再只持久化 file_uuid。已有绑定未替换可直接保留原 file_uuid，但不能借此绑定别人的任意文件。上传重试可产生新文件，客户端结果未知时应先检查业务引用。
 
@@ -823,9 +827,9 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | POST /api/v1/platform/auth/login | 独立平台账号密码登录，失败限流，返回平台 JWT |
 | GET /api/v1/platform/me | 验证平台身份，返回 member，不返回商户或商家菜单 |
 | POST /api/v1/platform/auth/logout | 提升账号 authVersion，使既有平台令牌失效 |
-| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条；返回 administrator、V1～V6 shippingFees/freeShippingThresholds、注册开关及 registrationDefaultTier、佣金/付款方式开关、SMTP 非密钥字段及 SMTP 密码是否已保存 |
-| POST /api/v1/platform/merchants | 原商户字段及可选 freeShippingThresholds（缺省为六档关闭），可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings，连同首管理员事务创建；注册默认关闭，registrationDefaultTier 默认 V1，佣金和加密货币默认开启，线上支付链接默认关闭 |
-| PUT /api/v1/platform/merchants/{id} | 原商户字段，必填 expectedUpdatedAt；freeShippingThresholds 可省略（沿用现值），各档可传 null 关闭，非空必须为正 USD 且最多两位小数；可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/mailSettings/password/confirmation；registrationDefaultTier 只接受 V1～V6；关闭佣金前检查未结计提和待审核可计佣订单，校验通过才更新；付款方式开关也在此配置；管理员密码两项均留空不改，设置时校验并使旧登录失效；smtpPassword 留空保留旧值，事务更新 |
+| GET /api/v1/platform/merchants?page=1 | 平台查看商户，每页 10 条；返回 administrator、V1～V6 shippingFees/freeShippingThresholds、注册开关及 registrationDefaultTier、佣金/付款方式开关、whatsappNumber、SMTP 非密钥字段及 SMTP 密码是否已保存 |
+| POST /api/v1/platform/merchants | 原商户字段及可选 freeShippingThresholds（缺省为六档关闭），可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/whatsappNumber/mailSettings，连同首管理员事务创建；whatsappNumber 可留空，设置时须为带 + 的国际号码；注册默认关闭，registrationDefaultTier 默认 V1，佣金和加密货币默认开启，线上支付链接默认关闭 |
+| PUT /api/v1/platform/merchants/{id} | 原商户字段，必填 expectedUpdatedAt；freeShippingThresholds 可省略（沿用现值），各档可传 null 关闭，非空必须为正 USD 且最多两位小数；可选 registrationEnabled/registrationDefaultTier/commissionEnabled/cryptoEnabled/onlinePaymentLinkEnabled/whatsappNumber/mailSettings/password/confirmation；whatsappNumber 传空串可清除配置，省略则保留；registrationDefaultTier 只接受 V1～V6；关闭佣金前检查未结计提和待审核可计佣订单，校验通过才更新；付款方式开关也在此配置；管理员密码两项均留空不改，设置时校验并使旧登录失效；smtpPassword 留空保留旧值，事务更新 |
 | POST /api/v1/platform/merchants/{id}/email-settings/test | 使用已保存配置发送测试邮件；仅平台身份可调用 |
 | GET /api/v1/platform/overview | 返回全商户和买家数量、未取消订单金额、累计已收金额、待处理状态计数和最近 7 天订单趋势 |
 | GET /api/v1/platform/orders?page=1 | 跨商户订单查询；可按 merchantId、q、订单/审核/付款状态和 UTC 时间筛选；列表遮蔽买家姓名与邮箱 |
@@ -838,7 +842,7 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | GET /api/v1/platform/merchant-performance?page=1 | 按 UTC 时间区间汇总商户订单金额、实际核实收款（按 `payment_receipt.verified_at`）、待履约、买家和新增买家；默认最近 30 天 |
 | GET /api/v1/platform/audit?page=1 | 分页查看平台数据访问和商户配置变更审计 |
 | POST /api/v1/platform/exports/{orders\|buyers\|merchants} | 同步生成当前筛选集合 CSV，最多 10000 行；买家姓名/邮箱遮蔽并防 CSV 公式注入 |
-| GET /api/v1/customer/storefront | 免登录，返回 name/logoUrl/theme/registrationEnabled/commissionEnabled；Cache-Control: no-store，不返回 SMTP 设置 |
+| GET /api/v1/customer/storefront | 免登录，返回 name/logoUrl/theme/registrationEnabled/commissionEnabled/whatsappNumber；未配置时 whatsappNumber 为 null；Cache-Control: no-store，不返回 SMTP 设置 |
 
 卖家登录页在商户域名可解析时复用公开 storefront 品牌；后台登录成功后从 `/admin/me` 的 merchant 对象读取最新 name/logoUrl，显示在卖家导航并更新页面标题和 favicon。共享后台域名在验证账号前无法确定所属商户，保持平台默认品牌；认证成功后切换为该商户品牌，不通过未认证账号查询接口枚举商户。
 
@@ -914,17 +918,17 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 
 商户 Logo 是公开商城品牌资源，不属于 COA、付款二维码或履约附件，不写入 `file_asset`。平台上传经魔数、图片解码和像素数校验后，使用独立 UUID 名称写入文件根目录下的 `merchant-logos/`；公开读取接口只接受 UUID 路径。商户保存前上传但未引用的 Logo 文件可能保留在磁盘，不能通过商户私有文件接口读取。
 
-`file_asset` 是文件清单表，不保存文件字节。它记录 file_uuid、服务端文件名、原始文件名、用途、MIME、大小、SHA-256、上传者、创建时间和状态；只有 `status=available` 且未软删除的记录可被业务引用或签发下载 URL。订单/COA 的业务表保存使用时的 file_uuid、阶段或 COA 关联。运行日志不记录文件字节。
+`file_asset` 是文件清单表，不保存文件字节。它记录 file_uuid、服务端文件名、原始文件名、用途、MIME、大小、SHA-256、上传者、创建时间和状态；只有 `status=available` 且未软删除的记录可被业务引用或读取。订单/COA 的业务表保存使用时的 file_uuid、阶段或 COA 关联。运行日志不记录文件字节。
 
-### 9.2 签名下载边界
+### 9.2 公开 COA 与签名下载边界
 
-YAML 配置绝对目录 `/srv/dailyactivity/uploads/`、短时 URL 有效期和独立文件签名密钥。数据库保存服务端 basename，不保存完整 URL；URL 由业务详情接口按当前请求域名和固定 `/api/v1/files/{fileUuid}/content` 路径生成。开发环境可用 HTTP，线上与站点一致使用 HTTPS，避免混合内容。
+YAML 配置绝对目录 `/srv/dailyactivity/uploads/`、短时私有文件 URL 有效期、独立文件签名密钥和可选公开 COA URL 前缀。`app.file.public-coa-base-url` 留空时返回同源 `/api/v1/public/coas/{fileUuid}`；设置 `PUBLIC_COA_BASE_URL` 时，值应为包含 `/api/v1/public/coas` 的绝对 CDN URL 前缀，应用追加文件 UUID。生产 CDN 和站点均使用 HTTPS。数据库保存服务端 basename，不保存完整 URL。
 
-Nginx 不映射上传目录、不提供 `/files/` 静态 location，只反向代理 `/api/v1/files/**` 到 Spring Boot。应用只按 `file_asset.stored_file_name` 拼接受控根目录，禁止把客户端路径直接传给文件系统；响应添加 `X-Content-Type-Options: nosniff`、受限 `Content-Security-Policy` 和明确的 `Content-Disposition`。上传目录与前端发布目录分开，发布/回滚不会覆盖上传资料。
+Nginx 不映射上传目录、不提供通用 `/files/` 静态 location。源站将 `/api/v1/public/coas/**` 反向代理到 Spring Boot；CDN 只缓存该公开 COA 路径，忽略 Authorization/Cookie，不缓存 4xx/5xx，不对客户 API、私有签名文件路径或上传请求启用共享缓存。公开 COA 返回 `Cache-Control: public, max-age=31536000, immutable`；同一 file UUID 的字节不会覆盖，替换后使用新 UUID。签名文件路径继续反向代理到 Spring Boot。应用只按 `file_asset.stored_file_name` 拼接受控根目录，禁止把客户端路径直接传给文件系统；文件响应添加 `X-Content-Type-Options: nosniff`、受限 `Content-Security-Policy` 和明确的 `Content-Disposition`。上传目录与前端发布目录分开，发布/回滚不会覆盖上传资料。
 
-文件 URL 是短时 bearer 凭证：持有者在有效期内可读取对应文件，但 URL 不包含长期 JWT。签名 payload 至少包含 `fileUuid`、`storedFileName`、用途/访问范围、请求方法、请求路径、签发时间、过期时间和随机数，并使用独立 HMAC 密钥。签发前由业务接口校验当前身份、订单/COA 归属和菜单；下载接口再次校验签名、过期时间、路径、文件清单状态和文件存在性。退出登录、撤权或软删除不会回收已经签发且尚未到期的 URL，到期后必须重新鉴权获取。
+私有文件 URL 是短时 bearer 凭证：持有者在有效期内可读取对应文件，但 URL 不包含长期 JWT。签名 payload 至少包含 `fileUuid`、`storedFileName`、用途/访问范围、请求方法、请求路径、签发时间、过期时间和随机数，并使用独立 HMAC 密钥。签发前由业务接口校验当前身份、订单/渠道归属和菜单；下载接口再次校验签名、过期时间、路径、文件清单状态和文件存在性。退出登录、撤权或软删除不会回收已经签发且尚未到期的 URL，到期后必须重新鉴权获取。公开 COA 固定 URL 不使用该签名流程；持有 URL 即可读取，CDN/浏览器缓存和他人保存的内容不能通过业务解绑即时撤回。
 
-前端 img/iframe/a 使用业务详情返回的短时 signedUrl，可新标签查看或下载，不再把长期 JWT 放入文件 URL。PDF 预览使用受限 iframe。文件响应 MIME 以 `file_asset.media_type` 为准并限制在允许集合，缺失文件返回 404，业务关联记录保留。
+前端买家 COA 链接直接使用业务响应中的固定 `publicUrl` 并以普通新标签链接打开，不再先申请签名 URL。卖家查看 COA 继续使用已签名 URL，因此未上架、未绑定或其他未公开 COA 仍可由有权限的商家查看。私有履约附件仍使用已签名 URL，PDF 预览使用受限 iframe。文件响应 MIME 以 `file_asset.media_type` 为准并限制在允许集合，缺失或不满足 COA 公开条件的文件返回 404，业务关联记录保留。
 
 ## 10. Vue 前端设计
 
@@ -933,7 +937,7 @@ Nginx 不映射上传目录、不提供 `/files/` 静态 location，只反向代
 | SPA | 路由 | 页面模块 |
 | --- | --- | --- |
 | 客户 | `/`（兼容 `/products`） | 商品目录、类目/搜索、本人价格；未登录时同一 App 显示登录界面 |
-| 客户 | `/certificates` | COA 列表和短时文件链接 |
+| 客户 | `/certificates` | COA 列表和固定公开文件链接 |
 | 客户 | `/cart` | 购物车、地址选择、报价确认及建单；checkout 是页面内状态，不是独立 URL |
 | 客户 | `/orders` | 历史、详情侧栏、付款/取消操作；订单详情和付款不是独立 `/:id` 路由 |
 | 客户 | `/account`、`/security`、`/referrals` | 资料、地址、密码、推荐与历史佣金；通过同一 App 状态切换账户子页面 |
@@ -1078,6 +1082,7 @@ app:
     ttl-seconds: 72000
   file:
     signed-url-seconds: 3600
+    public-coa-base-url: ${PUBLIC_COA_BASE_URL:}
   export:
     max-rows: 10000
 ```
@@ -1129,7 +1134,7 @@ URL 统一使用 jdbc:mysql 协议，驱动类为 com.mysql.cj.jdbc.Driver，连
 
 ### 11.4 初始化、备份与恢复
 
-经明确授权后，仅对全新空库执行 [init_mysql56.sql](init_mysql56.sql)。如需同时创建首个平台管理员，执行前在同一会话设置平台账号、姓名及 Argon2id 摘要变量；未设置时不创建账号。平台登录后创建商户及其首个卖家管理员。不提供默认密码，不由应用自动初始化。
+经明确授权后，仅对全新空库执行 [init_mysql56.sql](init_mysql56.sql)。如需同时创建首个平台管理员，执行前在同一会话设置平台账号、姓名及 Argon2id 摘要变量；未设置时不创建账号。平台登录后创建商户及其首个卖家管理员。不提供默认密码，不由应用自动初始化。既有数据库如尚无 COA 公开查询索引，由管理员核对索引后人工执行 [upgrade_public_coa_indexes.sql](upgrade_public_coa_indexes.sql)；该文件不是自动迁移，本次未执行。使用本版本初始化脚本新建的数据库已有这些索引，不运行升级文件。
 
 各商户分别准备自己的商品、库存、COA、客户和收款渠道后开放下单。商户按 V1～V6 保存六档非负 USD 基础运费，开通时六档均须配置；可选门槛留空关闭，非空门槛必须为正且最多两位小数。平台管理员在商户管理页维护。保存立即影响对应等级的新报价，旧报价提交时按当前门槛及报价商品小计校验实际运费，已创建订单始终保留运费快照；修改旧 app.store.shipping-fee 或重启应用不会更新商户运费。
 
@@ -1223,7 +1228,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 | [customer/store.js](customer/store.js) | 共享 DemoStore、固定等级价、浏览器认证、地区运费与客户码生成 | 稳定客户 ID、服务端定价/JWT、按客户等级配置运费、八位随机 Base36 code |
 | [客户登录](customer/login_register.html)、[商家登录](seller/login.html) | 原型提供已开通账号登录；正式商城按商户开关显示邮箱注册入口；统一错误、独立入口 | 3、7.2；客户/后台 audience 分离 |
 | [商品目录](customer/index.html) | renderCategories/renderCatalog、加车、库存与价格 | 类目启停排序由服务端控制；移除预购承诺；本人等级价格 |
-| [COA 目录](customer/coas.html) | coaRows/renderCoas，商品×证书展开、商品级字段优先 | 证书自身元数据；业务引用鉴权、文件后端签名下载；完成时捕获快照 |
+| [COA 目录](customer/coas.html) | coaRows/renderCoas，商品×证书展开、商品级字段优先 | 证书自身元数据；当前可售关联和完成快照文件使用固定公开 URL；完成时捕获快照 |
 | [购物车与结算](customer/shoping_cart.html) | 四步结算、placeOrderBtn、payNowBtn、清购物车 | 6.3；按客户行锁分配编号、一次性报价、即时扣库存、完整快照、只消费本次购物车项 |
 | [客户订单](customer/history.html) | saveCustomerOrderEdit、submitCustomerPayment、取消/筛选/详情 | 4、6、7；已有商品编辑校验、完成后付款、统一金额与库存事务 |
 | [我的账户](customer/my_account.html) | renderReferrals、资料/改密、默认地址删除限制 | 默认地址切换/自动维护；逐单历史费率；解除关系后历史入口保留 |
@@ -1239,7 +1244,7 @@ CSV 每个订单一行，全部有效包裹运单按包号顺序在运单单元�
 
 ### 14.1 交付与执行范围
 
-脚本：[doc/init_mysql56.sql](init_mysql56.sql)。包含完整业务表、字段、必要索引及固定行；不含环境账号口令、模拟业务数据、可登录默认 seller 用户。文件清单使用 `file_asset` 表；JWT 不建会话存储表。平台访问审计表、平台查询索引、商户管理员标记和订单佣金开关快照均已包含在此初始化脚本中。数据库结构只维护这一份完整初始化 SQL，不提供增量 DDL 或线上升级脚本。
+脚本：[doc/init_mysql56.sql](init_mysql56.sql)。包含完整业务表、字段、必要索引及固定行；不含环境账号口令、模拟业务数据、可登录默认 seller 用户。文件清单使用 `file_asset` 表；JWT 不建会话存储表。平台访问审计表、平台查询索引、商户管理员标记和订单佣金开关快照均已包含在此初始化脚本中。项目没有通用增量迁移框架；`doc/upgrade_public_coa_indexes.sql` 与 `doc/upgrade_merchant_whatsapp.sql` 是针对既有库的单次人工升级脚本，不由应用自动执行。
 
 本系统尚未部署，不存在已有业务库或升级步骤。此脚本只对新建空业务库初始化，使用普通 CREATE TABLE 而非 IF NOT EXISTS，执行前确认目标库为空。不会执行 DROP、DELETE、TRUNCATE、REPLACE，也不会重置已有配置。若执行中断，不使用 mysql --force 继续；由部署人员清理未完成的空库后重新执行完整脚本。MySQL DDL 隐式提交，因此不是整个文件的原子事务。平台管理员仅在脚本执行前设置了有效账号、姓名和 Argon2id 摘要变量时创建。
 

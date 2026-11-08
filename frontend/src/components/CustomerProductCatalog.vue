@@ -20,7 +20,6 @@ const quantityDrafts = reactive<Record<number, number | ''>>({})
 const emit = defineEmits<{
   'update:activeCategory': [categoryId: number | null]
   'update:productSearch': [search: string]
-  openCertificate: [certificate: { fileUuid: string }]
   'update-cart-quantity': [product: CustomerProduct, quantity: number]
 }>()
 
@@ -96,7 +95,7 @@ function subtotal(product: CustomerProduct): number | null {
 
 <template>
   <main class="catalog-section">
-    <section class="catalog-promise" aria-label="Factory and order commitments">
+    <section class="catalog-promise" :aria-label="t('Catalog information')">
       <div class="catalog-promise-copy">
         <h1>We are a peptide source factory, specializing in bulk peptide orders.</h1>
         <p>We take 100% responsibility for product quality, logistics transportation and customs‑clearance issues.</p>
@@ -151,17 +150,18 @@ function subtotal(product: CustomerProduct): number | null {
             <h3 class="product-name">{{ product.name }}</h3>
             <p v-if="product.description" class="product-desc">{{ product.description }}</p>
             <div v-if="productCoas(product).length" class="product-coa-stack">
-              <button
+              <a
                 v-for="coa in productCoas(product)"
                 :key="coa.fileUuid"
                 class="product-coa"
-                type="button"
+                :href="coa.publicUrl"
+                target="_blank"
+                rel="noopener noreferrer"
                 :aria-label="`${t('View COA')}: ${product.category}, ${coa.name || product.name}, ${t('Lot')} ${coa.lot || '—'}${coa.testDate ? `, ${coa.testDate}` : ''}`"
-                @click="emit('openCertificate', { fileUuid: coa.fileUuid })"
               >
                 <svg class="product-coa-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M5 2.75h6.2L15 6.6v10.65H5z"/><path d="M11 2.75V7h4M7.5 10h5M7.5 13h5"/></svg>
                 <span class="product-coa-copy" :title="`${t('View COA')} · ${product.category} · ${coa.name || product.name} · ${t('Lot')} ${coa.lot || '—'}${coa.testDate ? ` · ${coa.testDate}` : ''}`">{{ t('View COA') }} · {{ product.category }} · {{ coa.name || product.name }} · {{ t('Lot') }} {{ coa.lot || '—' }}{{ coa.testDate ? ` · ${coa.testDate}` : '' }}</span>
-              </button>
+              </a>
             </div>
           </div>
           <div v-if="product.quantityPrices?.length" class="product-quantity-prices">

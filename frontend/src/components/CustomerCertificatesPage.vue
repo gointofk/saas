@@ -26,7 +26,6 @@ const visibleItems = computed(() => {
 
 const emit = defineEmits<{
   'update:search': [search: string]
-  openCertificate: [certificate: CustomerCertificate]
 }>()
 </script>
 
@@ -59,7 +58,7 @@ const emit = defineEmits<{
             <td>{{ certificate.purity || '—' }}</td>
             <td>{{ certificate.fill || '—' }}</td>
             <td>{{ certificate.testDate || '—' }}</td>
-            <td><button class="link-button" type="button" @click="emit('openCertificate', certificate)"><svg class="certificate-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.75 3.75h7.5L18 7.5v12.75H6.75z"/><path d="M14.25 3.75V7.5H18M9.75 12h5.25M9.75 15h5.25"/></svg>{{ t('View / download ↗') }}</button></td>
+            <td><a class="link-button" :href="certificate.publicUrl" target="_blank" rel="noopener noreferrer"><svg class="certificate-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.75 3.75h7.5L18 7.5v12.75H6.75z"/><path d="M14.25 3.75V7.5H18M9.75 12h5.25M9.75 15h5.25"/></svg>{{ t('View / download ↗') }}</a></td>
           </tr>
         </tbody>
       </table>

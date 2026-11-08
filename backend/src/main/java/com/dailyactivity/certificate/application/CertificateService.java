@@ -31,7 +31,7 @@ public class CertificateService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> customer(Principal principal) {
         long merchantId = accounts.customer(principal).merchantId();
-        return certificates.allCustomer(merchantId).stream().map(this::view).toList();
+        return certificates.allCustomer(merchantId).stream().map(this::customerView).toList();
     }
 
     @Transactional(readOnly = true)
@@ -45,7 +45,7 @@ public class CertificateService {
                         || contains(coa.purity(), keyword) || contains(coa.fill(), keyword)
                         || contains(coa.fileName(), keyword)
                         || coa.testDate() != null && coa.testDate().toString().contains(keyword))
-                .map(this::view).toList();
+                .map(this::customerView).toList();
         int current = RequestValidation.page(page);
         int from = Math.min(matches.size(), (current - 1) * 10);
         return PageResponse.of(matches.subList(from, Math.min(matches.size(), from + 10)), current, matches.size());
@@ -185,6 +185,12 @@ public class CertificateService {
         v.put("sku", c.sku());
         v.put("fileName", c.fileName());
         return v;
+    }
+
+    private Map<String, Object> customerView(CertificateRepository.Certificate certificate) {
+        Map<String, Object> value = view(certificate);
+        value.put("publicUrl", fileService.publicCoaUrl(certificate.fileUuid()));
+        return value;
     }
 
     private void validate(CertificateRequest r) {

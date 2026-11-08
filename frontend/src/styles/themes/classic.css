@@ -827,7 +827,7 @@
   .demo-customer-shell .order-line-table-head { background: #f5f5f7; color: #6e6e73; }
   .demo-customer-shell .order-line-table-row { border-top-color: #ededf0; color: #6e6e73; }
   .demo-customer-shell .order-line-table-row > strong { color: #1d1d1f; }
-  .demo-customer-shell .order-line-product > strong { color: #1d1d1f; }
+  .demo-customer-shell .order-line-product strong { color: #1d1d1f; }
   .demo-customer-shell .order-address-card { border-color: var(--color-line); border-radius: 11px; background: #f5f5f7; color: #424245; }
   .demo-customer-shell .order-address-card > strong { color: #1d1d1f; }
   .demo-customer-shell .order-detail-totals,
@@ -858,6 +858,11 @@
   .demo-customer-shell .customer-footer .footer-desc,
   .demo-customer-shell .customer-footer .footer-right { color: #6e6e73; }
   .demo-customer-shell .customer-footer a { color: #424245; }
+  .demo-customer-shell .customer-footer .after-sales-contact,
+  .demo-customer-shell .customer-footer .after-sales-contact a { color: #6e6e73; }
+  .demo-customer-shell .customer-footer .after-sales-contact a:hover { color: #424245; }
+  .demo-customer-shell .history-page .whatsapp-action { border-color: #b8ded5; background: #edf8f5; color: #087568; }
+  .demo-customer-shell .history-page .whatsapp-action:hover { border-color: #80c5b6; background: #e0f3ed; color: #075f55; }
 
   .demo-customer-shell .customer-notice { border-color: var(--color-line); border-radius: 14px; box-shadow: 0 20px 70px rgba(0, 0, 0, .18); }
   .demo-customer-shell .customer-notice.is-success .customer-notice-mark { background: #edf8ef; color: #248a3d; }
@@ -967,6 +972,9 @@
   .customer-auth-screen .auth-page-footer .footer-right { color: #6e6e73; }
   .customer-auth-screen .auth-page-footer .footer-left a,
   .customer-auth-screen .auth-page-footer .footer-right a { border-color: var(--color-line); color: #424245; }
+  .customer-auth-screen .auth-page-footer .after-sales-contact,
+  .customer-auth-screen .auth-page-footer .after-sales-contact a { color: #6e6e73; }
+  .customer-auth-screen .auth-page-footer .after-sales-contact a:hover { color: #424245; }
   .customer-auth-screen .form-error { color: #d70015; }
 
   @media (min-width: 1400px) {
@@ -1054,6 +1062,7 @@
     .demo-customer-shell .history-page .order-state { flex: 0 1 auto; flex-wrap: wrap; gap: 4px 7px; }
     .demo-customer-shell .history-page .order-state + .order-state { padding-left: 12px; }
     .demo-customer-shell .history-page .order-card-foot { align-items: flex-start; flex-direction: column; padding: 13px 15px; }
+    .demo-customer-shell .history-page .whatsapp-action { align-self: flex-end; }
     .demo-customer-shell .history-page .order-actions { width: 100%; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid #ededf0; border-left: 0; }
     .demo-customer-shell .cart-head { display: none; }
     .demo-customer-shell .cart-item { grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; padding: 15px; }

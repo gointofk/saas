@@ -1,8 +1,10 @@
 package com.dailyactivity.order;
 
 import com.dailyactivity.auth.domain.Principal;
+import com.dailyactivity.certificate.application.CertificateService;
 import com.dailyactivity.common.ApiException;
 import com.dailyactivity.export.domain.port.ExportRepository;
+import com.dailyactivity.file.domain.port.FileRepository;
 import com.dailyactivity.order.application.OrderParcelService;
 import com.dailyactivity.order.application.OrderService;
 import com.dailyactivity.support.PrdDatabaseTest;
@@ -12,7 +14,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Import;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,6 +29,49 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PrdOrderParcelTest extends PrdDatabaseTest {
     @Autowired
     private ExportRepository exports;
+
+    @Autowired
+    private CertificateService certificates;
+
+    @Autowired
+    private FileRepository files;
+
+    @Test
+    @DisplayName("下架商品的未完成订单仍可读当前 COA，完成后改读快照")
+    @SuppressWarnings("unchecked")
+    void buyerCanReadOrderCoaAfterProductIsOfflineAndAfterBindingIsRemoved() {
+        var created = createOrder("coa-offline-order", 1);
+        long id = orderId(created);
+        String fileUuid = insertCoaFile();
+        long coaId = ((Number) certificates.create(seller(), new CertificateService.CertificateRequest(
+                "Order COA", "LOT-ORDER", "99.5", "10g", LocalDate.of(2026, 10, 1), fileUuid, "test-token")).get("id")).longValue();
+        certificates.bind(seller(), coaId, data.productId());
+        jdbc.update("UPDATE product SET active=0 WHERE id=?", data.productId());
+
+        var openDetail = orders.detail(customer(), id);
+        List<Map<String, Object>> openItems = (List<Map<String, Object>>) openDetail.get("items");
+        List<Map<String, Object>> openCoas = (List<Map<String, Object>>) openItems.get(0).get("coas");
+        assertThat(openCoas).singleElement().satisfies(coa -> assertThat(coa)
+                .containsEntry("name", "Order COA")
+                .containsEntry("fileUuid", fileUuid));
+        assertThat(files.findPublicCoa(fileUuid)).isPresent();
+
+        var packed = pack(created, draft(itemId(created), 1));
+        var parcel = parcelRows(packed).get(0);
+        var shipped = ship(packed, parcel, "COA-TRACK");
+        var received = receive(shipped, parcelId(parcel));
+        orders.sellerAction(seller(), id, "complete",
+                new OrderService.SellerAction(null, null, null, null, null, null, null, null, true, version(received)));
+        certificates.remove(seller(), coaId);
+
+        var completedDetail = orders.detail(customer(), id);
+        List<Map<String, Object>> completedItems = (List<Map<String, Object>>) completedDetail.get("items");
+        List<Map<String, Object>> completedCoas = (List<Map<String, Object>>) completedItems.get(0).get("coas");
+        assertThat(completedCoas).singleElement().satisfies(coa -> assertThat(coa)
+                .containsEntry("name", "Order COA")
+                .containsEntry("fileUuid", fileUuid));
+        assertThat(files.findPublicCoa(fileUuid)).isPresent();
+    }
 
     @Test
     @DisplayName("同 SKU 分批装箱、发货和收货，订单金额和库存不重复变化")
@@ -143,4 +190,13 @@ class PrdOrderParcelTest extends PrdDatabaseTest {
     private List<Map<String, Object>> parcelRows(Map<String, Object> order) { return (List<Map<String, Object>>) order.get("parcels"); }
     private int stock() { return jdbc.queryForObject("SELECT stock_available FROM product WHERE id=?", Integer.class, data.productId()); }
     private int movementCount(long id) { return jdbc.queryForObject("SELECT COUNT(*) FROM stock_movement WHERE order_id=?", Integer.class, id); }
+
+    private String insertCoaFile() {
+        String uuid = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO file_asset(merchant_id,file_uuid,stored_file_name,original_file_name,purpose,media_type,size_bytes,sha256,status,uploaded_at,created_by_user_id,updated_by_user_id) "
+                        + "VALUES(?,?,?,?,?,?,?,?,'available',?,?,?)",
+                data.seller().merchantId(), uuid, uuid + ".pdf", "order-coa.pdf", "coa", "application/pdf", 1L,
+                "2".repeat(64), Timestamp.from(Instant.now()), data.sellerId(), data.sellerId());
+        return uuid;
+    }
 }

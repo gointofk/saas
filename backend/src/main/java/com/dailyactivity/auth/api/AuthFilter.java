@@ -35,6 +35,7 @@ public class AuthFilter extends OncePerRequestFilter {
                 || path.equals("/api/v1/customer/auth/registration-code")
                 || path.equals("/api/v1/customer/auth/register")
                 || path.matches("/api/v1/files/merchant-logos/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/content")
+                || path.matches("/api/v1/public/coas/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
                 || "OPTIONS".equalsIgnoreCase(request.getMethod())
                 || path.matches("/api/v1/(customer|admin|platform)/auth/login")
                 || path.matches("/api/v1/files/[^/]+/content") || path.equals("/actuator/health");

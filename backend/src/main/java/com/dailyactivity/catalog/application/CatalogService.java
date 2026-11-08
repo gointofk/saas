@@ -9,6 +9,7 @@ import com.dailyactivity.common.ApiException;
 import com.dailyactivity.common.PageResponse;
 import com.dailyactivity.common.RequestValidation;
 import com.dailyactivity.inventory.domain.port.InventoryRepository;
+import com.dailyactivity.file.application.FileService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,13 +27,17 @@ public class CatalogService {
     private final AccountService accounts;
     private final com.dailyactivity.merchant.domain.port.MerchantRepository audit;
     private final InventoryRepository inventory;
+    private final FileService files;
 
-    public CatalogService(CatalogRepository catalog, AccountService accounts, InventoryRepository inventory, com.dailyactivity.merchant.domain.port.MerchantRepository audit, QuantityPriceRepository quantityPrices) {
+    public CatalogService(CatalogRepository catalog, AccountService accounts, InventoryRepository inventory,
+                          com.dailyactivity.merchant.domain.port.MerchantRepository audit,
+                          QuantityPriceRepository quantityPrices, FileService files) {
         this.audit = audit;
         this.quantityPrices = quantityPrices;
         this.catalog = catalog;
         this.accounts = accounts;
         this.inventory = inventory;
+        this.files = files;
     }
 
     @Transactional(readOnly = true)
@@ -250,6 +255,7 @@ public class CatalogService {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("name", coa.name());
         value.put("fileUuid", coa.fileUuid());
+        value.put("publicUrl", files.publicCoaUrl(coa.fileUuid()));
         value.put("lot", coa.lot());
         value.put("testDate", coa.testDate());
         return value;

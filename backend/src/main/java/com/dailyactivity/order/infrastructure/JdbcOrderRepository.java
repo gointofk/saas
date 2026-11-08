@@ -407,6 +407,27 @@ public class JdbcOrderRepository implements OrderRepository {
     }
 
     @Override
+    public List<OrderCoaRow> customerOrderCoas(long merchantId, long orderId, long customerId) {
+        String sql = "SELECT oi.product_id,c.name coa_name,c.current_file_uuid file_uuid,c.lot lot_snapshot,"
+                + "c.purity purity_snapshot,c.fill fill_snapshot,DATE_FORMAT(c.test_date,'%Y-%m-%d') test_date_snapshot "
+                + "FROM sales_order o JOIN order_item oi ON oi.order_id=o.id AND oi.deleted=0 "
+                + "JOIN product_coa_link pcl ON pcl.product_id=oi.product_id AND pcl.merchant_id=o.merchant_id AND pcl.deleted=0 "
+                + "JOIN coa_certificate c ON c.id=pcl.coa_id AND c.merchant_id=o.merchant_id AND c.deleted=0 "
+                + "WHERE o.id=:orderId AND o.merchant_id=:merchantId AND o.customer_id=:customerId AND o.order_status<>'completed' "
+                + "UNION ALL "
+                + "SELECT s.product_id,s.name_snapshot,s.file_uuid,s.lot_snapshot,s.purity_snapshot,s.fill_snapshot,"
+                + "DATE_FORMAT(s.test_date_snapshot,'%Y-%m-%d') "
+                + "FROM order_item_coa_snapshot s JOIN sales_order o ON o.id=s.order_id "
+                + "WHERE s.order_id=:orderId AND o.merchant_id=:merchantId AND o.customer_id=:customerId "
+                + "AND o.order_status='completed' ORDER BY product_id,file_uuid";
+        return jdbc.query(sql, new MapSqlParameterSource().addValue("orderId", orderId)
+                        .addValue("merchantId", merchantId).addValue("customerId", customerId),
+                (rs, row) -> new OrderCoaRow(rs.getLong("product_id"), rs.getString("coa_name"),
+                        rs.getString("file_uuid"), rs.getString("lot_snapshot"), rs.getString("purity_snapshot"),
+                        rs.getString("fill_snapshot"), rs.getString("test_date_snapshot")));
+    }
+
+    @Override
     public Dashboard dashboard(long merchantId) {
         Long open = jdbc.queryForObject("SELECT COUNT(*) FROM sales_order WHERE merchant_id=:merchantId AND audit_status='approved' AND order_status IN ('pending','packed','shipped','received')", new MapSqlParameterSource().addValue("merchantId", merchantId), Long.class);
         Long pending = jdbc.queryForObject("SELECT COUNT(*) FROM sales_order WHERE merchant_id=:merchantId AND audit_status='approved' AND payment_status<>'paid' AND order_status<>'cancelled'", new MapSqlParameterSource().addValue("merchantId", merchantId), Long.class);

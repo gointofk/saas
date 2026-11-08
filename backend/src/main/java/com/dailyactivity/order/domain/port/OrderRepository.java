@@ -55,6 +55,8 @@ public interface OrderRepository {
 
     List<ItemRow> items(long orderId);
 
+    List<OrderCoaRow> customerOrderCoas(long merchantId, long orderId, long customerId);
+
     List<EventRow> events(long orderId);
 
     List<String> eventFiles(long orderId, long eventId);
@@ -134,6 +136,10 @@ public interface OrderRepository {
 
     record ItemRow(long id, long productId, String sku, String name, String productType, int quantity,
                    BigDecimal unitPrice, BigDecimal lineAmount) {
+    }
+
+    record OrderCoaRow(long productId, String name, String fileUuid, String lot, String purity, String fill,
+                       String testDate) {
     }
 
     record EventRow(long id, String action, String fromStatus, String toStatus, String note,

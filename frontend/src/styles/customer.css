@@ -207,6 +207,13 @@
 .customer-footer strong { color: var(--color-muted); font-size: 11px; letter-spacing: .08em; }
 .customer-footer p { margin: 0; max-width: 500px; line-height: 1.6; }
 .customer-footer small { align-self: end; white-space: nowrap; }
+.after-sales-contact { margin: 0 0 8px; color: #858d88; font-size: 12px; line-height: 1.5; }
+.after-sales-contact a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.after-sales-contact a:hover { color: #445b51; }
+.after-sales-contact a:focus-visible, .whatsapp-action:focus-visible { outline: 2px solid #087568; outline-offset: 3px; }
+.whatsapp-action { display: inline-flex; min-height: 34px; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; margin-left: auto; padding: 0 12px; border-color: #b8ded5; background: #edf8f5; color: #087568; text-decoration: none; }
+.whatsapp-action:hover { border-color: #80c5b6; background: #e0f3ed; color: #075f55; }
+.whatsapp-action svg { width: 15px; height: 15px; flex: 0 0 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.65; }
 .customer-only-brand { display: none; }
 .demo-customer-shell { min-height: 100vh; }
 .customer-header { display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 30px; padding: 14px clamp(20px, 5vw, 72px); border-bottom: 1px solid var(--color-line); background: var(--color-surface); }
@@ -641,7 +648,10 @@
 .demo-customer-shell .order-line-table-row > :not(:first-child) { text-align: right; }
 .demo-customer-shell .order-line-table-row > strong { color: #24483e; }
 .demo-customer-shell .order-line-product { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.demo-customer-shell .order-line-product > strong { min-width: 0; color: #24483e; }
+.demo-customer-shell .order-item-coa-links { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-top: 3px; }
+.demo-customer-shell .order-item-coa-links .link-button { font-size: 11px; }
+.demo-customer-shell .order-line-product > div { flex: 1; min-width: 0; }
+.demo-customer-shell .order-line-product strong { color: #24483e; }
 .demo-customer-shell .order-line-copy { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; }
 .demo-customer-shell .order-line-copy svg { width: 15px; height: 15px; }
 .demo-customer-shell .order-address-card { padding: 17px 20px; border: 1px solid #b9d3c8; border-radius: 12px; background: #e7f1ed; color: #547168; line-height: 1.65; }

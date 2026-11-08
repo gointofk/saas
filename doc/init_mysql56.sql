@@ -22,7 +22,8 @@ CREATE TABLE merchant (
   code VARCHAR(32) NOT NULL,
   name VARCHAR(100) NOT NULL,
   domain VARCHAR(253) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
-  logo_url VARCHAR(512) NOT NULL DEFAULT '/ytpeps-logo.svg',
+  logo_url VARCHAR(512) NOT NULL DEFAULT '/dailyactivity-logo.svg',
+  whatsapp_number VARCHAR(32) NULL COMMENT '国际格式 WhatsApp 售后号码；NULL 表示未配置',
   theme VARCHAR(32) NOT NULL DEFAULT 'classic',
   active TINYINT NOT NULL DEFAULT 1,
   customer_registration_enabled TINYINT NOT NULL DEFAULT 0,
@@ -472,7 +473,7 @@ CREATE TABLE `order_event` (
 
 -- 文件清单，文件内容仍在本地磁盘；file_uuid 是外部引用的稳定身份
 CREATE TABLE `file_asset` (
-  `merchant_id` BIGINT NOT NULL COMMENT '所属商户ID；包括COA文件在内的全部文件均为商户私有',
+  `merchant_id` BIGINT NOT NULL COMMENT '文件清单所属商户；COA元数据与上传按商户隔离，符合公开条件的COA内容可公开读取',
   `file_uuid` CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '文件UUID；由应用生成并永久不复用',
   `stored_file_name` VARCHAR(64) NOT NULL COMMENT '服务端存储文件名',
   `original_file_name` VARCHAR(255) NOT NULL COMMENT '原始文件名',
@@ -613,7 +614,8 @@ CREATE TABLE `coa_certificate` (
   updated_by_type VARCHAR(16) NOT NULL DEFAULT 'seller',
   `deleted` BIGINT NOT NULL DEFAULT 0 COMMENT '软删除标记：0有效，非0为已删除行自身ID',
   PRIMARY KEY (`id`),
-  KEY `idx_coa_merchant_created` (`merchant_id`,`deleted`,`created_at`,`id`)
+  KEY `idx_coa_merchant_created` (`merchant_id`,`deleted`,`created_at`,`id`),
+  KEY `idx_coa_public_uuid` (`current_file_uuid`,`merchant_id`,`deleted`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商户私有COA元数据及当前文件UUID，无证书版本实体';
 
 -- COA当前和历史绑定，一证最多一有效绑定
@@ -655,6 +657,7 @@ CREATE TABLE `order_item_coa_snapshot` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_item_coa_snapshot` (`order_item_id`,`coa_id`),
   KEY `idx_snapshot_order` (`order_id`,`order_item_id`),
+  KEY `idx_snapshot_public_uuid` (`file_uuid`,`order_id`),
   KEY `idx_snapshot_source_link` (`source_link_id`)
 ) ENGINE=InnoDB ROW_FORMAT=COMPACT DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单完成时证书及绑定快照，只存文件UUID';
 

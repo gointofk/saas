@@ -890,11 +890,30 @@ public class OrderService {
     }
 
     private Map<String, Object> summaryView(OrderRepository.OrderRow r, boolean seller) {
+        return summaryView(r, seller, Map.of());
+    }
+
+    private Map<String, Object> summaryView(OrderRepository.OrderRow r, boolean seller,
+                                           Map<Long, List<Map<String, Object>>> coasByProduct) {
         Map<String, Object> out = base(r);
         out.put("paymentLinkRequested", r.paymentLinkRequested());
         var orderItems = orders.items(r.id());
         out.put("fulfillmentSummary", parcels.summary(r.id(), orderItems));
-        out.put("items", orderItems.stream().map(i -> Map.of("orderItemId", i.id(), "productId", i.productId(), "sku", i.sku(), "name", i.name(), "productType", i.productType(), "quantity", i.quantity(), "unitPrice", i.unitPrice(), "lineTotal", i.lineAmount(), "quantityPrices", orders.quantityPrices(i.id()))).toList());
+        out.put("items", orderItems.stream().map(i -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("orderItemId", i.id());
+            item.put("productId", i.productId());
+            item.put("sku", i.sku());
+            item.put("name", i.name());
+            item.put("productType", i.productType());
+            item.put("quantity", i.quantity());
+            item.put("unitPrice", i.unitPrice());
+            item.put("lineTotal", i.lineAmount());
+            item.put("quantityPrices", orders.quantityPrices(i.id()));
+            List<Map<String, Object>> itemCoas = coasByProduct.getOrDefault(i.productId(), List.of());
+            if (!itemCoas.isEmpty()) item.put("coas", itemCoas);
+            return item;
+        }).toList());
         if (seller) {
             out.put("auditStatus", r.auditStatus());
             out.put("customer", Map.of("id", r.customerId(), "name", r.customerName(), "email", r.customerEmail(), "userCode", r.customerCode()));
@@ -921,7 +940,21 @@ public class OrderService {
     }
 
     private Map<String, Object> detail(OrderRepository.OrderRow r, boolean seller, Principal principal) {
-        Map<String, Object> out = summaryView(r, seller);
+        Map<Long, List<Map<String, Object>>> coasByProduct = new HashMap<>();
+        if (!seller) {
+            orders.customerOrderCoas(principal.merchantId(), r.id(), r.customerId()).forEach(coa -> {
+                Map<String, Object> value = new LinkedHashMap<>();
+                value.put("name", coa.name());
+                value.put("fileUuid", coa.fileUuid());
+                value.put("publicUrl", fileService.publicCoaUrl(coa.fileUuid()));
+                value.put("lot", coa.lot());
+                value.put("purity", coa.purity());
+                value.put("fill", coa.fill());
+                value.put("testDate", coa.testDate());
+                coasByProduct.computeIfAbsent(coa.productId(), ignored -> new ArrayList<>()).add(value);
+            });
+        }
+        Map<String, Object> out = summaryView(r, seller, coasByProduct);
         out.put("address", parse(r.addressSnapshot()));
         if (seller) {
             out.put("auditedByUserId", r.auditedByUserId());

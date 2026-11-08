@@ -1,14 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="YTPEPS">
-  <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6748ff" />
-      <stop offset="1" stop-color="#00c8e8" />
-    </linearGradient>
-  </defs>
-  <rect x="2" y="2" width="96" height="96" rx="27" fill="url(#background)" />
-  <circle cx="88" cy="16" r="3" fill="#b8e0ff" />
-  <circle cx="86" cy="33" r="2.5" fill="#9edaff" />
-  <circle cx="78" cy="25" r="5.5" fill="#fff" opacity=".92" />
-  <path d="M25 25 50 50 75 25" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="11" />
-  <path d="M44.5 47.5 78 63 48.5 78c-3.1 1.6-6.5-.7-6.5-4.2V51.8c0-3.4 1-4.8 2.5-4.3Z" fill="#fff" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="DailyActivity">
+  <rect x="2" y="2" width="96" height="96" rx="26" fill="#123b36" />
+  <path d="M24 32h18c8 0 14 3 18 9 4-6 10-9 18-9h1v37h-4c-6 0-11 2-15 7-4-5-9-7-15-7H24z" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="6" />
+  <path d="M60 42v31" fill="none" stroke="#9bc9b3" stroke-linecap="round" stroke-width="5" />
+  <circle cx="77" cy="23" r="4" fill="#e5bb75" />
 </svg>

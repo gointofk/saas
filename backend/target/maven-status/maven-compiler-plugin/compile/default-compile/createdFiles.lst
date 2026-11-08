@@ -118,6 +118,7 @@ com/dailyactivity/identity/application/CustomerRegistrationService$1.class
 com/dailyactivity/config/AuthProperties.class
 com/dailyactivity/merchant/api/StorefrontController.class
 com/dailyactivity/order/application/OrderService$CustomerUpdate.class
+com/dailyactivity/order/domain/port/OrderRepository$OrderCoaRow.class
 com/dailyactivity/identity/application/RegistrationRateLimiter$Window.class
 com/dailyactivity/merchant/domain/port/MerchantEmailSettingsRepository$Settings.class
 com/dailyactivity/identity/application/CustomerService$CustomerRequest.class

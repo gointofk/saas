@@ -13,6 +13,7 @@ import SellerFilePicker from './components/SellerFilePicker.vue'
 import AppModal from './components/AppModal.vue'
 import { applyMerchantBranding, storefrontBrand } from './lib/storefront'
 import CustomerHeader from './components/CustomerHeader.vue'
+import AfterSalesContact from './components/AfterSalesContact.vue'
 import CustomerDatePicker from './components/CustomerDatePicker.vue'
 import CustomerNotice from './components/CustomerNotice.vue'
 import LoginScreen from './components/LoginScreen.vue'
@@ -1805,21 +1806,24 @@ async function makeDefaultAddress(address: CustomerAddress) {
   })
 }
 
-async function openCertificate(cert: AnyRecord) {
+function openCertificate(cert: AnyRecord) {
+  const uuid = String(cert.fileUuid || '')
+  if (!uuid) {
+    showNotice('The certificate file is unavailable.', 'error')
+    return
+  }
   const certificateTab = window.open('about:blank', '_blank')
   if (!certificateTab) {
     showNotice('Allow pop-ups to open the certificate in a new tab.', 'error', 'Enable pop-ups for this site, then click the COA link again.')
     return
   }
   certificateTab.opener = null
-  try {
-    const currentArea = area.value === 'admin' ? 'admin' : 'customer'
-    const result = await request<{ url: string }>(`/${currentArea}/files/${cert.fileUuid}/signed-url`, {}, currentArea)
-    certificateTab.location.replace(result.url)
-  } catch (error) {
-    certificateTab.close()
-    showFailure(error)
-  }
+  void request<{ url: string }>(`/admin/files/${encodeURIComponent(uuid)}/signed-url`, {}, 'admin')
+    .then(result => certificateTab.location.replace(result.url))
+    .catch(error => {
+      certificateTab.close()
+      showFailure(error)
+    })
 }
 
 async function changePassword() {
@@ -2902,7 +2906,7 @@ async function deletePaymentChannel(channel: AnyRecord) {
 
 const adminPageKey = computed(() => adminMode.value === 'billing' ? 'billing' : adminMode.value === 'finance' ? 'commissions' : ({ certificates: 'coas', customers: 'users', settings: 'payments', members: 'permissions' } as Record<string, string>)[adminPage.value] || adminPage.value)
 function navLabel(page: string) { return ({ merchants: '商户管理', dashboard: '概览', 'order-audit': '订单审核', orders: '订单管理', products: '商品管理', customers: '客户管理', users: '客户管理', finance: '佣金管理', commissions: '佣金管理', billing: '账单管理', certificates: 'COA 管理', coas: 'COA 管理', categories: '类目管理', members: '权限管理', permissions: '权限管理', settings: '收款渠道', payments: '收款渠道' }[page] || page) }
-function adminDescription(page: string) { return ({ merchants: '开通商户并管理商城配置', dashboard: '查看商家运营概览', 'order-audit': '审核客户新提交的订单', orders: '查看并处理已审核订单', products: '管理本商户商品、库存和上架状态', customers: '查看客户账户和采购记录', users: '查看客户账户和采购记录', finance: '查看佣金记录和结算状态', commissions: '查看佣金记录和结算状态', billing: '查看账单和收款状态', certificates: '维护本商户 COA 证书', coas: '维护本商户 COA 证书', categories: '维护本商户商品类目', members: '管理后台成员和权限', permissions: '管理后台成员和权限', settings: '配置收款渠道', payments: '配置收款渠道' }[page] || 'YTPEPS 商家管理后台') }
+function adminDescription(page: string) { return ({ merchants: '开通商户并管理商城配置', dashboard: '查看商家运营概览', 'order-audit': '审核客户新提交的订单', orders: '查看并处理已审核订单', products: '管理本商户商品、库存和上架状态', customers: '查看客户账户和采购记录', users: '查看客户账户和采购记录', finance: '查看佣金记录和结算状态', commissions: '查看佣金记录和结算状态', billing: '查看账单和收款状态', certificates: '维护本商户 COA 证书', coas: '维护本商户 COA 证书', categories: '维护本商户商品类目', members: '管理后台成员和权限', permissions: '管理后台成员和权限', settings: '配置收款渠道', payments: '配置收款渠道' }[page] || '商家管理后台') }
 const adminHeaderTitle = computed(() => navLabel(adminPageKey.value))
 const adminHeaderDescription = computed(() => adminDescription(adminPageKey.value))
 const adminBillTypeOptions = computed(() => currentMerchant.value?.commissionEnabled
@@ -3037,7 +3041,6 @@ watch(adminSearch, () => {
       :money="money"
       @update:active-category="activeCategory = $event"
       @update:product-search="productSearch = $event"
-      @open-certificate="openCertificate"
       @update-cart-quantity="updateCatalogCartQuantity"
     />
     <CustomerCertificatesPage
@@ -3046,7 +3049,6 @@ watch(adminSearch, () => {
       :search="certificateSearch"
       :t="t"
       @update:search="certificateSearch = $event"
-      @open-certificate="openCertificate"
     />
     <CustomerCheckoutPage
       v-else-if="customerPage === 'cart'"
@@ -3120,6 +3122,7 @@ watch(adminSearch, () => {
       :pending-actions="pendingActions"
       :t="t"
       :money="money"
+      :whatsapp-number="storefrontBrand.whatsappNumber"
       :format-date-time="formatDateTime"
       :order-item-names="orderItemNames"
       :status-label="statusLabel"
@@ -3172,7 +3175,7 @@ watch(adminSearch, () => {
       @change-password="changePassword"
     />
 
-    <footer class="customer-footer"><div class="footer-top"><div class="footer-left"><div class="footer-company-name">{{ storefrontBrand.name }}</div><p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}<br><br>{{ t('The nice research company') }}</p></div><div class="footer-right"><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div></div></footer>
+    <footer class="customer-footer"><div class="footer-top"><div class="footer-left"><div class="footer-company-name">{{ storefrontBrand.name }}</div><p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}</p></div><div class="footer-right"><AfterSalesContact :t="t" :whatsapp-number="storefrontBrand.whatsappNumber" /><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div></div></footer>
     <a v-if="customerPage === 'products'" class="float-cart" href="/cart" @click.prevent="goCustomer('cart')"><span class="cart-count-badge">{{ cartCount }}</span><span class="float-cart-label">{{ money(cart.total) }}{{ t('View cart →') }}</span></a>
     <CustomerOrderEditModal
       v-if="orderEditOpen"

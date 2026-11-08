@@ -50,6 +50,7 @@ public class MerchantService {
         validate(r.name(),r.shippingFees(),thresholds);
         String domain = StorefrontService.normalizeDomain(r.domain());
         StorefrontService.validateBranding(r.logoUrl(),r.theme());
+        String whatsappNumber=normalizeWhatsAppNumber(r.whatsappNumber());
         boolean registrationEnabled=Boolean.TRUE.equals(r.registrationEnabled());
         String registrationDefaultTier=normalizeRegistrationDefaultTier(r.registrationDefaultTier());
         boolean commissionEnabled=r.commissionEnabled()==null || r.commissionEnabled();
@@ -69,10 +70,11 @@ public class MerchantService {
         long id=merchants.create(r.code().toUpperCase(Locale.ROOT),r.name().trim(),r.shippingFees(),thresholds,
                 domain,r.logoUrl(),r.theme(),p.userId(),registrationEnabled,registrationDefaultTier,
                 commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled);
+        if(whatsappNumber!=null) merchants.updateWhatsAppNumber(id,whatsappNumber,p.userId());
         if(mail!=null) emailSettings.save(id,mail.settings(),mail.encryptedPassword());
         var permissions=List.of("order_audit","orders","commissions","bills","customers","products","certificates","categories","payment_channels","members");
         members.createMerchantAdministrator(id,new MemberRepository.MemberInput(r.adminAccount().trim().toLowerCase(Locale.ROOT),r.adminName().trim(),hash,permissions),p.actor());
-        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", shippingFees="+r.shippingFees()+", freeShippingThresholds="+thresholds+", customerRegistrationEnabled="+registrationEnabled+", registrationDefaultTier="+registrationDefaultTier+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", emailSettingsUpdated="+(mail!=null));
+        merchants.audit(id,p.actor(),"merchant_created","Domain: "+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", shippingFees="+r.shippingFees()+", freeShippingThresholds="+thresholds+", customerRegistrationEnabled="+registrationEnabled+", registrationDefaultTier="+registrationDefaultTier+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", whatsappConfigured="+(whatsappNumber!=null)+", emailSettingsUpdated="+(mail!=null));
         return view(merchants.find(id).orElseThrow());
     }
     @Transactional
@@ -82,6 +84,7 @@ public class MerchantService {
         StorefrontService.validateBranding(r.logoUrl(),r.theme());
         var existing=merchants.lock(id);
         checkVersion(existing,r.expectedUpdatedAt());
+        String whatsappNumber=r.whatsappNumber()==null?existing.whatsappNumber():normalizeWhatsAppNumber(r.whatsappNumber());
         FreeShippingThresholds thresholds = r.freeShippingThresholds()==null
                 ? existing.freeShippingThresholds() : r.freeShippingThresholds();
         validate(r.name(),r.shippingFees(),thresholds);
@@ -127,11 +130,12 @@ public class MerchantService {
             merchants.updatePaymentMethods(id,cryptoEnabled,onlinePaymentLinkEnabled,p.userId());
         if(mail!=null) emailSettings.save(id,mail.settings(),mail.encryptedPassword());
         merchants.branding(id,domain,r.logoUrl(),r.theme());
+        if(r.whatsappNumber()!=null) merchants.updateWhatsAppNumber(id,whatsappNumber,p.userId());
         if (resetPassword) {
             members.resetPassword(id,administrator.id(),passwordHash,p.actor());
             merchants.audit(id,p.actor(),"merchant_admin_password_reset","Administrator seller ID: "+administrator.id());
         }
-        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+"; after: name="+r.name()+", active="+r.active()+", shippingFees="+r.shippingFees()+", freeShippingThresholds="+thresholds+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", registrationDefaultTier="+registrationDefaultTier+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", emailSettingsUpdated="+(mail!=null));
+        merchants.audit(id,p.actor(),"merchant_updated","Before: "+existing+"; after: name="+r.name()+", active="+r.active()+", shippingFees="+r.shippingFees()+", freeShippingThresholds="+thresholds+", domain="+domain+", theme="+r.theme()+", logo="+r.logoUrl()+", customerRegistrationEnabled="+registrationEnabled+", registrationDefaultTier="+registrationDefaultTier+", commissionEnabled="+commissionEnabled+", cryptoEnabled="+cryptoEnabled+", onlinePaymentLinkEnabled="+onlinePaymentLinkEnabled+", whatsappConfigured="+(whatsappNumber!=null)+", emailSettingsUpdated="+(mail!=null));
         return view(merchants.find(id).orElseThrow());
     }
     private void checkVersion(MerchantRepository.Merchant m,Instant version) {
@@ -153,6 +157,14 @@ public class MerchantService {
         if (threshold.signum()<=0 || threshold.scale()>2 || threshold.compareTo(new BigDecimal("9999999999999999.99"))>0)
             throw ApiException.badRequest("INVALID_FREE_SHIPPING_THRESHOLD","Free shipping threshold must be greater than zero and have at most two decimals.");
     }
+    private String normalizeWhatsAppNumber(String value) {
+        if(value==null||value.isBlank()) return null;
+        String number=value.trim();
+        String digits=number.replaceAll("\\D", "");
+        if(number.length()>32||!number.matches("\\+[0-9\\s().-]+")||digits.length()<7||digits.length()>15)
+            throw ApiException.badRequest("INVALID_WHATSAPP_NUMBER","Enter an international WhatsApp number with a leading + and 7–15 digits.");
+        return number;
+    }
     private String normalizeRegistrationDefaultTier(String tier) {
         String normalized=tier==null?"V1":tier.trim().toUpperCase(Locale.ROOT);
         if(!Set.of("V1","V2","V3","V4","V5","V6").contains(normalized))
@@ -160,7 +172,7 @@ public class MerchantService {
         return normalized;
     }
     private MerchantView view(MerchantRepository.Merchant m) {
-        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFees(),m.freeShippingThresholds(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme(),m.registrationEnabled(),m.registrationDefaultTier(),m.commissionEnabled(),m.cryptoEnabled(),m.onlinePaymentLinkEnabled(),emailSettings.find(m.id()).map(this::emailView).orElse(null),members.initialAdministrator(m.id()).orElse(null));
+        return new MerchantView(m.id(),m.code(),m.name(),m.active(),m.shippingFees(),m.freeShippingThresholds(),m.updatedAt(),m.domain(),m.logoUrl(),m.theme(),m.registrationEnabled(),m.registrationDefaultTier(),m.commissionEnabled(),m.cryptoEnabled(),m.onlinePaymentLinkEnabled(),m.whatsappNumber(),emailSettings.find(m.id()).map(this::emailView).orElse(null),members.initialAdministrator(m.id()).orElse(null));
     }
     private MerchantEmailSettingsView emailView(MerchantEmailSettingsRepository.StoredSettings s) {
         return new MerchantEmailSettingsView(s.smtpHost(),s.smtpPort(),s.smtpUsername(),s.tlsMode(),s.senderEmail(),s.senderName(),s.configured());
@@ -210,40 +222,46 @@ public class MerchantService {
     private record PreparedEmailSettings(MerchantEmailSettingsRepository.Settings settings,String encryptedPassword) {}
     public record TestEmailRequest(String recipient) {}
     public record MerchantEmailSettingsView(String smtpHost,int smtpPort,String smtpUsername,String tlsMode,String senderEmail,String senderName,boolean passwordConfigured) {}
-    public record MerchantView(long id,String code,String name,boolean active,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,Instant updatedAt,String domain,String logoUrl,String theme,boolean registrationEnabled,String registrationDefaultTier,boolean commissionEnabled,boolean cryptoEnabled,boolean onlinePaymentLinkEnabled,MerchantEmailSettingsView mailSettings,MemberRepository.InitialAdministrator administrator) {}
+    public record MerchantView(long id,String code,String name,boolean active,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,Instant updatedAt,String domain,String logoUrl,String theme,boolean registrationEnabled,String registrationDefaultTier,boolean commissionEnabled,boolean cryptoEnabled,boolean onlinePaymentLinkEnabled,String whatsappNumber,MerchantEmailSettingsView mailSettings,MemberRepository.InitialAdministrator administrator) {}
     public record MailSettingsInput(String smtpHost,Integer smtpPort,String smtpUsername,String smtpPassword,String tlsMode,String senderEmail,String senderName) {}
-    public record Create(String code,String name,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+    public record Create(String code,String name,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier,String whatsappNumber) {
+        public Create(String code,String name,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+            this(code,name,shippingFees,freeShippingThresholds,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,registrationDefaultTier,null);
+        }
         public Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
-            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,registrationDefaultTier);
+            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,registrationDefaultTier,null);
         }
         public Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled) {
-            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,"V1");
+            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,"V1",null);
         }
         public Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,Boolean commissionEnabled) {
-            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,null,null,"V1");
+            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,commissionEnabled,null,null,"V1",null);
         }
         public Create(String code,String name,ShippingFees shippingFees,String adminAccount,String adminName,String password,String confirmation,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
-            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,true,null,null,"V1");
+            this(code,name,shippingFees,null,adminAccount,adminName,password,confirmation,domain,logoUrl,theme,registrationEnabled,mailSettings,true,null,null,"V1",null);
         }
     }
-    public record Update(String name,boolean active,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+    public record Update(String name,boolean active,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier,String whatsappNumber) {
+        public Update(String name,boolean active,ShippingFees shippingFees,FreeShippingThresholds freeShippingThresholds,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
+            this(name,active,shippingFees,freeShippingThresholds,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,registrationDefaultTier,null);
+        }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled,String registrationDefaultTier) {
-            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,registrationDefaultTier);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,registrationDefaultTier,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled,Boolean cryptoEnabled,Boolean onlinePaymentLinkEnabled) {
-            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,null,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation,Boolean commissionEnabled) {
-            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,null,null,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,commissionEnabled,null,null,null,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings) {
-            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,null,null,null,null,null,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,null,null,null,null,null,null,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme) {
-            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,null,null,null,null,null,null,null,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,null,null,null,null,null,null,null,null,null);
         }
         public Update(String name,boolean active,ShippingFees shippingFees,Instant expectedUpdatedAt,String domain,String logoUrl,String theme,Boolean registrationEnabled,MailSettingsInput mailSettings,String password,String confirmation) {
-            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,null,null,null,null);
+            this(name,active,shippingFees,null,expectedUpdatedAt,domain,logoUrl,theme,registrationEnabled,mailSettings,password,confirmation,null,null,null,null,null);
         }
     }
 }

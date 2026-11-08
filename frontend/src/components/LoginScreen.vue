@@ -3,6 +3,7 @@ import { onUnmounted, reactive, ref } from 'vue'
 import { storefrontBrand } from '../lib/storefront'
 import { ApiRequestError, customerRegistrationApi, type Area } from '../lib/api'
 import SellerLanguageSwitch from './SellerLanguageSwitch.vue'
+import AfterSalesContact from './AfterSalesContact.vue'
 
 const props = defineProps<{
   area: Area
@@ -191,8 +192,8 @@ onUnmounted(() => window.clearInterval(cooldownTimer))
 
     <div :class="['auth-shell', { 'seller-auth-shell': area === 'admin' }]">
       <div v-if="area === 'admin'" class="seller-login-brand">
-        <img v-if="merchantLogoUrl" class="brand-icon" :src="merchantLogoUrl" :alt="merchantName || 'YTPEPS'">
-        <strong>{{ merchantName || 'YTPEPS' }}</strong>
+        <img v-if="merchantLogoUrl" class="brand-icon" :src="merchantLogoUrl" :alt="merchantName || 'DailyActivity'">
+        <strong>{{ merchantName || 'DailyActivity' }}</strong>
         <small>{{ t('商家管理后台') }}</small>
         <SellerLanguageSwitch :model-value="language" :label="t('Language')" @update:model-value="emit('update:language', $event); emit('changeLanguage')" />
       </div>
@@ -274,11 +275,11 @@ onUnmounted(() => window.clearInterval(cooldownTimer))
       <div class="footer-top">
         <div class="footer-left">
           <div class="footer-company-name">{{ storefrontBrand.name }}</div>
-          <p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}<br><br>{{ t('The nice research company') }}</p>
+          <p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}</p>
         </div>
-        <div class="footer-right"><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div>
+        <div class="footer-right"><AfterSalesContact :t="t" :whatsapp-number="storefrontBrand.whatsappNumber" /><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div>
       </div>
     </footer>
-    <p v-else class="auth-footer">{{ t('Research use only · YTPEPS Co., Ltd.') }}</p>
+    <p v-else class="auth-footer">{{ t('商家管理后台') }}</p>
   </div>
 </template>

@@ -151,7 +151,7 @@ class PrdMerchantIsolationTest extends PrdDatabaseTest {
         var existing=merchantRepository.find(b.seller().merchantId()).orElseThrow();
         merchants.update(platform,existing.id(),new MerchantService.Update(existing.name(),true,existing.shippingFees(),existing.updatedAt(),existing.domain(),existing.logoUrl(),existing.theme()));
         assertThatCode(()->accounts.requireMenu(b.seller(),"products")).doesNotThrowAnyException();
-        var created=merchants.create(platform,new MerchantService.Create("NEW"+UUID.randomUUID().toString().substring(0,8),"New merchant",ShippingFees.uniform(new BigDecimal("7.50")),"new-"+UUID.randomUUID(),"Initial admin",PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD,"new-"+UUID.randomUUID()+".test","/ytpeps-logo.svg","classic",false,null));
+        var created=merchants.create(platform,new MerchantService.Create("NEW"+UUID.randomUUID().toString().substring(0,8),"New merchant",ShippingFees.uniform(new BigDecimal("7.50")),"new-"+UUID.randomUUID(),"Initial admin",PrdTestFixture.SELLER_PASSWORD,PrdTestFixture.SELLER_PASSWORD,"new-"+UUID.randomUUID()+".test","/dailyactivity-logo.svg","classic",false,null));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM seller WHERE merchant_id=?",Long.class,created.id())).isEqualTo(1);
         assertThat(jdbc.queryForList("SELECT menu_code FROM seller_permission WHERE seller_id=(SELECT id FROM seller WHERE merchant_id=? AND deleted=0) AND deleted=0",String.class,created.id()))
                 .contains("products","certificates","categories");

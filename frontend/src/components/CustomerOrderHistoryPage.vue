@@ -4,6 +4,7 @@ import OrderParcelList from './OrderParcelList.vue'
 import OrderPaymentRecords from './OrderPaymentRecords.vue'
 import CustomerDatePicker from './CustomerDatePicker.vue'
 import { fulfillmentStageState, partialFulfillmentStage, type FulfillmentStageKey, type FulfillmentStageState } from '../lib/fulfillment-progress'
+import { whatsappConsultationUrl } from '../lib/customer-support'
 import type { CustomerOrder, CustomerOrderItem } from '../types/customer'
 
 type OrderPage = { items: CustomerOrder[]; total: number; page: number; totalPages: number }
@@ -36,7 +37,7 @@ type OrderStats = {
   cancelled: number
 }
 
-defineProps<{
+const props = defineProps<{
   orders: OrderPage
   orderStats: OrderStats
   orderPageNumbers: number[]
@@ -51,6 +52,7 @@ defineProps<{
   search: string
   loading: boolean
   pendingActions: ReadonlySet<string>
+  whatsappNumber: string | null
   t: (text: string) => string
   money: (value: unknown) => string
   formatDateTime: (value: unknown) => string
@@ -150,6 +152,10 @@ function copyOrderItem(item: CustomerOrderItem, translate: (text: string) => str
   emit('copyValue', details, 'Items copied.')
 }
 
+function whatsappOrderUrl(orderNo: string) {
+  return whatsappConsultationUrl(props.whatsappNumber, `${props.t('Hello, I have a question about order:')} ${orderNo}`)
+}
+
 </script>
 
 <template>
@@ -240,6 +246,7 @@ function copyOrderItem(item: CustomerOrderItem, translate: (text: string) => str
             <button class="action-button" type="button" :disabled="loading || pendingActions.has('order-detail')" @click="emit('openOrder', order)">{{ t('Detail') }}</button>
             <button v-if="order.allowedActions?.includes('cancel')" class="action-button danger-action" type="button" :disabled="loading || pendingActions.has('order-cancel')" @click="emit('cancelOrder', order)"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m7.5 7.5 5 5m0-5-5 5"/></svg>{{ t('Cancel') }}</button>
           </div>
+          <a v-if="whatsappOrderUrl(order.orderNo)" class="action-button whatsapp-action" :href="whatsappOrderUrl(order.orderNo)" target="_blank" rel="noopener noreferrer" :aria-label="`${t('WhatsApp consultation about this order')} ${order.orderNo}`"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.7a8 8 0 0 1-11.9 7l-4.1 1.1 1.1-4A8 8 0 1 1 20 11.7Z"/><path d="M9 8.3c.2-.4.4-.4.7-.4h.5c.2 0 .4.1.5.4l.6 1.4c.1.3.1.5-.1.7l-.5.6c-.2.2-.2.4-.1.6.5.8 1.1 1.4 1.9 1.8.2.1.4.1.6-.1l.7-.8c.2-.2.4-.3.7-.2l1.4.7c.3.1.4.3.4.5 0 .6-.3 1.2-.8 1.5-.5.4-1.1.5-1.8.3-1.1-.3-2.2-1-3.2-2-1-.9-1.7-2-2-3.1-.2-.7-.1-1.3.2-1.8.2-.4.6-.7 1-.9Z"/></svg><span>WhatsApp</span></a>
         </div>
       </article>
       <div v-if="!orders.items.length" class="empty-state">{{ t('No orders match these filters.') }}</div>
@@ -281,7 +288,7 @@ function copyOrderItem(item: CustomerOrderItem, translate: (text: string) => str
           <div class="order-line-table">
             <div class="order-line-table-head"><span>{{ t('Product') }}</span><span>{{ t('Quantity') }}</span><span>{{ t('Unit price') }}</span><span>{{ t('Amount') }}</span></div>
             <div v-for="item in selectedOrder.items || []" :key="item.productId" class="order-line-table-row">
-              <div class="order-line-product"><strong>{{ item.name }}</strong><button class="detail-copy-button order-line-copy" type="button" :aria-label="`${t('Copy items')}: ${item.name}`" :title="t('Copy items')" @click="copyOrderItem(item, t, money)"><svg viewBox="0 0 18 18" aria-hidden="true"><rect x="6" y="6" width="9" height="11" rx="1.2"/><path d="M12 6V4.5A1.5 1.5 0 0 0 10.5 3h-7A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14H6"/></svg></button></div><span>{{ item.quantity }}</span><span>{{ money(item.unitPrice) }}</span><strong>{{ money(item.lineTotal) }}</strong>
+              <div class="order-line-product"><div><strong>{{ item.name }}</strong><div v-if="item.coas?.length" class="order-item-coa-links"><a v-for="coa in item.coas" :key="coa.fileUuid" class="link-button" :href="coa.publicUrl" target="_blank" rel="noopener noreferrer">{{ t('View COA') }} · {{ coa.name }}</a></div></div><button class="detail-copy-button order-line-copy" type="button" :aria-label="`${t('Copy items')}: ${item.name}`" :title="t('Copy items')" @click="copyOrderItem(item, t, money)"><svg viewBox="0 0 18 18" aria-hidden="true"><rect x="6" y="6" width="9" height="11" rx="1.2"/><path d="M12 6V4.5A1.5 1.5 0 0 0 10.5 3h-7A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14H6"/></svg></button></div><span>{{ item.quantity }}</span><span>{{ money(item.unitPrice) }}</span><strong>{{ money(item.lineTotal) }}</strong>
             </div>
             <p v-if="!selectedOrder.items?.length" class="order-detail-empty">{{ t('No order items') }}</p>
           </div>

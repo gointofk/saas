@@ -34,6 +34,11 @@ public class FileController {
         return Map.of("url", service.customerSignedUrl(uuid, AuthSupport.principal(r, "customer")));
     }
 
+    @GetMapping("/public/coas/{uuid}")
+    public ResponseEntity<Resource> publicCoa(@PathVariable String uuid) {
+        return service.publicCoaContent(uuid);
+    }
+
     @GetMapping("/files/{uuid}/content")
     public ResponseEntity<Resource> content(@PathVariable String uuid, @RequestParam long expires, @RequestParam String signature) {
         return service.content(uuid, expires, signature);

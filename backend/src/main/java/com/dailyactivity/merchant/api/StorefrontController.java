@@ -13,7 +13,7 @@ public class StorefrontController {
     @GetMapping
     public ResponseEntity<Brand> get(HttpServletRequest request) {
         var m=storefront.resolve(request);
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Brand(m.name(),m.logoUrl(),m.theme(),m.registrationEnabled(),m.commissionEnabled()));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Brand(m.name(),m.logoUrl(),m.theme(),m.registrationEnabled(),m.commissionEnabled(),m.whatsappNumber()));
     }
-    public record Brand(String name,String logoUrl,String theme,boolean registrationEnabled,boolean commissionEnabled) {}
+    public record Brand(String name,String logoUrl,String theme,boolean registrationEnabled,boolean commissionEnabled,String whatsappNumber) {}
 }

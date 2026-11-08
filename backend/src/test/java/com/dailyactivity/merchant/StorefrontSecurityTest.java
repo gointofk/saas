@@ -30,7 +30,7 @@ class StorefrontSecurityTest {
     private final MerchantRepository merchants=mock(MerchantRepository.class);
     private final StorefrontService storefront=new StorefrontService(merchants);
     private MerchantRepository.Merchant merchant(long id,boolean active) {
-        return new MerchantRepository.Merchant(id,"TEST","Shop",active,ShippingFees.uniform(BigDecimal.TEN),Instant.EPOCH,"shop.test","/ytpeps-logo.svg","classic");
+        return new MerchantRepository.Merchant(id,"TEST","Shop",active,ShippingFees.uniform(BigDecimal.TEN),Instant.EPOCH,"shop.test","/dailyactivity-logo.svg","classic");
     }
     @Test void normalizesDomainsAndRejectsUrls() {
         assertThat(StorefrontService.normalizeDomain(" SHOP.Test. ")).isEqualTo("shop.test");

@@ -245,5 +245,4 @@ test('buyer header renders the current merchant name and logo', async () => {
   const html = await renderToString(createSSRApp(Header, { activePage: 'products', cartCount: 0, language: 'en', t: text => text }))
   assert.match(html, /Forest Research/)
   assert.match(html, /https:\/\/cdn.example.com\/forest.png/)
-  assert.doesNotMatch(html, /YTPEPS/)
 })

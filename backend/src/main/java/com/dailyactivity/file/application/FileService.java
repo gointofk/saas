@@ -28,6 +28,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.time.Instant;
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Service
 public class FileService {
@@ -37,7 +38,11 @@ public class FileService {
     private static final String IMAGE_BMP = "image/bmp";
     private static final Set<String> ORDER_IMAGE_TYPES = Set.of(
             MediaType.IMAGE_JPEG_VALUE, MediaType.IMAGE_PNG_VALUE, IMAGE_GIF, IMAGE_BMP);
+    private static final Set<String> COA_MEDIA_TYPES = Set.of(
+            MediaType.APPLICATION_PDF_VALUE, MediaType.IMAGE_JPEG_VALUE, MediaType.IMAGE_PNG_VALUE);
     private static final long UPLOAD_TOKEN_TTL_SECONDS = 24 * 60 * 60;
+    private static final Pattern UUID_PATTERN = Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+    private static final String PUBLIC_COA_CACHE_CONTROL = "public, max-age=31536000, immutable";
     private final FileRepository files;
     private final AccountService accounts;
     private final FileProperties properties;
@@ -158,6 +163,24 @@ public class FileService {
         return signedUrl(availableFile(uuid));
     }
 
+    @Transactional(readOnly = true)
+    public ResponseEntity<Resource> publicCoaContent(String uuid) {
+        if (uuid == null || !UUID_PATTERN.matcher(uuid).matches())
+            throw ApiException.notFound("File not found.");
+        FileRepository.FileAsset asset = files.findPublicCoa(uuid)
+                .orElseThrow(() -> ApiException.notFound("File not found."));
+        if (!"coa".equals(asset.purpose()) || !"available".equals(asset.status())
+                || !COA_MEDIA_TYPES.contains(asset.mediaType()))
+            throw ApiException.notFound("File not found.");
+        return fileResponse(asset, PUBLIC_COA_CACHE_CONTROL);
+    }
+
+    public String publicCoaUrl(String uuid) {
+        String path = "/api/v1/public/coas/" + uuid;
+        String baseUrl = properties.publicCoaBaseUrl();
+        return baseUrl == null || baseUrl.isBlank() ? path : baseUrl + "/" + uuid;
+    }
+
     private FileRepository.FileAsset availableFile(String uuid) {
         return files.find(uuid).filter(asset -> "available".equals(asset.status()))
                 .orElseThrow(() -> ApiException.notFound("File not found."));
@@ -203,11 +226,24 @@ public class FileService {
         var a = files.find(uuid).orElseThrow(() -> ApiException.notFound("File not found."));
         if (expires < Instant.now().getEpochSecond() || !"available".equals(a.status()) || !constantTime(signContent(a, expires), signature))
             throw ApiException.unauthorized("Signed file URL is invalid or expired.");
+        return fileResponse(a, null);
+    }
+
+    private ResponseEntity<Resource> fileResponse(FileRepository.FileAsset asset, String cacheControl) {
         Path root = Path.of(properties.root()).toAbsolutePath().normalize();
-        Path path = root.resolve(a.storedName()).normalize();
+        Path path = root.resolve(asset.storedName()).normalize();
         if (!path.startsWith(root) || !Files.isRegularFile(path))
             throw ApiException.notFound("File content not found.");
-        return ResponseEntity.ok().contentType(MediaType.parseMediaType(a.mediaType())).header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + a.originalName().replace("\"", "") + "\"").header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy", "sandbox").body(new FileSystemResource(path));
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(asset.mediaType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + asset.originalName().replace("\"", "") + "\"")
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "sandbox");
+        if (cacheControl != null) {
+            response.header(HttpHeaders.CACHE_CONTROL, cacheControl)
+                    .header(HttpHeaders.ETAG, "\"" + asset.sha256() + "\"");
+        }
+        return response.body(new FileSystemResource(path));
     }
 
     private String menu(String purpose) {

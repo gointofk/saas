@@ -8,6 +8,8 @@ public interface FileRepository {
 
     Optional<FileAsset> find(String uuid);
 
+    Optional<FileAsset> findPublicCoa(String uuid);
+
     boolean belongsToMerchant(String uuid, long merchantId);
 
     boolean orderBelongsToMerchant(long orderId, long merchantId);

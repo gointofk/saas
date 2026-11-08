@@ -4,6 +4,7 @@ import type { CustomerOrderAction, FulfillmentSummary, OrderParcel } from '../li
 export type CustomerCoa = {
   name: string | null
   fileUuid: string
+  publicUrl: string
   lot: string | null
   testDate: string | null
 }
@@ -34,6 +35,7 @@ export type CustomerCertificate = {
   fill?: string | null
   testDate?: string | null
   fileUuid?: string
+  publicUrl: string
 }
 
 export type CustomerCartItem = {
@@ -145,6 +147,15 @@ export type CustomerOrderItem = {
   unitPrice: number | string
   lineTotal: number | string
   productType?: string
+  coas?: Array<{
+    name: string
+    fileUuid: string
+    publicUrl: string
+    lot: string | null
+    purity: string | null
+    fill: string | null
+    testDate: string | null
+  }>
 }
 
 export type CustomerOrder = {
