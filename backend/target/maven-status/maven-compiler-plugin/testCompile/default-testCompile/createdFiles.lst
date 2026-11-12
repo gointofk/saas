@@ -6,8 +6,10 @@ com/dailyactivity/identity/PrdReferralCollectedTest.class
 com/dailyactivity/auth/application/LoginRateLimiterTest$MutableClock.class
 com/dailyactivity/merchant/PrdMerchantIsolationTest.class
 com/dailyactivity/order/OrderParcelServiceTest.class
+com/dailyactivity/order/PrdOrderReturnToAuditTest.class
 com/dailyactivity/support/TestFileServiceConfiguration$1.class
 com/dailyactivity/catalog/PrdQuantityPricingTest.class
+com/dailyactivity/order/OrderReturnToAuditServiceTest.class
 com/dailyactivity/billing/PrdBillingAndReportingTest.class
 com/dailyactivity/auth/MenuAuthorizationInterceptorTest$TestHandler.class
 com/dailyactivity/merchant/MerchantAuthorizationTest.class

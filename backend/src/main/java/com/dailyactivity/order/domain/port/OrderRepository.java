@@ -41,6 +41,8 @@ public interface OrderRepository {
 
     void decideAudit(long orderId, String result, String remark, Actor actorId);
 
+    void reopenAudit(long orderId, Actor actorId);
+
     void withdrawPendingAudit(long orderId, Actor actorId);
 
     List<OrderRow> findPage(long merchantId, Long customerId, String status, String paymentStatus, String query, Instant from, Instant to, int page);

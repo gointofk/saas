@@ -171,6 +171,13 @@ public class OrderController {
     public Map<String, Object> action(@PathVariable long id, @PathVariable String action, @RequestBody(required = false) OrderService.SellerAction b, HttpServletRequest r) {
         return service.sellerAction(AuthSupport.principal(r, "seller"), id, action, b == null ? new OrderService.SellerAction(null, null, null, null, null, null, null, null, false, null) : b);
     }
+
+    @RequireMenu("orders")
+    @PostMapping("/admin/orders/{id}/return-to-audit")
+    public Map<String, Object> returnToAudit(@PathVariable long id, @RequestBody OrderService.ReturnToAudit body, HttpServletRequest r) {
+        return service.returnToAudit(AuthSupport.principal(r, "seller"), id, body);
+    }
+
     @RequireMenu("orders")
     @PostMapping("/admin/orders/{id}/parcels")
     public Map<String, Object> packParcels(@PathVariable long id, @RequestBody OrderParcelService.PackRequest body, HttpServletRequest r) {

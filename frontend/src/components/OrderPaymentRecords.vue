@@ -47,8 +47,9 @@ watch(() => [props.orderId, props.area], () => { records.value = { items: [], pa
         <dl class="payment-record-fields" :class="{ 'is-admin': area === 'admin' }">
           <div class="payment-record-field payment-record-channel"><dt>{{ t('Channel') }}</dt><dd>{{ record.channelSnapshot.name || '—' }}</dd></div>
           <template v-if="area === 'admin'">
+            <div class="payment-record-field payment-record-network"><dt>{{ t('Network') }}</dt><dd>{{ record.channelSnapshot.network || '—' }}</dd></div>
             <div class="payment-record-field payment-record-amount"><dt>{{ t('Amount') }}</dt><dd>{{ money(record.receivedAmount ?? record.declaredAmount) }}</dd></div>
-            <div v-if="record.submissionId != null" class="payment-record-field payment-record-time">
+            <div v-if="record.submissionId != null" class="payment-record-field payment-record-time payment-record-submitted">
               <dt>{{ t('Submitted at') }}</dt>
               <dd><time v-if="record.submittedAt" :datetime="record.submittedAt">{{ formatDateTime(record.submittedAt) }}</time><span v-else>—</span></dd>
             </div>
@@ -135,12 +136,14 @@ watch(() => [props.orderId, props.area], () => { records.value = { items: [], pa
 .is-admin .payment-record-verifier { grid-column: span 6; }
 .is-admin .payment-record-verifier dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .is-admin .payment-record-channel dd { font-size: 13px; }
+.is-admin .payment-record-network dd { font-size: 13px; }
 .is-admin .payment-record-amount { text-align: left; }
 .is-admin .payment-record-amount dd { font-size: 16px; }
 .is-admin .payment-record-transaction { grid-column: 1 / -1; padding: 0; border: 0; border-radius: 0; background: none; }
 .is-admin .payment-record-transaction dt { display: block; }
 .is-admin .payment-record-transaction dd { font-family: inherit; font-size: 13px; line-height: 1.5; }
 .is-admin .payment-record-time { grid-column: span 6; flex-wrap: wrap; gap: 2px 8px; }
+.is-admin .payment-record-submitted { grid-column: span 3; }
 .is-admin .payment-record-time dd { color: var(--color-muted, #6e6e73); font-size: 11px; }
 .payment-record-unverified { color: var(--color-danger, #d70015); }
 .payment-pagination { display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 16px; }
@@ -155,6 +158,6 @@ button:focus-visible { outline: 2px solid var(--color-primary, #005bb5); outline
   .payment-record-transaction { padding: 10px; }
   .payment-record-fields.is-admin { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
   .is-admin .payment-record-field { grid-column: 1 / -1; }
-  .is-admin .payment-record-channel, .is-admin .payment-record-amount { grid-column: span 1; }
+  .is-admin .payment-record-channel, .is-admin .payment-record-network, .is-admin .payment-record-amount { grid-column: span 1; }
 }
 </style>

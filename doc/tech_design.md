@@ -572,7 +572,9 @@ WHERE id = :orderId AND customer_id = :customerId
 
 审核商品编辑使用独立 `PATCH /admin/order-audits/{id}`，只要求 `order_audit` 权限，并锁定待审订单；请求为完整有效商品集合 `items[{productId,quantity,unitPrice?}]`、`reason?`（最多 256 字）、`discountAmount?`（省略保留已有优惠）、必填 `expectedUpdatedAt`。缺失的原商品行软删除，已移除商品重新添加创建新的快照行；数量按精确整数校验，避免 JSON 小数被截断。先构建并校验完整候选集合，再原子提交库存差额、行、订单金额和 `audit_updated` 内部事件（保存商品集合和金额前后快照，修改原因不向客户返回）。既有行保留名称/SKU/类型快照及未调整的成交价，人工改价记录原因和 manual 价格来源。新行读取当前客户等级价/默认价与成本快照，须商品上架且类目启用；赠品固定 0。候选搜索与保存重新验证均支持正品与赠品，商品搜索按名称/SKU、固定每页 10 条；前端点击“新增商品”时才加载独立选择弹窗，选择后确认添加到订单草稿，取消不修改草稿，保存订单时统一提交。选择弹窗打开时底层编辑弹窗设置 inert 和 aria-hidden，关闭后焦点回到新增按钮。无需额外 `products` 权限，不返回成本或商品维护接口。付款已申报仍允许审核编辑正品、数量、价格和优惠，原申报金额与渠道快照不改写；有实际确认收款时才锁定金额。至少保留一行商品，运费与推荐关系快照不变。审核编辑不创建财务记录、不改审核或支付状态；审核决定与客户编辑/取消/付款均由同一订单锁及版本检查防止过期覆盖。
 
-通过时在同一事务读取审核后的订单快照并创建唯一应收账单；若快照有推荐人且费率大于 0，再创建佣金计提及对应应付账单。拒绝时同一事务将 `order_status` 改为 `cancelled`、按当前有效商品行逐项恢复库存并追加取消事件；不创建应收或佣金。审核不改写独立的 `payment_status` 或付款申报。两种决定均追加 `audit_approved` / `audit_rejected` 事件。普通后台订单、订单统计、佣金、账单及其导出查询均限定 `audit_status=approved`；客户本人订单历史及付款汇总按原订单和付款规则工作，不返回审核信息。客户审核前取消时改为内部 `withdrawn`，保留既有客户取消库存回补规则并退出审核队列。
+通过时在同一事务读取审核后的订单快照并创建唯一应收账单；若快照有推荐人且费率大于 0，再创建佣金计提及对应应付账单。账单和佣金均按订单业务唯一键使用 `ON DUPLICATE KEY UPDATE`，使打回后的重新通过复用原事实并更新金额，不产生重复应收或佣金。拒绝时同一事务将 `order_status` 改为 `cancelled`、按当前有效商品行逐项恢复库存、作废应收和可作废佣金并追加取消事件。审核不改写独立的 `payment_status` 或付款申报。两种决定均追加 `audit_approved` / `audit_rejected` 事件。
+
+已审核通过且 `order_status=pending` 的订单可通过 `POST /admin/orders/{id}/return-to-audit` 打回审核，要求 `orders` 菜单权限和 `expectedUpdatedAt`。服务端锁单后拒绝已创建包裹或已结佣订单；条件更新将 `audit_status` 恢复为 `pending`，清除本轮审核人、审核时间和备注，把未结佣金及佣金应付账单恢复为 `estimated`，并追加 `audit_returned` 事件。应收账单保留，重新审核通过时按最新订单金额更新；重新拒绝时统一作废。普通后台订单、订单统计、佣金、账单及其导出查询均限定 `audit_status=approved`，因此打回期间相关财务事实暂不进入审核通过后的业务视图。客户本人订单历史及付款汇总按原订单和付款规则工作，不返回审核信息。客户审核前取消时改为内部 `withdrawn`，保留既有客户取消库存回补规则并退出审核队列。
 
 ### 6.5 编辑、取消与库存
 
@@ -762,6 +764,7 @@ allowedActions 由服务端计算，仅用于交互提示，不能替代命令�
 | `GET /dashboard` | 当前实现为 `/orders/summary` 的后台别名，返回工作台汇总 | orders / 当前前端兼容 |
 | `PATCH /orders/{id}` | 商品行、结构化地址、备注、改价原因、expectedUpdatedAt；锁订单后按版本及金额锁定规则校验 | orders / S-03 |
 | `POST /orders/{id}/confirm-payment` | expectedTotalAmount、receivedAmount、submissionId?、transactionNo、channelId?、internalNote?、必填 expectedUpdatedAt；有申报时沿用原渠道快照；无申报时加密货币渠道要求方式启用，channelId=0 表示站外线上支付链接（要求当前启用或订单已有申请），保存固定渠道快照 | orders / S-04 |
+| `POST /orders/{id}/return-to-audit` | 已审核通过且待处理、尚未创建包裹、佣金未结算的订单打回审核；必填 expectedUpdatedAt；清空本轮审核结论并追加 audit_returned 事件，重新通过时复用并更新应收/佣金事实 | orders / S-02A |
 | `POST /orders/{id}/parcels` | parcels[{parcelUuid,items[{orderItemId,quantity}],files[{fileUuid,uploadToken}],publicNote?}]、必填 expectedUpdatedAt；直接确认打包，单次 1～100 包 | orders / S-05 |
 | `POST /orders/{id}/parcels/ship` | parcels[{parcelId,trackingNo,carrier?,labelFiles?,publicNote?}]、必填 expectedUpdatedAt；运单号非空、面单可省略或为空，1～100 包，全成功或全失败 | orders / S-05 |
 | `POST /orders/{id}/parcels/receive` | parcelIds[]、confirmed=true、publicNote?、必填 expectedUpdatedAt；1～100 包，全成功或全失败 | orders / S-05 |

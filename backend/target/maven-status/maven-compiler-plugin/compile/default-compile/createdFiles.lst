@@ -180,6 +180,7 @@ com/dailyactivity/catalog/domain/port/CatalogRepository$ProductCoaView.class
 com/dailyactivity/order/domain/port/OrderRepository$Dashboard.class
 com/dailyactivity/commission/domain/port/CommissionRepository$AccrualFilter.class
 com/dailyactivity/platform/api/PlatformOperationsController.class
+com/dailyactivity/order/application/OrderService$ReturnToAudit.class
 com/dailyactivity/certificate/domain/port/CertificateRepository$Input.class
 com/dailyactivity/inventory/domain/port/InventoryRepository.class
 com/dailyactivity/identity/application/RegistrationRateLimiter.class

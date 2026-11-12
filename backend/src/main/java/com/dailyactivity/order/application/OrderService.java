@@ -456,12 +456,34 @@ public class OrderService {
             for (var item : orders.items(id))
                 inventory.restore(p.merchantId(), item.productId(), item.quantity(), "Order review rejected", operationId, id, p.actor());
             orders.updateStatus(id, "cancelled", null, null, p.actor());
+            orders.updateBillingVoid(id, p.actor());
+            orders.updateCommissionVoid(id, p.actor());
             orders.addEvent(id, operationId, "cancelled", "pending", "cancelled", null, null, null, p.actor());
         }
         orders.addEvent(id, operationId, "approved".equals(request.result()) ? "audit_approved" : "audit_rejected",
                 "pending_review", request.result(), null, null, remark, p.actor());
         var decided = orders.find(p.merchantId(), id, row.customerId()).orElseThrow(() -> ApiException.notFound("Order not found."));
         return detail(decided, true, p);
+    }
+
+    @Transactional
+    public Map<String, Object> returnToAudit(Principal p, long id, ReturnToAudit request) {
+        accounts.requireMenu(p, "orders");
+        if (request == null || request.expectedUpdatedAt() == null)
+            throw ApiException.badRequest("ORDER_VERSION_REQUIRED", "请重新打开订单后再打回审核。");
+        var row = orders.findForUpdate(p.merchantId(), id, null).orElseThrow(() -> ApiException.notFound("Order not found."));
+        checkOrderVersion(row, request.expectedUpdatedAt());
+        if (!"approved".equals(row.auditStatus()) || !"pending".equals(row.status()))
+            throw ApiException.conflict("ORDER_NOT_RETURNABLE", "只有待处理的已审核订单可以打回审核。");
+        if (parcels.hasParcels(id))
+            throw ApiException.conflict("ORDER_PARCELS_STARTED", "订单已开始打包，不能打回审核。");
+        if (orders.hasSettledCommission(id))
+            throw ApiException.conflict("ORDER_COMMISSION_SETTLED", "佣金已结算的订单不能打回审核。");
+        String operationId = UUID.randomUUID().toString();
+        orders.reopenAudit(id, p.actor());
+        orders.addEvent(id, operationId, "audit_returned", "approved", "pending", null, null, null, p.actor());
+        var reopened = orders.findAuditOrder(p.merchantId(), id).orElseThrow(() -> ApiException.notFound("Order not found."));
+        return detail(reopened, true, p);
     }
 
     @Transactional(readOnly = true)
@@ -1150,6 +1172,9 @@ public class OrderService {
         public AuditDecision(String result, String remark, Instant expectedUpdatedAt) {
             this(result, remark, expectedUpdatedAt, null);
         }
+    }
+
+    public record ReturnToAudit(Instant expectedUpdatedAt) {
     }
 
     public record PaymentRequest(long channelId, String transactionNo, BigDecimal expectedTotalAmount, Instant expectedUpdatedAt, BigDecimal declaredAmount) {

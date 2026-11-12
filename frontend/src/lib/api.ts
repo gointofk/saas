@@ -93,6 +93,11 @@ export const orderPaymentApi = {
   records: (area: Area, id: number, page: number) => request<PaymentRecordPage>(`/${area}/orders/${id}/payments?page=${page}`, {}, area),
 }
 
+export const adminOrderApi = {
+  returnToAudit: (id: number, expectedUpdatedAt: string) =>
+    request<void>(`/admin/orders/${id}/return-to-audit`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt }) }, 'admin'),
+}
+
 export type AuditOrderItem = {
   quantityPrices?: QuantityPriceBand[]
   productId: number
