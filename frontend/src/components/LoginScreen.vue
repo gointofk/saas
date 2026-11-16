@@ -4,6 +4,7 @@ import { storefrontBrand } from '../lib/storefront'
 import { ApiRequestError, customerRegistrationApi, type Area } from '../lib/api'
 import SellerLanguageSwitch from './SellerLanguageSwitch.vue'
 import AfterSalesContact from './AfterSalesContact.vue'
+import FloatingWhatsApp from './FloatingWhatsApp.vue'
 
 const props = defineProps<{
   area: Area
@@ -277,9 +278,10 @@ onUnmounted(() => window.clearInterval(cooldownTimer))
           <div class="footer-company-name">{{ storefrontBrand.name }}</div>
           <p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}</p>
         </div>
-        <div class="footer-right"><AfterSalesContact :t="t" :whatsapp-number="storefrontBrand.whatsappNumber" /><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div>
+        <div class="footer-right"><AfterSalesContact :t="t" :whatsapp-number="storefrontBrand.whatsappNumber" :telegram-url="storefrontBrand.telegramUrl" /><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div>
       </div>
     </footer>
     <p v-else class="auth-footer">{{ t('商家管理后台') }}</p>
+    <FloatingWhatsApp v-if="area === 'customer'" :whatsapp-number="storefrontBrand.whatsappNumber" :label="t('Chat with us on WhatsApp')" />
   </div>
 </template>

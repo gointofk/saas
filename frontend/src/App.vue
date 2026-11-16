@@ -14,6 +14,7 @@ import AppModal from './components/AppModal.vue'
 import { applyMerchantBranding, storefrontBrand } from './lib/storefront'
 import CustomerHeader from './components/CustomerHeader.vue'
 import AfterSalesContact from './components/AfterSalesContact.vue'
+import FloatingWhatsApp from './components/FloatingWhatsApp.vue'
 import CustomerDatePicker from './components/CustomerDatePicker.vue'
 import CustomerNotice from './components/CustomerNotice.vue'
 import LoginScreen from './components/LoginScreen.vue'
@@ -3199,8 +3200,12 @@ watch(adminSearch, () => {
       @change-password="changePassword"
     />
 
-    <footer class="customer-footer"><div class="footer-top"><div class="footer-left"><div class="footer-company-name">{{ storefrontBrand.name }}</div><p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}</p></div><div class="footer-right"><AfterSalesContact :t="t" :whatsapp-number="storefrontBrand.whatsappNumber" /><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div></div></footer>
-    <a v-if="customerPage === 'products'" class="float-cart" href="/cart" @click.prevent="goCustomer('cart')"><span class="cart-count-badge">{{ cartCount }}</span><span class="float-cart-label">{{ money(cart.total) }}{{ t('View cart →') }}</span></a>
+    <footer class="customer-footer"><div class="footer-top"><div class="footer-left"><div class="footer-company-name">{{ storefrontBrand.name }}</div><p class="footer-desc">{{ t('All materials listed are supplied for laboratory research use only and are not for human or veterinary use, food, or drug applications.') }}</p></div><div class="footer-right"><AfterSalesContact :t="t" :whatsapp-number="storefrontBrand.whatsappNumber" :telegram-url="storefrontBrand.telegramUrl" /><p><a href="#" @click.prevent>{{ t('Terms & Conditions') }}</a>© {{ new Date().getFullYear() }} {{ storefrontBrand.name }}</p></div></div></footer>
+    <FloatingWhatsApp :whatsapp-number="storefrontBrand.whatsappNumber" :label="t('Chat with us on WhatsApp')" :above-cart="customerPage === 'products'" />
+    <a v-if="customerPage === 'products'" class="float-cart" href="/cart" :aria-label="`${t('Cart')}: ${money(cart.total)}`" @click.prevent="goCustomer('cart')">
+      <svg class="float-cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h2l1.5 10.5h10L20 8H7"/><circle cx="9.5" cy="19" r="1"/><circle cx="17" cy="19" r="1"/></svg>
+      <span class="float-cart-total">{{ money(cart.total) }}</span>
+    </a>
     <CustomerOrderEditModal
       v-if="orderEditOpen"
       :order="selectedOrder"

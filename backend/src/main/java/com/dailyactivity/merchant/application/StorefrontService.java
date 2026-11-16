@@ -12,6 +12,7 @@ import java.util.Set;
 
 @Service
 public class StorefrontService {
+    private static final Set<String> TELEGRAM_HOSTS = Set.of("t.me", "telegram.me");
     private final MerchantRepository merchants;
     public StorefrontService(MerchantRepository merchants) { this.merchants=merchants; }
 
@@ -32,6 +33,30 @@ public class StorefrontService {
             boolean https="https".equals(uri.getScheme()) && uri.getHost()!=null && uri.getUserInfo()==null;
             if (logo == null || logo.isBlank() || logo.length()>512 || (!local && !https)) throw new IllegalArgumentException();
         } catch (IllegalArgumentException e) { throw ApiException.badRequest("INVALID_LOGO","Logo must be a site-relative path or HTTPS URL."); }
+    }
+    public static String normalizeTelegramUrl(String value) {
+        if (value == null || value.isBlank()) return null;
+        String candidate = value.trim();
+        try {
+            URI uri = URI.create(candidate);
+            String host = uri.getHost();
+            String path = uri.getRawPath();
+            boolean unsafeCharacters = candidate.chars().anyMatch(Character::isWhitespace)
+                    || candidate.chars().anyMatch(Character::isISOControl);
+            if (candidate.length() > 512
+                    || !"https".equalsIgnoreCase(uri.getScheme())
+                    || host == null
+                    || uri.getRawUserInfo() != null
+                    || uri.getPort() != -1
+                    || !TELEGRAM_HOSTS.contains(host.toLowerCase(Locale.ROOT))
+                    || path == null
+                    || path.isEmpty()
+                    || path.equals("/")
+                    || unsafeCharacters) throw new IllegalArgumentException();
+            return candidate;
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("INVALID_TELEGRAM_URL","Enter a valid HTTPS Telegram link such as https://t.me/yourchannel.");
+        }
     }
     @Transactional(readOnly=true)
     public MerchantRepository.Merchant resolve(HttpServletRequest request) {

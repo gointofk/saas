@@ -12,6 +12,7 @@ public interface MerchantRepository {
     Optional<Merchant> findByDomain(String domain);
     void branding(long id, String domain, String logoUrl, String theme);
     void updateWhatsAppNumber(long id, String whatsappNumber, long actor);
+    void updateTelegramUrl(long id, String telegramUrl, long actor);
     Merchant lock(long id);
     List<Merchant> page(int page);
     long count();
@@ -49,14 +50,23 @@ public interface MerchantRepository {
                     FreeShippingThresholds freeShippingThresholds, Instant updatedAt, String domain,
                     String logoUrl, String theme, boolean registrationEnabled, String registrationDefaultTier,
                     boolean commissionEnabled, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled,
-                    String whatsappNumber) {
+                    String whatsappNumber, String telegramUrl) {
         public Merchant(long id, String code, String name, boolean active, ShippingFees shippingFees,
                         FreeShippingThresholds freeShippingThresholds, Instant updatedAt, String domain,
                         String logoUrl, String theme, boolean registrationEnabled, String registrationDefaultTier,
                         boolean commissionEnabled, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled) {
             this(id, code, name, active, shippingFees, freeShippingThresholds, updatedAt, domain, logoUrl, theme,
                     registrationEnabled, registrationDefaultTier, commissionEnabled, cryptoEnabled,
-                    onlinePaymentLinkEnabled, null);
+                    onlinePaymentLinkEnabled, null, null);
+        }
+        public Merchant(long id, String code, String name, boolean active, ShippingFees shippingFees,
+                        FreeShippingThresholds freeShippingThresholds, Instant updatedAt, String domain,
+                        String logoUrl, String theme, boolean registrationEnabled, String registrationDefaultTier,
+                        boolean commissionEnabled, boolean cryptoEnabled, boolean onlinePaymentLinkEnabled,
+                        String whatsappNumber) {
+            this(id, code, name, active, shippingFees, freeShippingThresholds, updatedAt, domain, logoUrl, theme,
+                    registrationEnabled, registrationDefaultTier, commissionEnabled, cryptoEnabled,
+                    onlinePaymentLinkEnabled, whatsappNumber, null);
         }
         public Merchant(long id, String code, String name, boolean active, ShippingFees fees, Instant time,
                         String domain, String logoUrl, String theme, boolean registrationEnabled,
@@ -64,22 +74,22 @@ public interface MerchantRepository {
                         boolean onlinePaymentLinkEnabled) {
             this(id, code, name, active, fees, FreeShippingThresholds.disabled(), time, domain, logoUrl, theme,
                     registrationEnabled, registrationDefaultTier, commissionEnabled, cryptoEnabled,
-                    onlinePaymentLinkEnabled, null);
+                    onlinePaymentLinkEnabled, null, null);
         }
         public Merchant(long id,String code,String name,boolean active,ShippingFees fees,Instant time,String domain,String logoUrl,String theme,boolean registrationEnabled,boolean commissionEnabled,boolean cryptoEnabled,boolean onlinePaymentLinkEnabled) {
-            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,domain,logoUrl,theme,registrationEnabled,"V1",commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,null);
+            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,domain,logoUrl,theme,registrationEnabled,"V1",commissionEnabled,cryptoEnabled,onlinePaymentLinkEnabled,null,null);
         }
         public Merchant(long id,String code,String name,boolean active,ShippingFees fees,Instant time,String domain,String logoUrl,String theme,boolean registrationEnabled,boolean commissionEnabled) {
-            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,domain,logoUrl,theme,registrationEnabled,"V1",commissionEnabled,true,false,null);
+            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,domain,logoUrl,theme,registrationEnabled,"V1",commissionEnabled,true,false,null,null);
         }
         public Merchant(long id,String code,String name,boolean active,ShippingFees fees,Instant time,String domain,String logoUrl,String theme,boolean registrationEnabled) {
-            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,domain,logoUrl,theme,registrationEnabled,"V1",true,true,false,null);
+            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,domain,logoUrl,theme,registrationEnabled,"V1",true,true,false,null,null);
         }
         public Merchant(long id,String code,String name,boolean active,ShippingFees fees,Instant time,String domain,String logoUrl,String theme) {
-            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,domain,logoUrl,theme,false,"V1",true,true,false,null);
+            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,domain,logoUrl,theme,false,"V1",true,true,false,null,null);
         }
         public Merchant(long id,String code,String name,boolean active,ShippingFees fees,Instant time) {
-            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,null,"/dailyactivity-logo.svg","classic",false,"V1",true,true,false,null);
+            this(id,code,name,active,fees,FreeShippingThresholds.disabled(),time,null,"/dailyactivity-logo.svg","classic",false,"V1",true,true,false,null,null);
         }
     }
 }

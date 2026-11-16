@@ -24,6 +24,7 @@ CREATE TABLE merchant (
   domain VARCHAR(253) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
   logo_url VARCHAR(512) NOT NULL DEFAULT '/dailyactivity-logo.svg',
   whatsapp_number VARCHAR(32) NULL COMMENT '国际格式 WhatsApp 售后号码；NULL 表示未配置',
+  telegram_url VARCHAR(512) NULL COMMENT 'HTTPS Telegram 联系链接；NULL 表示未配置',
   theme VARCHAR(32) NOT NULL DEFAULT 'classic',
   active TINYINT NOT NULL DEFAULT 1,
   customer_registration_enabled TINYINT NOT NULL DEFAULT 0,

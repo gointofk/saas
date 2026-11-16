@@ -29,7 +29,7 @@ public class JdbcMerchantRepository implements MerchantRepository {
                 r.getTimestamp("updated_at").toInstant(), r.getString("domain"), r.getString("logo_url"), r.getString("theme"),
                 r.getBoolean("customer_registration_enabled"), r.getString("customer_registration_default_tier"), r.getBoolean("commission_enabled"),
                 r.getBoolean("crypto_payment_enabled"), r.getBoolean("online_payment_link_enabled"),
-                r.getString("whatsapp_number"));
+                r.getString("whatsapp_number"), r.getString("telegram_url"));
     }
     public Optional<Merchant> find(long id) {
         return jdbc.query("SELECT * FROM merchant WHERE id=:id", new MapSqlParameterSource("id", id), r -> r.next() ? Optional.of(row(r)) : Optional.empty());
@@ -45,6 +45,10 @@ public class JdbcMerchantRepository implements MerchantRepository {
     public void updateWhatsAppNumber(long id, String whatsappNumber, long actor) {
         jdbc.update("UPDATE merchant SET whatsapp_number=:number,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type='platform' WHERE id=:id",
                 new MapSqlParameterSource("id",id).addValue("number",whatsappNumber).addValue("actor",actor));
+    }
+    public void updateTelegramUrl(long id, String telegramUrl, long actor) {
+        jdbc.update("UPDATE merchant SET telegram_url=:url,updated_at=UTC_TIMESTAMP(6),updated_by_user_id=:actor,updated_by_type='platform' WHERE id=:id",
+                new MapSqlParameterSource("id",id).addValue("url",telegramUrl).addValue("actor",actor));
     }
     public Merchant lock(long id) {
         return jdbc.query("SELECT * FROM merchant WHERE id=:id FOR UPDATE", new MapSqlParameterSource("id", id), r -> {

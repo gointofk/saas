@@ -139,6 +139,31 @@ test('registration reveals mail settings and incomplete settings cannot be saved
   } finally { merchantApi.update = originalUpdate }
 })
 
+test('Telegram links require an official HTTPS host and are included in the save payload', async () => {
+  const originalUpdate = merchantApi.update, originalPage = merchantApi.page
+  const calls = []
+  merchantApi.update = async (...args) => { calls.push(args); return merchant }
+  merchantApi.page = async () => ({ items: [merchant], page: 1, total: 1, totalPages: 1 })
+  try {
+    const { state } = await form({ ...merchant, telegramUrl: 'https://t.me/original-channel' })
+    assert.equal(state.draft.telegramUrl, 'https://t.me/original-channel')
+    state.draft.telegramUrl = 'http://t.me/channel'
+    await state.save()
+    assert.equal(calls.length, 0)
+    assert.match(state.error.value, /Telegram 链接须为/)
+    state.draft.telegramUrl = 'https://example.com/channel'
+    await state.save()
+    assert.equal(calls.length, 0)
+    state.draft.telegramUrl = 'https://telegram.me/group'
+    await state.save()
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0][1].telegramUrl, 'https://telegram.me/group')
+  } finally {
+    merchantApi.update = originalUpdate
+    merchantApi.page = originalPage
+  }
+})
+
 test('an in-progress test email prevents closing, saving, and duplicate sends', async () => {
   const originalTestEmail = merchantApi.testEmail, originalUpdate = merchantApi.update
   let sends = 0, saves = 0, resolveSend

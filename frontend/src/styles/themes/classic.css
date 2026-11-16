@@ -394,7 +394,8 @@
     right: 28px;
     bottom: 26px;
     min-height: 48px;
-    padding: 6px 17px 6px 7px;
+    gap: 7px;
+    padding: 0 13px;
     border: 0;
     border-radius: 999px;
     background: #1d1d1f;
@@ -403,7 +404,6 @@
     font-size: 13px;
   }
   .demo-customer-shell .float-cart:hover { border-color: #424245; background: #424245; color: #fff; }
-  .demo-customer-shell .cart-count-badge { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: #1d1d1f; }
 
   /* Shared page rhythm and headings. */
   .demo-customer-shell .customer-page-container,
@@ -858,9 +858,9 @@
   .demo-customer-shell .customer-footer .footer-desc,
   .demo-customer-shell .customer-footer .footer-right { color: #6e6e73; }
   .demo-customer-shell .customer-footer a { color: #424245; }
-  .demo-customer-shell .customer-footer .after-sales-contact,
-  .demo-customer-shell .customer-footer .after-sales-contact a { color: #6e6e73; }
-  .demo-customer-shell .customer-footer .after-sales-contact a:hover { color: #424245; }
+  .demo-customer-shell .customer-footer .after-sales-contact { color: #6e6e73; }
+  .demo-customer-shell .customer-footer .after-sales-contact a { color: #0066cc; }
+  .demo-customer-shell .customer-footer .after-sales-contact a:hover { color: #005bb5; }
   .demo-customer-shell .history-page .whatsapp-action { border-color: #b8ded5; background: #edf8f5; color: #087568; }
   .demo-customer-shell .history-page .whatsapp-action:hover { border-color: #80c5b6; background: #e0f3ed; color: #075f55; }
 
@@ -972,9 +972,9 @@
   .customer-auth-screen .auth-page-footer .footer-right { color: #6e6e73; }
   .customer-auth-screen .auth-page-footer .footer-left a,
   .customer-auth-screen .auth-page-footer .footer-right a { border-color: var(--color-line); color: #424245; }
-  .customer-auth-screen .auth-page-footer .after-sales-contact,
-  .customer-auth-screen .auth-page-footer .after-sales-contact a { color: #6e6e73; }
-  .customer-auth-screen .auth-page-footer .after-sales-contact a:hover { color: #424245; }
+  .customer-auth-screen .auth-page-footer .after-sales-contact { color: #6e6e73; }
+  .customer-auth-screen .auth-page-footer .after-sales-contact a { color: #0066cc; }
+  .customer-auth-screen .auth-page-footer .after-sales-contact a:hover { color: #005bb5; }
   .customer-auth-screen .form-error { color: #d70015; }
 
   @media (min-width: 1400px) {

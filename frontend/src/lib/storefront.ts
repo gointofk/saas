@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import { request } from './api'
-export const storefrontBrand = reactive({ name: '', logoUrl: '', theme: 'classic', registrationEnabled: false, commissionEnabled: true, whatsappNumber: null as string | null })
+export const storefrontBrand = reactive({ name: '', logoUrl: '', theme: 'classic', registrationEnabled: false, commissionEnabled: true, whatsappNumber: null as string | null, telegramUrl: null as string | null })
 
 export function applyMerchantBranding(name: string, logoUrl: string) {
   document.title = name || 'DailyActivity'

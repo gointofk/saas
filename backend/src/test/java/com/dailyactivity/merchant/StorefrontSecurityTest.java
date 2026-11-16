@@ -67,6 +67,29 @@ class StorefrontSecurityTest {
         assertThatThrownBy(()->StorefrontService.validateBranding("//outside.test/logo","classic")).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->StorefrontService.validateBranding("/logo.png","../../custom")).isInstanceOf(ApiException.class);
     }
+    @Test void telegramLinksAcceptOnlyOfficialHttpsHostsWithPaths() {
+        assertThat(StorefrontService.normalizeTelegramUrl(" https://t.me/yourchannel ")).isEqualTo("https://t.me/yourchannel");
+        assertThat(StorefrontService.normalizeTelegramUrl("https://telegram.me/group")).isEqualTo("https://telegram.me/group");
+        assertThat(StorefrontService.normalizeTelegramUrl("https://t.me/joinchat/invitation-code")).isEqualTo("https://t.me/joinchat/invitation-code");
+        assertThat(StorefrontService.normalizeTelegramUrl("")).isNull();
+        assertThat(StorefrontService.normalizeTelegramUrl(null)).isNull();
+    }
+    @ParameterizedTest
+    @ValueSource(strings={
+            "http://t.me/channel",
+            "javascript:alert(1)",
+            "https://t.me.evil.test/channel",
+            "https://t.me@evil.test/channel",
+            "https://t.me:443/channel",
+            "https://t.me",
+            "https://t.me/",
+            "https://example.com/channel"
+    })
+    void unsafeTelegramLinksAreRejected(String value) {
+        assertThatThrownBy(()->StorefrontService.normalizeTelegramUrl(value))
+                .isInstanceOf(ApiException.class)
+                .extracting("code").isEqualTo("INVALID_TELEGRAM_URL");
+    }
     @Test void platformJwtHasIndependentAudienceAndNoMerchant() {
         var config=new com.dailyactivity.config.AuthProperties("test","customer","admin",30,60,"test-only-signing-material-at-least-32-bytes",300,10);
         var service=new JwtTokenService(new com.dailyactivity.auth.infrastructure.JwtKeyProvider(config),config);

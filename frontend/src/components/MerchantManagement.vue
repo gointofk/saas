@@ -28,7 +28,7 @@ type ShippingThresholdDraft = Record<keyof MerchantFreeShippingThresholds, strin
 function zeroShippingFees(): ShippingFeeDraft { return { v1: '0.00', v2: '0.00', v3: '0.00', v4: '0.00', v5: '0.00', v6: '0.00' } }
 function emptyShippingThresholds(): ShippingThresholdDraft { return { v1: '', v2: '', v3: '', v4: '', v5: '', v6: '' } }
 const registrationTiers = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6'] as const
-const draft = reactive({ domain: '', logoUrl: '/dailyactivity-logo.svg', theme: 'classic', whatsappNumber: '', code: '', name: '', active: true, shippingFees: zeroShippingFees(), freeShippingThresholds: emptyShippingThresholds(), adminAccount: '', adminName: '', password: '', confirmation: '', registrationEnabled: false, registrationDefaultTier: 'V1' as typeof registrationTiers[number], commissionEnabled: true, cryptoEnabled: true, onlinePaymentLinkEnabled: false, smtpHost: '', smtpPort: '587', smtpUsername: '', smtpPassword: '', tlsMode: 'starttls' as 'starttls' | 'ssl', senderEmail: '', senderName: '', testRecipient: '' })
+const draft = reactive({ domain: '', logoUrl: '/dailyactivity-logo.svg', theme: 'classic', whatsappNumber: '', telegramUrl: '', code: '', name: '', active: true, shippingFees: zeroShippingFees(), freeShippingThresholds: emptyShippingThresholds(), adminAccount: '', adminName: '', password: '', confirmation: '', registrationEnabled: false, registrationDefaultTier: 'V1' as typeof registrationTiers[number], commissionEnabled: true, cryptoEnabled: true, onlinePaymentLinkEnabled: false, smtpHost: '', smtpPort: '587', smtpUsername: '', smtpPassword: '', tlsMode: 'starttls' as 'starttls' | 'ssl', senderEmail: '', senderName: '', testRecipient: '' })
 function message(e: unknown) { return e instanceof Error ? e.message : 'Request failed.' }
 async function load(page = result.value.page) {
   loading.value = true; error.value = ''
@@ -43,7 +43,7 @@ function open(item: Merchant | null = null) {
   mailExpanded.value = item?.registrationEnabled ?? false
   const shippingFees = Object.fromEntries(shippingTiers.map(tier => [tier, String(item?.shippingFees?.[tier] ?? '0.00')])) as ShippingFeeDraft
   const freeShippingThresholds = Object.fromEntries(shippingTiers.map(tier => [tier, item?.freeShippingThresholds?.[tier] == null ? '' : String(item.freeShippingThresholds[tier])])) as ShippingThresholdDraft
-  Object.assign(draft, { domain: item?.domain || '', logoUrl: item?.logoUrl || '/dailyactivity-logo.svg', theme: item?.theme || 'classic', whatsappNumber: item?.whatsappNumber || '', code: item?.code || '', name: item?.name || '', active: item?.active ?? true, shippingFees, freeShippingThresholds, adminAccount: '', adminName: '', password: '', confirmation: '', registrationEnabled: item?.registrationEnabled ?? false, registrationDefaultTier: item?.registrationDefaultTier || 'V1', commissionEnabled: item?.commissionEnabled ?? true, cryptoEnabled: item?.cryptoEnabled ?? true, onlinePaymentLinkEnabled: item?.onlinePaymentLinkEnabled ?? false, smtpHost: item?.mailSettings?.smtpHost || '', smtpPort: String(item?.mailSettings?.smtpPort || 587), smtpUsername: item?.mailSettings?.smtpUsername || '', smtpPassword: '', tlsMode: item?.mailSettings?.tlsMode || 'starttls', senderEmail: item?.mailSettings?.senderEmail || '', senderName: item?.mailSettings?.senderName || '', testRecipient: '' })
+  Object.assign(draft, { domain: item?.domain || '', logoUrl: item?.logoUrl || '/dailyactivity-logo.svg', theme: item?.theme || 'classic', whatsappNumber: item?.whatsappNumber || '', telegramUrl: item?.telegramUrl || '', code: item?.code || '', name: item?.name || '', active: item?.active ?? true, shippingFees, freeShippingThresholds, adminAccount: '', adminName: '', password: '', confirmation: '', registrationEnabled: item?.registrationEnabled ?? false, registrationDefaultTier: item?.registrationDefaultTier || 'V1', commissionEnabled: item?.commissionEnabled ?? true, cryptoEnabled: item?.cryptoEnabled ?? true, onlinePaymentLinkEnabled: item?.onlinePaymentLinkEnabled ?? false, smtpHost: item?.mailSettings?.smtpHost || '', smtpPort: String(item?.mailSettings?.smtpPort || 587), smtpUsername: item?.mailSettings?.smtpUsername || '', smtpPassword: '', tlsMode: item?.mailSettings?.tlsMode || 'starttls', senderEmail: item?.mailSettings?.senderEmail || '', senderName: item?.mailSettings?.senderName || '', testRecipient: '' })
   modal.value = true
 }
 function close() { if (!saving.value && !testingMail.value && !uploadingLogo.value) { modal.value = false; draft.password = ''; draft.confirmation = ''; draft.smtpPassword = '' } }
@@ -102,6 +102,16 @@ async function save() {
   if (!shippingTiers.every(tier => validThreshold(draft.freeShippingThresholds[tier]))) { error.value = t('免邮门槛须留空或填写大于 0 且最多两位小数的金额。'); return }
   const whatsappNumber = draft.whatsappNumber.trim()
   if (whatsappNumber && (!/^\+[0-9\s().-]+$/.test(whatsappNumber) || whatsappNumber.replace(/\D/g, '').length < 7 || whatsappNumber.replace(/\D/g, '').length > 15)) { error.value = t('WhatsApp 号码须以 + 开头，且包含 7 至 15 位数字。'); return }
+  const telegramUrl = draft.telegramUrl.trim()
+  if (telegramUrl) {
+    let valid = false
+    try {
+      const url = new URL(telegramUrl)
+      valid = telegramUrl.length <= 512 && url.protocol === 'https:' && !url.username && !url.password && !url.port
+        && ['t.me', 'telegram.me'].includes(url.hostname.toLowerCase()) && Boolean(url.pathname) && url.pathname !== '/'
+    } catch { valid = false }
+    if (!valid) { error.value = t('Telegram 链接须为 https://t.me/... 或 https://telegram.me/... 的有效链接。'); return }
+  }
   const passwordRequested = !editing.value || Boolean(draft.password || draft.confirmation)
   if (passwordRequested && (!draft.password.trim() || draft.password.length < 12 || draft.password.length > 64 || draft.password !== draft.confirmation)) { error.value = t('密码须为 12–64 位，两次输入需一致。'); return }
   if (draft.registrationEnabled && (!draft.smtpHost.trim() || !draft.smtpUsername.trim() || !draft.senderEmail.trim() || !draft.senderName.trim() || (!draft.smtpPassword && !editing.value?.mailSettings?.passwordConfigured))) { mailExpanded.value = true; error.value = t('开放注册前请完整配置 SMTP 邮件信息。'); return }
@@ -110,8 +120,8 @@ async function save() {
     const mailSettings = mailSettingsPayload()
     const shippingFees = Object.fromEntries(shippingTiers.map(tier => [tier, String(draft.shippingFees[tier] ?? '').trim()])) as MerchantShippingFees
     const freeShippingThresholds = Object.fromEntries(shippingTiers.map(tier => [tier, String(draft.freeShippingThresholds[tier] ?? '').trim() || null])) as MerchantFreeShippingThresholds
-    if (editing.value) await merchantApi.update(editing.value.id, { domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, whatsappNumber, name: draft.name.trim(), active: draft.active, shippingFees, freeShippingThresholds, expectedUpdatedAt: editing.value.updatedAt, registrationEnabled: draft.registrationEnabled, registrationDefaultTier: draft.registrationDefaultTier, commissionEnabled: draft.commissionEnabled, cryptoEnabled: draft.cryptoEnabled, onlinePaymentLinkEnabled: draft.onlinePaymentLinkEnabled, mailSettings, ...(passwordRequested ? { password: draft.password, confirmation: draft.confirmation } : {}) })
-    else await merchantApi.create({ code: draft.code.trim(), domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, whatsappNumber, name: draft.name.trim(), shippingFees, freeShippingThresholds, adminAccount: draft.adminAccount.trim(), adminName: draft.adminName.trim(), password: draft.password, confirmation: draft.confirmation, registrationEnabled: draft.registrationEnabled, registrationDefaultTier: draft.registrationDefaultTier, commissionEnabled: draft.commissionEnabled, cryptoEnabled: draft.cryptoEnabled, onlinePaymentLinkEnabled: draft.onlinePaymentLinkEnabled, mailSettings })
+    if (editing.value) await merchantApi.update(editing.value.id, { domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, whatsappNumber, telegramUrl, name: draft.name.trim(), active: draft.active, shippingFees, freeShippingThresholds, expectedUpdatedAt: editing.value.updatedAt, registrationEnabled: draft.registrationEnabled, registrationDefaultTier: draft.registrationDefaultTier, commissionEnabled: draft.commissionEnabled, cryptoEnabled: draft.cryptoEnabled, onlinePaymentLinkEnabled: draft.onlinePaymentLinkEnabled, mailSettings, ...(passwordRequested ? { password: draft.password, confirmation: draft.confirmation } : {}) })
+    else await merchantApi.create({ code: draft.code.trim(), domain: draft.domain.trim(), logoUrl: draft.logoUrl.trim(), theme: draft.theme, whatsappNumber, telegramUrl, name: draft.name.trim(), shippingFees, freeShippingThresholds, adminAccount: draft.adminAccount.trim(), adminName: draft.adminName.trim(), password: draft.password, confirmation: draft.confirmation, registrationEnabled: draft.registrationEnabled, registrationDefaultTier: draft.registrationDefaultTier, commissionEnabled: draft.commissionEnabled, cryptoEnabled: draft.cryptoEnabled, onlinePaymentLinkEnabled: draft.onlinePaymentLinkEnabled, mailSettings })
     modal.value = false; draft.password = ''; draft.confirmation = ''; draft.smtpPassword = ''
     await load(); emit('saved')
   } catch (e) {
@@ -203,6 +213,7 @@ onMounted(() => load())
                   </div>
                   <label class="form-group merchant-field-wide">{{ t('商城样式') }}<select v-model="draft.theme"><option value="classic">{{ t('经典') }}</option><option value="forest">{{ t('森林') }}</option><option value="editorial">{{ t('简约目录') }}</option></select></label>
                   <label class="form-group merchant-field-wide">{{ t('售后 WhatsApp 号码') }}<input v-model="draft.whatsappNumber" type="tel" maxlength="32" autocomplete="tel" placeholder="+852 6506 5690"><small>{{ t('留空则买家端不显示售后入口。请输入带国家/地区代码的号码。') }}</small></label>
+                  <label class="form-group merchant-field-wide">{{ t('Telegram 链接') }}<input v-model="draft.telegramUrl" type="url" maxlength="512" autocomplete="off" placeholder="https://t.me/yourchannel"><small>{{ t('留空则买家端不显示 Telegram 入口。仅支持 t.me 或 telegram.me 的 HTTPS 链接。') }}</small></label>
                 </div>
                 <div class="merchant-shipping-tier-list">
                   <div v-for="tier in shippingTiers" :key="tier" class="merchant-shipping-tier-row">

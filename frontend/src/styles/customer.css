@@ -208,9 +208,12 @@
 .customer-footer p { margin: 0; max-width: 500px; line-height: 1.6; }
 .customer-footer small { align-self: end; white-space: nowrap; }
 .after-sales-contact { margin: 0 0 8px; color: #858d88; font-size: 12px; line-height: 1.5; }
-.after-sales-contact a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.after-sales-contact a:hover { color: #445b51; }
+.after-sales-contact a { color: #0066cc; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.after-sales-contact a:hover { color: #005bb5; }
 .after-sales-contact a:focus-visible, .whatsapp-action:focus-visible { outline: 2px solid #087568; outline-offset: 3px; }
+.customer-footer .after-sales-links { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-bottom: 6px; white-space: normal; }
+.customer-footer .after-sales-links .after-sales-contact { margin: 0; }
+.after-sales-telegram-link { overflow-wrap: anywhere; }
 .whatsapp-action { display: inline-flex; min-height: 34px; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; margin-left: auto; padding: 0 12px; border-color: #b8ded5; background: #edf8f5; color: #087568; text-decoration: none; }
 .whatsapp-action:hover { border-color: #80c5b6; background: #e0f3ed; color: #075f55; }
 .whatsapp-action svg { width: 15px; height: 15px; flex: 0 0 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.65; }
@@ -262,8 +265,10 @@
 .addcart-btn:hover { border-color: var(--color-primary); background: var(--color-soft); }
 .cart-icon { width: 20px; height: 20px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
 .catalog-empty { grid-column: 1 / -1; min-height: 160px; display: grid; place-items: center; padding: 34px; border: 1px dashed var(--color-line-strong); border-radius: 12px; color: var(--color-muted); text-align: center; }
-.float-cart { position: fixed; right: 25px; bottom: 23px; z-index: 30; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 7px 15px 7px 8px; border: 1px solid var(--color-primary); border-radius: 13px; background: var(--color-primary); color: var(--color-surface); box-shadow: 0 12px 30px rgba(18,59,54,.22); font-size: 13px; font-weight: 700; text-decoration: none; }
-.cart-count-badge { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; background: var(--color-accent-strong); }
+.float-cart { position: fixed; right: 25px; bottom: 23px; z-index: 30; display: flex; align-items: center; gap: 7px; min-height: 48px; box-sizing: border-box; padding: 0 13px; border: 1px solid var(--color-primary); border-radius: 13px; background: var(--color-primary); color: var(--color-surface); box-shadow: 0 12px 30px rgba(18,59,54,.22); font-size: 13px; font-weight: 700; text-decoration: none; }
+.float-cart-icon { width: 20px; height: 20px; flex: 0 0 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+.float-cart:focus-visible { outline: 3px solid var(--color-accent-soft); outline-offset: 3px; }
+.float-cart-total { white-space: nowrap; }
 .customer-footer { padding: 0 60px; border-top: 1px solid var(--color-line); background: var(--color-surface); color: var(--color-muted); }
 .demo-customer-shell .footer-left, .demo-customer-shell .footer-right { display: block; }
 .demo-customer-shell .customer-footer .footer-company-name { margin-top: 0; }
